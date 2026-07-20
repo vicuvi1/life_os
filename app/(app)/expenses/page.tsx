@@ -12,7 +12,24 @@ import {
   X,
   ArrowUp,
   ArrowDown,
+  Wallet,
   PiggyBank,
+  Landmark,
+  Target,
+  Sparkles,
+  TrendingUp,
+  TrendingDown,
+  Utensils,
+  Car,
+  Dumbbell,
+  Gamepad2,
+  GraduationCap,
+  HeartPulse,
+  Briefcase,
+  Gift,
+  Undo2,
+  Tag,
+  ArrowRightLeft,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -22,7 +39,7 @@ import {
   updateExpense,
   deleteExpense,
 } from "@/lib/firebase/db";
-import { toDateKey } from "@/lib/greeting";
+import { toDateKey, resolveFirstName } from "@/lib/greeting";
 import {
   monthKey,
   inMonth,
@@ -59,19 +76,36 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ExpenseFormDialog } from "@/components/expenses/expense-form-dialog";
 import { BudgetFormDialog } from "@/components/expenses/budget-form-dialog";
 import { cn } from "@/lib/utils";
 import type { AccountKey, Budget, EntryKind, Expense } from "@/lib/types";
+import type { LucideIcon } from "lucide-react";
 
 const MONTHS_SHORT = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 const WEEKDAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const DEFAULT_CATEGORY: Record<EntryKind, string> = {
-  income: "salary",
-  expense: "food",
+const WEEK_HEADS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const DEFAULT_CATEGORY: Record<EntryKind, string> = { income: "salary", expense: "food" };
+
+const CATEGORY_ICON: Record<string, LucideIcon> = {
+  food: Utensils,
+  transport: Car,
+  fitness: Dumbbell,
+  entertainment: Gamepad2,
+  education: GraduationCap,
+  health: HeartPulse,
+  salary: Briefcase,
+  allowance: Wallet,
+  gift: Gift,
+  sale: Tag,
+  refund: Undo2,
+  investment: TrendingUp,
+  other: Tag,
 };
+const iconFor = (cat: string): LucideIcon => CATEGORY_ICON[cat] ?? Tag;
 
 type AccountFilter = "all" | AccountKey;
 
@@ -79,9 +113,17 @@ function pctChange(cur: number, prev: number): number {
   if (prev === 0) return cur === 0 ? 0 : 100;
   return ((cur - prev) / Math.abs(prev)) * 100;
 }
+function greeting(): string {
+  const h = new Date().getHours();
+  return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+}
+function formatDayLabel(dateKey: string): string {
+  const d = new Date(dateKey + "T00:00:00");
+  return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
+}
 
 export default function FinancePage() {
-  const { user } = useAuth();
+  const { user, displayName } = useAuth();
   const now = new Date();
 
   const [year, setYear] = useState(now.getFullYear());
@@ -93,16 +135,18 @@ export default function FinancePage() {
   const [newAccount, setNewAccount] = useState<AccountKey>("wallet");
   const [filter, setFilter] = useState<AccountFilter>("all");
   const [extraRows, setExtraRows] = useState<Record<string, number>>({});
+  const [form, setForm] = useState<{ open: boolean; expense: Expense | null; kind: EntryKind }>({
+    open: false,
+    expense: null,
+    kind: "expense",
+  });
 
   const load = useCallback(
     async (opts?: { quiet?: boolean }) => {
       if (!user) return;
       if (!opts?.quiet) setLoading(true);
       try {
-        const [ex, bg] = await Promise.all([
-          getExpenses(user.uid),
-          getBudget(user.uid),
-        ]);
+        const [ex, bg] = await Promise.all([getExpenses(user.uid), getBudget(user.uid)]);
         setExpenses(ex);
         setBudget(bg);
       } finally {
@@ -111,7 +155,6 @@ export default function FinancePage() {
     },
     [user]
   );
-
   useEffect(() => {
     load();
   }, [load]);
@@ -119,6 +162,7 @@ export default function FinancePage() {
   const currency = resolveCurrency(budget);
   const mKey = monthKey(year, month);
   const todayKey = toDateKey(now);
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
   const inFilter = useCallback(
     (e: Expense) => filter === "all" || e.account === filter,
     [filter]
@@ -131,25 +175,31 @@ export default function FinancePage() {
 
   const earned = useMemo(() => totalEarned(monthExpenses), [monthExpenses]);
   const spent = useMemo(() => totalSpent(monthExpenses), [monthExpenses]);
-  const net = useMemo(() => netTotal(monthExpenses), [monthExpenses]);
+  const net = earned - spent;
   const savingsRate = earned > 0 ? (net / earned) * 100 : 0;
 
-  // Previous month (for the "vs last month" comparisons).
+  const spentToday = useMemo(
+    () => totalSpent(monthExpenses.filter((e) => e.date === todayKey)),
+    [monthExpenses, todayKey]
+  );
+  const netToday = useMemo(
+    () => netTotal(monthExpenses.filter((e) => e.date === todayKey)),
+    [monthExpenses, todayKey]
+  );
+
   const prev = useMemo(() => {
     const pm = month === 0 ? 11 : month - 1;
     const py = month === 0 ? year - 1 : year;
     const pe = expenses.filter((e) => inMonth(e.date, monthKey(py, pm)) && inFilter(e));
-    const inc = totalEarned(pe);
-    const exp = totalSpent(pe);
-    const n = netTotal(pe);
-    return { inc, exp, net: n, rate: inc > 0 ? (n / inc) * 100 : 0 };
+    return { inc: totalEarned(pe), exp: totalSpent(pe), net: netTotal(pe) };
   }, [expenses, month, year, inFilter]);
 
   const byDay = useMemo(() => {
-    const m = new Map<string, { income: Expense[]; expense: Expense[] }>();
+    const m = new Map<string, { income: Expense[]; expense: Expense[]; net: number }>();
     for (const e of monthExpenses) {
-      const b = m.get(e.date) ?? { income: [], expense: [] };
+      const b = m.get(e.date) ?? { income: [], expense: [], net: 0 };
       (e.kind === "income" ? b.income : b.expense).push(e);
+      b.net += e.kind === "income" ? e.amount : -e.amount;
       m.set(e.date, b);
     }
     for (const b of m.values()) {
@@ -163,31 +213,18 @@ export default function FinancePage() {
     () => ACCOUNTS.reduce((s, a) => s + (budget?.openingBalances?.[a] ?? 0), 0),
     [budget]
   );
-  const accounts = useMemo(
-    () =>
-      ACCOUNTS.map((a) => ({
-        key: a,
-        balance: accountBalance(expenses, a, budget?.openingBalances?.[a] ?? 0),
-      })),
-    [expenses, budget]
-  );
-  const netWorth = accounts.reduce((s, a) => s + a.balance, 0);
+  const walletBalance = accountBalance(expenses, "wallet", budget?.openingBalances?.wallet ?? 0);
+  const safeBalance = accountBalance(expenses, "safe", budget?.openingBalances?.safe ?? 0);
+  const netWorth = walletBalance + safeBalance;
 
   const dim = daysInMonth(year, month);
-  const days = useMemo(
-    () => Array.from({ length: dim }, (_, i) => i + 1),
-    [dim]
-  );
-  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
+  const days = useMemo(() => Array.from({ length: dim }, (_, i) => i + 1), [dim]);
 
-  // Balance carried before this month → start / end balance + per-day balances.
   const { startBalance, dayBalances } = useMemo(() => {
     const firstOfMonth = `${mKey}-01`;
     let base = openingTotal;
     for (const e of expenses) {
-      if (e.date < firstOfMonth && inFilter(e)) {
-        base += e.kind === "income" ? e.amount : -e.amount;
-      }
+      if (e.date < firstOfMonth && inFilter(e)) base += e.kind === "income" ? e.amount : -e.amount;
     }
     const start = Math.round(base * 100) / 100;
     const map: Record<string, number> = {};
@@ -195,191 +232,167 @@ export default function FinancePage() {
     for (let d = 1; d <= dim; d++) {
       const key = `${mKey}-${String(d).padStart(2, "0")}`;
       const b = byDay.get(key);
-      if (b) {
-        for (const e of b.income) running += e.amount;
-        for (const e of b.expense) running -= e.amount;
-      }
+      if (b) running += b.net;
       map[key] = Math.round(running * 100) / 100;
     }
     return { startBalance: start, dayBalances: map };
   }, [expenses, byDay, openingTotal, mKey, dim, inFilter]);
   const endBalance = Math.round((startBalance + net) * 100) / 100;
 
-  // 12-month summary for the selected year.
+  // Sparkline of net worth across days up to today (or the whole month).
+  const sparkData = useMemo(() => {
+    const upto = isCurrentMonth ? now.getDate() : dim;
+    return days.slice(0, upto).map((d) => dayBalances[`${mKey}-${String(d).padStart(2, "0")}`] ?? 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [days, dayBalances, mKey, dim, isCurrentMonth]);
+
   const monthly = useMemo(
     () =>
       Array.from({ length: 12 }, (_, m) => {
-        const me = expenses.filter(
-          (e) => inMonth(e.date, monthKey(year, m)) && inFilter(e)
-        );
-        return {
-          m,
-          income: totalEarned(me),
-          expense: totalSpent(me),
-          net: netTotal(me),
-        };
+        const me = expenses.filter((e) => inMonth(e.date, monthKey(year, m)) && inFilter(e));
+        return { m, income: totalEarned(me), expense: totalSpent(me) };
       }),
     [expenses, year, inFilter]
-  );
-  const yearTotal = monthly.reduce(
-    (a, x) => ({
-      income: a.income + x.income,
-      expense: a.expense + x.expense,
-      net: a.net + x.net,
-    }),
-    { income: 0, expense: 0, net: 0 }
   );
 
   const byCategory = useMemo(() => spendByCategory(monthExpenses), [monthExpenses]);
 
-  // Quick summary.
-  const quick = useMemo(() => {
-    const perDay = new Map<string, { inc: number; exp: number }>();
-    for (const e of monthExpenses) {
-      const p = perDay.get(e.date) ?? { inc: 0, exp: 0 };
-      if (e.kind === "income") p.inc += e.amount;
-      else p.exp += e.amount;
-      perDay.set(e.date, p);
-    }
-    let hiInc: { date: string; amt: number } | null = null;
-    let hiExp: { date: string; amt: number } | null = null;
-    for (const [date, p] of perDay) {
-      if (p.inc > 0 && (!hiInc || p.inc > hiInc.amt)) hiInc = { date, amt: p.inc };
-      if (p.exp > 0 && (!hiExp || p.exp > hiExp.amt)) hiExp = { date, amt: p.exp };
-    }
-    const activeDays = isCurrentMonth ? now.getDate() : dim;
-    return {
-      hiInc,
-      hiExp,
-      avgExpense: activeDays > 0 ? spent / activeDays : 0,
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [monthExpenses, spent, dim, isCurrentMonth]);
+  const recent = useMemo(
+    () =>
+      [...expenses]
+        .filter(inFilter)
+        .sort((a, b) => b.createdAt - a.createdAt || (a.date < b.date ? 1 : -1))
+        .slice(0, 6),
+    [expenses, inFilter]
+  );
 
   const savingsTarget = budget?.savingsGoal ?? null;
   const savingsProgress =
-    savingsTarget && savingsTarget > 0
-      ? Math.max(0, (netWorth / savingsTarget) * 100)
+    savingsTarget && savingsTarget > 0 ? Math.max(0, (netWorth / savingsTarget) * 100) : null;
+  const daysElapsed = isCurrentMonth ? now.getDate() : dim;
+  const avgDailyNet = daysElapsed > 0 ? net / daysElapsed : 0;
+  const daysToGoal =
+    savingsTarget && avgDailyNet > 0 && netWorth < savingsTarget
+      ? Math.ceil((savingsTarget - netWorth) / avgDailyNet)
       : null;
 
-  // --- Inline mutations (optimistic; resync on error) ------------------------
-  async function commitAmount(
-    dateKey: string,
-    kind: EntryKind,
-    entry: Expense | undefined,
-    num: number | null
-  ) {
+  // Insights — "what to do next".
+  const insights = useMemo(() => {
+    const out: { icon: LucideIcon; tone: "good" | "warn" | "info"; text: string }[] = [];
+    if (prev.exp > 0) {
+      const diff = pctChange(spent, prev.exp);
+      out.push(
+        diff <= 0
+          ? { icon: TrendingDown, tone: "good", text: `You've spent ${Math.abs(diff).toFixed(0)}% less than last month. Nice.` }
+          : { icon: TrendingUp, tone: "warn", text: `You're spending ${diff.toFixed(0)}% more than last month.` }
+      );
+    }
+    if (byCategory.length > 0 && spent > 0) {
+      const top = byCategory[0];
+      out.push({
+        icon: iconFor(top.category),
+        tone: "info",
+        text: `Most of your spending is on ${categoryLabel(top.category)} (${Math.round((top.amount / spent) * 100)}%).`,
+      });
+    }
+    if (savingsTarget) {
+      if (savingsProgress != null && savingsProgress >= 100)
+        out.push({ icon: Target, tone: "good", text: `You've reached your ${formatAmount(savingsTarget, currency)} savings goal! 🎉` });
+      else if (daysToGoal != null)
+        out.push({ icon: Target, tone: "good", text: `At your current pace you'll hit your goal in ~${daysToGoal} days.` });
+      else
+        out.push({ icon: Target, tone: "warn", text: `You're not saving this month — add income or trim spending to reach your goal.` });
+    }
+    if (isCurrentMonth) {
+      out.push(
+        netToday >= 0
+          ? { icon: Sparkles, tone: "good", text: `Today you're net ${formatAmount(netToday, currency)}.` }
+          : { icon: Sparkles, tone: "info", text: `You've spent ${formatAmount(spentToday, currency)} today.` }
+      );
+    }
+    return out.slice(0, 4);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prev, spent, byCategory, savingsTarget, savingsProgress, daysToGoal, netToday, spentToday, isCurrentMonth, currency]);
+
+  // --- Mutations -------------------------------------------------------------
+  async function commitAmount(dateKey: string, kind: EntryKind, entry: Expense | undefined, num: number | null) {
     if (!user) return;
     try {
       if (num == null) {
         if (entry) {
-          setExpenses((prev) => prev.filter((x) => x.id !== entry.id));
+          setExpenses((p) => p.filter((x) => x.id !== entry.id));
           await deleteExpense(entry.id);
         }
         return;
       }
       if (entry) {
-        setExpenses((prev) =>
-          prev.map((x) => (x.id === entry.id ? { ...x, amount: num } : x))
-        );
+        setExpenses((p) => p.map((x) => (x.id === entry.id ? { ...x, amount: num } : x)));
         await updateExpense(entry.id, { amount: num });
       } else {
-        const draft = {
-          kind,
-          amount: num,
-          account: newAccount,
-          category: DEFAULT_CATEGORY[kind],
-          note: null,
-          date: dateKey,
-        };
+        const draft = { kind, amount: num, account: newAccount, category: DEFAULT_CATEGORY[kind], note: null, date: dateKey };
         const id = await createExpense(user.uid, draft);
-        setExpenses((prev) => [
-          ...prev,
-          { id, userId: user.uid, createdAt: Date.now(), ...draft },
-        ]);
-        setExtraRows((prev) =>
-          prev[dateKey] ? { ...prev, [dateKey]: prev[dateKey] - 1 } : prev
-        );
+        setExpenses((p) => [...p, { id, userId: user.uid, createdAt: Date.now(), ...draft }]);
+        setExtraRows((p) => (p[dateKey] ? { ...p, [dateKey]: p[dateKey] - 1 } : p));
       }
     } catch {
       await load({ quiet: true });
     }
   }
-
   async function commitNote(entry: Expense, text: string) {
     const note = text.trim() || null;
     if (note === (entry.note ?? null)) return;
-    setExpenses((prev) =>
-      prev.map((x) => (x.id === entry.id ? { ...x, note } : x))
-    );
+    setExpenses((p) => p.map((x) => (x.id === entry.id ? { ...x, note } : x)));
     try {
       await updateExpense(entry.id, { note });
     } catch {
       await load({ quiet: true });
     }
   }
-
   async function commitCategory(entry: Expense, category: string) {
     if (category === entry.category) return;
-    setExpenses((prev) =>
-      prev.map((x) => (x.id === entry.id ? { ...x, category } : x))
-    );
+    setExpenses((p) => p.map((x) => (x.id === entry.id ? { ...x, category } : x)));
     try {
       await updateExpense(entry.id, { category });
     } catch {
       await load({ quiet: true });
     }
   }
-
   async function removeEntry(entry: Expense) {
-    setExpenses((prev) => prev.filter((x) => x.id !== entry.id));
+    setExpenses((p) => p.filter((x) => x.id !== entry.id));
     try {
       await deleteExpense(entry.id);
     } catch {
       await load({ quiet: true });
     }
   }
-
   function addLine(dateKey: string) {
-    setExtraRows((prev) => ({ ...prev, [dateKey]: (prev[dateKey] ?? 0) + 1 }));
+    setExtraRows((p) => ({ ...p, [dateKey]: (p[dateKey] ?? 0) + 1 }));
   }
-
   function exportCsv(scope: "month" | "all") {
     const data = scope === "month" ? monthExpenses : expenses;
     if (data.length === 0) return;
-    const name = scope === "month" ? `finance-${mKey}.csv` : "finance-all.csv";
-    downloadCsv(name, entriesToCsv(data));
+    downloadCsv(scope === "month" ? `finance-${mKey}.csv` : "finance-all.csv", entriesToCsv(data));
   }
-
+  function openAdd(kind: EntryKind) {
+    setForm({ open: true, expense: null, kind });
+  }
   function prevMonth() {
-    if (month === 0) {
-      setMonth(11);
-      setYear((y) => y - 1);
-    } else setMonth((m) => m - 1);
+    if (month === 0) { setMonth(11); setYear((y) => y - 1); } else setMonth((m) => m - 1);
   }
   function nextMonth() {
-    if (month === 11) {
-      setMonth(0);
-      setYear((y) => y + 1);
-    } else setMonth((m) => m + 1);
+    if (month === 11) { setMonth(0); setYear((y) => y + 1); } else setMonth((m) => m + 1);
   }
 
-  // Flattened transaction rows: every day shown; one row per entry (+ an empty
-  // row to add to a day), balance on the day's last row.
   const rows = useMemo(() => {
     const out: {
-      dateKey: string;
-      day: number;
-      weekday: string;
-      firstOfDay: boolean;
-      lastOfDay: boolean;
-      entry?: Expense;
-      kind: EntryKind | null;
+      dateKey: string; day: number; weekday: string;
+      firstOfDay: boolean; lastOfDay: boolean;
+      entry?: Expense; kind: EntryKind | null;
     }[] = [];
     for (const day of days) {
       const dateKey = `${mKey}-${String(day).padStart(2, "0")}`;
       const weekday = WEEKDAYS_SHORT[new Date(year, month, day).getDay()];
-      const b = byDay.get(dateKey) ?? { income: [], expense: [] };
+      const b = byDay.get(dateKey) ?? { income: [], expense: [], net: 0 };
       const items: { entry: Expense; kind: EntryKind }[] = [
         ...b.income.map((e) => ({ entry: e, kind: "income" as EntryKind })),
         ...b.expense.map((e) => ({ entry: e, kind: "expense" as EntryKind })),
@@ -389,104 +402,60 @@ export default function FinancePage() {
       for (let i = 0; i < total; i++) {
         const rec = items[i];
         out.push({
-          dateKey,
-          day,
-          weekday,
-          firstOfDay: i === 0,
-          lastOfDay: i === total - 1,
-          entry: rec?.entry,
-          kind: rec?.kind ?? null,
+          dateKey, day, weekday,
+          firstOfDay: i === 0, lastOfDay: i === total - 1,
+          entry: rec?.entry, kind: rec?.kind ?? null,
         });
       }
     }
     return out;
   }, [days, byDay, extraRows, mKey, year, month]);
 
+  const firstName = resolveFirstName(displayName, user?.email ?? null);
+
   return (
-    <div className="mx-auto max-w-[1500px] space-y-4">
+    <div className="mx-auto max-w-[1500px] space-y-5">
+      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold md:text-3xl">Finance</h1>
+          <h1 className="text-2xl font-bold md:text-3xl">
+            {greeting()}, {firstName}! <span className="align-middle">👋</span>
+          </h1>
           <p className="text-muted-foreground">
-            Track your income, expenses and savings.
+            Here&apos;s your financial overview for {monthLabel(year, month)}.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center rounded-lg border">
+            <Button variant="ghost" size="icon" aria-label="Previous month" onClick={prevMonth} className="h-9 w-9">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="min-w-[96px] text-center text-sm font-medium">{monthLabel(year, month)}</span>
+            <Button variant="ghost" size="icon" aria-label="Next month" onClick={nextMonth} className="h-9 w-9">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
           <Select value={filter} onValueChange={(v) => setFilter(v as AccountFilter)}>
-            <SelectTrigger className="h-9 w-[130px]">
-              <SelectValue />
-            </SelectTrigger>
+            <SelectTrigger className="h-9 w-[132px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All accounts</SelectItem>
-              {ACCOUNTS.map((a) => (
-                <SelectItem key={a} value={a}>
-                  {ACCOUNT_LABEL[a]}
-                </SelectItem>
-              ))}
+              {ACCOUNTS.map((a) => <SelectItem key={a} value={a}>{ACCOUNT_LABEL[a]}</SelectItem>)}
             </SelectContent>
           </Select>
-          <div className="flex items-center gap-1 rounded-md border px-2 text-sm text-muted-foreground">
-            <PiggyBank className="h-3.5 w-3.5" /> New →
-            <Select value={newAccount} onValueChange={(v) => setNewAccount(v as AccountKey)}>
-              <SelectTrigger className="h-8 w-[92px] border-0 px-1 shadow-none">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {ACCOUNTS.map((a) => (
-                  <SelectItem key={a} value={a}>
-                    {ACCOUNT_LABEL[a]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline">
-                <Download className="h-4 w-4" /> Export
-              </Button>
+              <Button variant="outline" size="icon" aria-label="Export"><Download className="h-4 w-4" /></Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => exportCsv("month")}>
-                This month (CSV)
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportCsv("all")}>
-                All time (CSV)
-              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportCsv("month")}>This month (CSV)</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportCsv("all")}>All time (CSV)</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="Budget & accounts settings"
-            onClick={() => setBudgetOpen(true)}
-          >
+          <Button variant="outline" size="icon" aria-label="Settings" onClick={() => setBudgetOpen(true)}>
             <Settings2 className="h-4 w-4" />
           </Button>
-        </div>
-      </div>
-
-      {/* Month nav */}
-      <div className="flex items-center justify-between">
-        <Button variant="outline" size="icon" aria-label="Previous month" onClick={prevMonth}>
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <p className="text-lg font-semibold">{monthLabel(year, month)}</p>
-        <div className="flex items-center gap-2">
-          {!isCurrentMonth && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setYear(now.getFullYear());
-                setMonth(now.getMonth());
-              }}
-            >
-              This month
-            </Button>
-          )}
-          <Button variant="outline" size="icon" aria-label="Next month" onClick={nextMonth}>
-            <ChevronRight className="h-4 w-4" />
+          <Button onClick={() => openAdd("expense")}>
+            <Plus className="h-4 w-4" /> Add transaction
           </Button>
         </div>
       </div>
@@ -496,522 +465,462 @@ export default function FinancePage() {
       ) : (
         <>
           {/* KPI cards */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-            <Kpi label="Total income" value={formatAmount(earned, currency)} tone="up"
-              delta={{ pct: pctChange(earned, prev.inc), good: earned >= prev.inc }} />
-            <Kpi label="Total expenses" value={formatAmount(spent, currency)} tone="down"
-              delta={{ pct: pctChange(spent, prev.exp), good: spent <= prev.exp }} />
-            <Kpi label="Net amount" value={formatAmount(net, currency)} tone={net >= 0 ? "up" : "down"}
-              delta={{ pct: pctChange(net, prev.net), good: net >= prev.net }} />
-            <Kpi label="Savings rate" value={`${savingsRate.toFixed(1)}%`} tone="neutral"
-              delta={{ pct: savingsRate - prev.rate, good: savingsRate >= prev.rate, unit: "pp" }} />
-            <Kpi label="Start balance" value={formatAmount(startBalance, currency)} tone="neutral" />
-            <Kpi label="End balance" value={formatAmount(endBalance, currency)} tone={endBalance >= 0 ? "up" : "down"} />
-          </div>
-
-          {/* Dashboard grid */}
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-            {/* Transactions */}
-            <div className="xl:col-span-6">
-              <Panel title="Transactions" bodyClassName="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[780px] table-fixed border-collapse text-sm">
-                    <colgroup>
-                      <col className="w-[70px]" />
-                      <col className="w-[46px]" />
-                      <col className="w-[88px]" />
-                      <col className="w-[128px]" />
-                      <col />
-                      <col className="w-[92px]" />
-                      <col className="w-[92px]" />
-                      <col className="w-[100px]" />
-                      <col className="w-[32px]" />
-                    </colgroup>
-                    <thead>
-                      <tr className="border-b bg-muted/40 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        <th className="px-2 py-2">Date</th>
-                        <th className="px-1 py-2">Day</th>
-                        <th className="px-2 py-2">Type</th>
-                        <th className="px-2 py-2">Category</th>
-                        <th className="px-2 py-2">Description</th>
-                        <th className="px-2 py-2 text-right text-emerald-600 dark:text-emerald-400">Income</th>
-                        <th className="px-2 py-2 text-right text-rose-600 dark:text-rose-400">Expense</th>
-                        <th className="px-2 py-2 text-right">Balance</th>
-                        <th className="px-1 py-2" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((r, idx) => {
-                        const isToday = r.dateKey === todayKey;
-                        const isWeekend = r.weekday === "Sat" || r.weekday === "Sun";
-                        return (
-                          <tr
-                            key={`${r.dateKey}-${idx}`}
-                            className={cn(
-                              "group border-b last:border-0",
-                              isWeekend && "bg-muted/20",
-                              isToday && "bg-primary/5",
-                              "hover:bg-accent/40"
-                            )}
-                          >
-                            <td className="px-2 py-1 align-middle">
-                              {r.firstOfDay && (
-                                <span className="tabular-nums font-medium">
-                                  {r.day} {MONTHS_SHORT[month]}
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-1 py-1 align-middle">
-                              {r.firstOfDay && (
-                                <span className="text-xs text-muted-foreground">{r.weekday}</span>
-                              )}
-                            </td>
-                            <td className="px-2 py-1 align-middle">
-                              {r.entry ? (
-                                <span
-                                  className={cn(
-                                    "inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase",
-                                    r.kind === "income"
-                                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                                      : "bg-rose-500/15 text-rose-600 dark:text-rose-400"
-                                  )}
-                                >
-                                  {r.kind}
-                                </span>
-                              ) : (
-                                r.firstOfDay && <span className="text-muted-foreground/40">—</span>
-                              )}
-                            </td>
-                            <td className="px-1 py-1 align-middle">
-                              {r.entry && (
-                                <CategorySelect
-                                  entry={r.entry}
-                                  kind={r.kind as EntryKind}
-                                  onChange={(c) => commitCategory(r.entry!, c)}
-                                />
-                              )}
-                            </td>
-                            <td className="px-1 py-1 align-middle">
-                              {r.entry && (
-                                <NoteInput entry={r.entry} onCommit={(t) => commitNote(r.entry!, t)} />
-                              )}
-                            </td>
-                            {/* Income */}
-                            <td className="px-1 py-1 text-right align-middle">
-                              {r.kind === "income" || r.kind === null ? (
-                                <AmountInput
-                                  value={r.entry?.amount ?? null}
-                                  tone="income"
-                                  onCommit={(num) =>
-                                    commitAmount(r.dateKey, "income", r.entry, num)
-                                  }
-                                />
-                              ) : (
-                                <span className="pr-2 text-muted-foreground/30">–</span>
-                              )}
-                            </td>
-                            {/* Expense */}
-                            <td className="px-1 py-1 text-right align-middle">
-                              {r.kind === "expense" || r.kind === null ? (
-                                <AmountInput
-                                  value={r.entry?.amount ?? null}
-                                  tone="expense"
-                                  onCommit={(num) =>
-                                    commitAmount(r.dateKey, "expense", r.entry, num)
-                                  }
-                                />
-                              ) : (
-                                <span className="pr-2 text-muted-foreground/30">–</span>
-                              )}
-                            </td>
-                            {/* Balance */}
-                            <td
-                              className={cn(
-                                "px-2 py-1 text-right align-middle tabular-nums",
-                                r.lastOfDay
-                                  ? dayBalances[r.dateKey] < 0
-                                    ? "text-destructive"
-                                    : "text-muted-foreground"
-                                  : "text-transparent"
-                              )}
-                            >
-                              {r.lastOfDay ? formatAmount(dayBalances[r.dateKey] ?? 0, currency) : ""}
-                            </td>
-                            {/* Actions */}
-                            <td className="px-1 py-1 text-center align-middle">
-                              {r.entry ? (
-                                <button
-                                  onClick={() => removeEntry(r.entry!)}
-                                  aria-label="Delete entry"
-                                  className="rounded p-1 text-muted-foreground/40 opacity-0 transition hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
-                                >
-                                  <X className="h-3.5 w-3.5" />
-                                </button>
-                              ) : (
-                                r.firstOfDay && (
-                                  <button
-                                    onClick={() => addLine(r.dateKey)}
-                                    aria-label="Add entry"
-                                    className="rounded p-1 text-muted-foreground/40 opacity-0 transition hover:bg-accent hover:text-foreground group-hover:opacity-100"
-                                  >
-                                    <Plus className="h-3.5 w-3.5" />
-                                  </button>
-                                )
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                    <tfoot>
-                      <tr className="border-t-2 bg-muted/40 font-semibold">
-                        <td className="px-2 py-2.5" colSpan={5}>Total</td>
-                        <td className="px-2 py-2.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">
-                          {formatAmount(earned, currency)}
-                        </td>
-                        <td className="px-2 py-2.5 text-right tabular-nums text-rose-600 dark:text-rose-400">
-                          {formatAmount(spent, currency)}
-                        </td>
-                        <td className="px-2 py-2.5 text-right tabular-nums">
-                          {formatAmount(endBalance, currency)}
-                        </td>
-                        <td />
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </Panel>
-            </div>
-
-            {/* Middle column: overview + charts + quick summary */}
-            <div className="space-y-4 xl:col-span-3">
-              <Panel title="Overview">
-                <dl className="space-y-2 text-sm">
-                  <Row label="Total Income" value={formatAmount(earned, currency)} valueClass="text-emerald-600 dark:text-emerald-400" />
-                  <Row label="Total Expenses" value={formatAmount(spent, currency)} valueClass="text-rose-600 dark:text-rose-400" />
-                  <Row label="Net Amount" value={formatAmount(net, currency)} valueClass={net >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"} />
-                  <Row label="Savings Rate" value={`${savingsRate.toFixed(1)}%`} />
-                </dl>
-              </Panel>
-
-              <Panel title="Expenses by category">
-                <Donut data={byCategory} currency={currency} />
-              </Panel>
-
-              <Panel title="Income vs expenses">
-                <IncomeExpenseBars income={earned} expense={spent} currency={currency} />
-              </Panel>
-
-              <Panel title="Quick summary">
-                <dl className="space-y-2 text-sm">
-                  <Row
-                    label="Highest income day"
-                    value={quick.hiInc ? formatDate(quick.hiInc.date) : "—"}
-                  />
-                  <Row
-                    label="Highest expense day"
-                    value={quick.hiExp ? formatDate(quick.hiExp.date) : "—"}
-                  />
-                  <Row label="Average daily expense" value={formatAmount(quick.avgExpense, currency)} />
-                  <Row label="Current balance" value={formatAmount(endBalance, currency)} />
-                </dl>
-              </Panel>
-            </div>
-
-            {/* Right column: monthly summary + savings goal + notes */}
-            <div className="space-y-4 xl:col-span-3">
-              <Panel title="Monthly summary" bodyClassName="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        <th className="px-3 py-2">Month</th>
-                        <th className="px-2 py-2 text-right text-emerald-600 dark:text-emerald-400">Income</th>
-                        <th className="px-2 py-2 text-right text-rose-600 dark:text-rose-400">Expenses</th>
-                        <th className="px-3 py-2 text-right">Net</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {monthly.map((row) => (
-                        <tr
-                          key={row.m}
-                          className={cn(
-                            "border-b last:border-0",
-                            row.m === month && "bg-primary/5 font-medium"
-                          )}
-                        >
-                          <td className="px-3 py-1.5">{MONTHS_SHORT[row.m]} {year}</td>
-                          <td className="px-2 py-1.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">
-                            {formatAmount(row.income, currency)}
-                          </td>
-                          <td className="px-2 py-1.5 text-right tabular-nums text-rose-600 dark:text-rose-400">
-                            {formatAmount(row.expense, currency)}
-                          </td>
-                          <td className={cn("px-3 py-1.5 text-right tabular-nums", row.net < 0 && "text-destructive")}>
-                            {formatAmount(row.net, currency)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="border-t-2 bg-muted/40 font-semibold">
-                        <td className="px-3 py-2">Total</td>
-                        <td className="px-2 py-2 text-right tabular-nums text-emerald-600 dark:text-emerald-400">
-                          {formatAmount(yearTotal.income, currency)}
-                        </td>
-                        <td className="px-2 py-2 text-right tabular-nums text-rose-600 dark:text-rose-400">
-                          {formatAmount(yearTotal.expense, currency)}
-                        </td>
-                        <td className={cn("px-3 py-2 text-right tabular-nums", yearTotal.net < 0 && "text-destructive")}>
-                          {formatAmount(yearTotal.net, currency)}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </Panel>
-
-              <Panel title="Savings goal">
-                {savingsTarget && savingsTarget > 0 ? (
-                  <div className="space-y-3">
-                    <Row label="Target amount" value={formatAmount(savingsTarget, currency)} />
-                    <Row label="Current savings" value={formatAmount(netWorth, currency)} />
-                    <div>
-                      <div className="mb-1 flex justify-between text-sm">
-                        <span className="text-muted-foreground">Progress</span>
-                        <span className="font-semibold">{(savingsProgress ?? 0).toFixed(1)}%</span>
-                      </div>
-                      <div className="h-3 w-full overflow-hidden rounded-full bg-secondary">
-                        <div
-                          className="h-full rounded-full bg-emerald-500 transition-all"
-                          style={{ width: `${Math.min(100, savingsProgress ?? 0)}%` }}
-                        />
-                      </div>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-5">
+            <StatCard
+              icon={Landmark}
+              iconClass="bg-primary/15 text-primary"
+              label="Total net worth"
+              value={formatAmount(netWorth, currency)}
+              sub={
+                <Delta pct={pctChange(netWorth, netWorth - net)} good={net >= 0} suffix="vs last month" />
+              }
+              spark={sparkData}
+            />
+            <StatCard
+              icon={Wallet}
+              iconClass="bg-sky-500/15 text-sky-500"
+              label="Wallet (cash)"
+              value={formatAmount(walletBalance, currency)}
+              sub={<span className="text-xs text-muted-foreground">Available to spend</span>}
+            />
+            <StatCard
+              icon={PiggyBank}
+              iconClass="bg-emerald-500/15 text-emerald-500"
+              label="Safe (savings)"
+              value={formatAmount(safeBalance, currency)}
+              sub={<span className="text-xs text-muted-foreground">Keep building 💪</span>}
+            />
+            <StatCard
+              icon={TrendingDown}
+              iconClass="bg-rose-500/15 text-rose-500"
+              label="Spent this month"
+              value={formatAmount(spent, currency)}
+              sub={
+                <span className="text-xs text-muted-foreground">
+                  {isCurrentMonth ? `${formatAmount(spentToday, currency)} today` : `Net ${formatAmount(net, currency)}`}
+                </span>
+              }
+            />
+            <StatCard
+              icon={Target}
+              iconClass="bg-violet-500/15 text-violet-500"
+              label="Savings goal"
+              value={savingsTarget ? formatAmount(savingsTarget, currency) : "—"}
+              sub={
+                savingsTarget ? (
+                  <div className="mt-1 space-y-1">
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                      <div className="h-full rounded-full bg-violet-500" style={{ width: `${Math.min(100, savingsProgress ?? 0)}%` }} />
                     </div>
+                    <span className="text-xs text-muted-foreground">
+                      {(savingsProgress ?? 0).toFixed(0)}% · {formatAmount(netWorth, currency)}
+                    </span>
                   </div>
                 ) : (
-                  <div className="space-y-2 text-sm text-muted-foreground">
-                    <p>Set a savings target to track progress against your net worth.</p>
-                    <Button variant="outline" size="sm" onClick={() => setBudgetOpen(true)}>
-                      Set a goal
-                    </Button>
-                  </div>
-                )}
-              </Panel>
-
-              <Panel title="Notes">
-                <ul className="space-y-1.5 text-sm text-muted-foreground">
-                  <li>• Enter income and expenses every day.</li>
-                  <li>• Review your spending weekly.</li>
-                  <li>• Keep an eye on your savings rate.</li>
-                  <li>• Save more, stress less!</li>
-                </ul>
-              </Panel>
-            </div>
+                  <button onClick={() => setBudgetOpen(true)} className="text-xs text-primary hover:underline">
+                    Set a goal
+                  </button>
+                )
+              }
+            />
           </div>
+
+          {/* Insights */}
+          {insights.length > 0 && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {insights.map((ins, i) => (
+                <Card key={i} className="flex items-start gap-3 p-4">
+                  <span
+                    className={cn(
+                      "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                      ins.tone === "good" && "bg-emerald-500/15 text-emerald-500",
+                      ins.tone === "warn" && "bg-amber-500/15 text-amber-500",
+                      ins.tone === "info" && "bg-sky-500/15 text-sky-500"
+                    )}
+                  >
+                    <ins.icon className="h-4 w-4" />
+                  </span>
+                  <p className="text-sm leading-snug">{ins.text}</p>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* Charts row */}
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+            <Panel title="Spending overview">
+              <Donut data={byCategory} currency={currency} total={spent} />
+            </Panel>
+            <Panel title="Income vs expenses">
+              <IncomeExpenseBars income={earned} expense={spent} net={net} currency={currency} />
+            </Panel>
+            <Panel title="Calendar heatmap">
+              <Heatmap year={year} month={month} byDay={byDay} todayKey={todayKey} />
+            </Panel>
+          </div>
+
+          {/* Activity / trend / quick add row */}
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+            <Panel title="Recent activity">
+              {recent.length === 0 ? (
+                <p className="py-8 text-center text-sm text-muted-foreground">No transactions yet.</p>
+              ) : (
+                <ul className="divide-y">
+                  {recent.map((e) => {
+                    const Icon = iconFor(e.category);
+                    return (
+                      <li key={e.id} className="flex items-center gap-3 py-2.5">
+                        <span
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                          style={{ backgroundColor: `${categoryColor(e.category)}22`, color: categoryColor(e.category) }}
+                        >
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">{e.note || categoryLabel(e.category)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatDayLabel(e.date)} · {ACCOUNT_LABEL[e.account]}
+                          </p>
+                        </div>
+                        <span className={cn("shrink-0 text-sm font-semibold tabular-nums", e.kind === "income" ? "text-emerald-500" : "text-rose-500")}>
+                          {e.kind === "income" ? "+" : "−"}{formatAmount(e.amount, currency)}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </Panel>
+
+            <Panel title="Monthly trend">
+              <TrendChart data={monthly} currency={currency} highlight={month} />
+            </Panel>
+
+            <Panel title="Quick add">
+              <div className="grid grid-cols-2 gap-3">
+                <QuickAdd icon={TrendingUp} label="Income" cls="hover:border-emerald-500/60 hover:bg-emerald-500/5" iconCls="bg-emerald-500/15 text-emerald-500" onClick={() => openAdd("income")} />
+                <QuickAdd icon={TrendingDown} label="Expense" cls="hover:border-rose-500/60 hover:bg-rose-500/5" iconCls="bg-rose-500/15 text-rose-500" onClick={() => openAdd("expense")} />
+                <QuickAdd icon={ArrowRightLeft} label="Transfer" cls="hover:border-sky-500/60 hover:bg-sky-500/5" iconCls="bg-sky-500/15 text-sky-500" onClick={() => openAdd("expense")} />
+                <QuickAdd icon={Settings2} label="Settings" cls="hover:border-primary/60 hover:bg-primary/5" iconCls="bg-primary/15 text-primary" onClick={() => setBudgetOpen(true)} />
+              </div>
+              <div className="mt-4 space-y-2 rounded-lg border p-3 text-sm">
+                <div className="flex justify-between"><span className="text-muted-foreground">Income</span><span className="font-semibold tabular-nums text-emerald-500">{formatAmount(earned, currency)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Expenses</span><span className="font-semibold tabular-nums text-rose-500">{formatAmount(spent, currency)}</span></div>
+                <div className="flex justify-between border-t pt-2"><span className="text-muted-foreground">Net</span><span className={cn("font-semibold tabular-nums", net >= 0 ? "text-emerald-500" : "text-rose-500")}>{formatAmount(net, currency)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Savings rate</span><span className="font-semibold tabular-nums">{savingsRate.toFixed(1)}%</span></div>
+              </div>
+            </Panel>
+          </div>
+
+          {/* Editable transactions grid */}
+          <Panel title="Transactions" bodyClassName="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[780px] table-fixed border-collapse text-sm">
+                <colgroup>
+                  <col className="w-[70px]" /><col className="w-[46px]" /><col className="w-[88px]" />
+                  <col className="w-[150px]" /><col /><col className="w-[100px]" />
+                  <col className="w-[100px]" /><col className="w-[108px]" /><col className="w-[32px]" />
+                </colgroup>
+                <thead>
+                  <tr className="border-b bg-muted/40 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <th className="px-2 py-2">Date</th><th className="px-1 py-2">Day</th><th className="px-2 py-2">Type</th>
+                    <th className="px-2 py-2">Category</th><th className="px-2 py-2">Description</th>
+                    <th className="px-2 py-2 text-right text-emerald-600 dark:text-emerald-400">Income</th>
+                    <th className="px-2 py-2 text-right text-rose-600 dark:text-rose-400">Expense</th>
+                    <th className="px-2 py-2 text-right">Balance</th><th className="px-1 py-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r, idx) => {
+                    const isToday = r.dateKey === todayKey;
+                    const isWeekend = r.weekday === "Sat" || r.weekday === "Sun";
+                    return (
+                      <tr key={`${r.dateKey}-${idx}`} className={cn("group border-b last:border-0", isWeekend && "bg-muted/20", isToday && "bg-primary/5", "hover:bg-accent/40")}>
+                        <td className="px-2 py-1 align-middle">{r.firstOfDay && <span className="tabular-nums font-medium">{r.day} {MONTHS_SHORT[month]}</span>}</td>
+                        <td className="px-1 py-1 align-middle">{r.firstOfDay && <span className="text-xs text-muted-foreground">{r.weekday}</span>}</td>
+                        <td className="px-2 py-1 align-middle">
+                          {r.entry ? (
+                            <span className={cn("inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase", r.kind === "income" ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-rose-500/15 text-rose-600 dark:text-rose-400")}>{r.kind}</span>
+                          ) : (r.firstOfDay && <span className="text-muted-foreground/40">—</span>)}
+                        </td>
+                        <td className="px-1 py-1 align-middle">{r.entry && <CategorySelect entry={r.entry} kind={r.kind as EntryKind} onChange={(c) => commitCategory(r.entry!, c)} />}</td>
+                        <td className="px-1 py-1 align-middle">{r.entry && <NoteInput entry={r.entry} onCommit={(t) => commitNote(r.entry!, t)} />}</td>
+                        <td className="px-1 py-1 text-right align-middle">
+                          {r.kind === "income" || r.kind === null ? (
+                            <AmountInput value={r.entry?.amount ?? null} tone="income" onCommit={(num) => commitAmount(r.dateKey, "income", r.entry, num)} />
+                          ) : <span className="pr-2 text-muted-foreground/30">–</span>}
+                        </td>
+                        <td className="px-1 py-1 text-right align-middle">
+                          {r.kind === "expense" || r.kind === null ? (
+                            <AmountInput value={r.entry?.amount ?? null} tone="expense" onCommit={(num) => commitAmount(r.dateKey, "expense", r.entry, num)} />
+                          ) : <span className="pr-2 text-muted-foreground/30">–</span>}
+                        </td>
+                        <td className={cn("px-2 py-1 text-right align-middle tabular-nums", r.lastOfDay ? (dayBalances[r.dateKey] < 0 ? "text-destructive" : "text-muted-foreground") : "text-transparent")}>
+                          {r.lastOfDay ? formatAmount(dayBalances[r.dateKey] ?? 0, currency) : ""}
+                        </td>
+                        <td className="px-1 py-1 text-center align-middle">
+                          {r.entry ? (
+                            <button onClick={() => removeEntry(r.entry!)} aria-label="Delete entry" className="rounded p-1 text-muted-foreground/40 opacity-0 transition hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"><X className="h-3.5 w-3.5" /></button>
+                          ) : (r.firstOfDay && (
+                            <button onClick={() => addLine(r.dateKey)} aria-label="Add entry" className="rounded p-1 text-muted-foreground/40 opacity-0 transition hover:bg-accent hover:text-foreground group-hover:opacity-100"><Plus className="h-3.5 w-3.5" /></button>
+                          ))}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 bg-muted/40 font-semibold">
+                    <td className="px-2 py-2.5" colSpan={5}>Total</td>
+                    <td className="px-2 py-2.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{formatAmount(earned, currency)}</td>
+                    <td className="px-2 py-2.5 text-right tabular-nums text-rose-600 dark:text-rose-400">{formatAmount(spent, currency)}</td>
+                    <td className="px-2 py-2.5 text-right tabular-nums">{formatAmount(endBalance, currency)}</td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </Panel>
         </>
       )}
 
       {user && (
-        <BudgetFormDialog
-          open={budgetOpen}
-          onOpenChange={setBudgetOpen}
-          userId={user.uid}
-          budget={budget}
-          onSaved={load}
-        />
+        <>
+          <ExpenseFormDialog
+            open={form.open}
+            onOpenChange={(o) => setForm((s) => ({ ...s, open: o }))}
+            userId={user.uid}
+            defaultDate={isCurrentMonth ? todayKey : `${mKey}-01`}
+            initialKind={form.kind}
+            expense={form.expense}
+            onSaved={load}
+          />
+          <BudgetFormDialog open={budgetOpen} onOpenChange={setBudgetOpen} userId={user.uid} budget={budget} onSaved={load} />
+        </>
       )}
     </div>
   );
 }
 
-function formatDate(dateKey: string): string {
-  const d = new Date(dateKey + "T00:00:00");
-  return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
-}
-
 // ---------------------------------------------------------------------------
 // Presentational
 // ---------------------------------------------------------------------------
-function Panel({
-  title,
-  children,
-  bodyClassName,
-}: {
-  title: string;
-  children: React.ReactNode;
-  bodyClassName?: string;
-}) {
+function Panel({ title, children, bodyClassName, action }: { title: string; children: React.ReactNode; bodyClassName?: string; action?: React.ReactNode }) {
   return (
     <Card className="overflow-hidden">
-      <div className="border-b bg-muted/30 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        {title}
+      <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-2.5">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</span>
+        {action}
       </div>
       <div className={cn("p-4", bodyClassName)}>{children}</div>
     </Card>
   );
 }
 
-function Row({
-  label,
-  value,
-  valueClass,
-}: {
-  label: string;
-  value: string;
-  valueClass?: string;
-}) {
+function Delta({ pct, good, suffix }: { pct: number; good: boolean; suffix: string }) {
   return (
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-muted-foreground">{label}</span>
-      <span className={cn("font-semibold tabular-nums", valueClass)}>{value}</span>
-    </div>
+    <span className="flex items-center gap-1 text-xs">
+      <span className={cn("inline-flex items-center gap-0.5 font-medium", good ? "text-emerald-500" : "text-rose-500")}>
+        {pct >= 0 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+        {Math.abs(pct).toFixed(1)}%
+      </span>
+      <span className="text-muted-foreground">{suffix}</span>
+    </span>
   );
 }
 
-function Kpi({
-  label,
-  value,
-  tone,
-  delta,
-}: {
-  label: string;
-  value: string;
-  tone: "up" | "down" | "neutral";
-  delta?: { pct: number; good: boolean; unit?: string };
+function StatCard({ icon: Icon, iconClass, label, value, sub, spark }: {
+  icon: LucideIcon; iconClass: string; label: string; value: string; sub?: React.ReactNode; spark?: number[];
 }) {
   return (
     <Card className="p-4">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-        {label}
-      </p>
-      <p
-        className={cn(
-          "mt-1 text-2xl font-bold tabular-nums",
-          tone === "up" && "text-emerald-600 dark:text-emerald-400",
-          tone === "down" && "text-rose-600 dark:text-rose-400"
-        )}
-      >
-        {value}
-      </p>
-      {delta && (
-        <p className="mt-1 flex items-center gap-1 text-xs">
-          <span
-            className={cn(
-              "inline-flex items-center gap-0.5 font-medium",
-              delta.good
-                ? "text-emerald-600 dark:text-emerald-400"
-                : "text-rose-600 dark:text-rose-400"
-            )}
-          >
-            {delta.pct >= 0 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
-            {Math.abs(delta.pct).toFixed(delta.unit === "pp" ? 1 : 0)}
-            {delta.unit === "pp" ? "pp" : "%"}
-          </span>
-          <span className="text-muted-foreground">vs last month</span>
-        </p>
-      )}
+      <div className="flex items-start justify-between">
+        <span className={cn("flex h-9 w-9 items-center justify-center rounded-lg", iconClass)}><Icon className="h-4 w-4" /></span>
+        {spark && spark.length > 1 && <Sparkline data={spark} />}
+      </div>
+      <p className="mt-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-0.5 text-2xl font-bold tabular-nums">{value}</p>
+      <div className="mt-1">{sub}</div>
     </Card>
   );
 }
 
-function Donut({
-  data,
-  currency,
-}: {
-  data: { category: string; amount: number }[];
-  currency: ReturnType<typeof resolveCurrency>;
-}) {
-  const total = data.reduce((s, d) => s + d.amount, 0);
-  if (total <= 0) {
-    return (
-      <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
-        No expenses yet
-      </div>
-    );
-  }
-  const r = 52;
-  const c = 2 * Math.PI * r;
-  let offset = 0;
-  const top = data.slice(0, 6);
+function Sparkline({ data }: { data: number[] }) {
+  const w = 72, h = 28;
+  const min = Math.min(...data), max = Math.max(...data);
+  const range = max - min || 1;
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * w;
+    const y = h - ((v - min) / range) * h;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const up = data[data.length - 1] >= data[0];
   return (
-    <div className="flex items-center gap-4">
-      <svg viewBox="0 0 140 140" className="h-32 w-32 shrink-0">
+    <svg width={w} height={h} className="overflow-visible">
+      <polyline
+        points={pts.join(" ")}
+        fill="none"
+        stroke={up ? "#10b981" : "#f43f5e"}
+        strokeWidth={1.75}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function QuickAdd({ icon: Icon, label, cls, iconCls, onClick }: { icon: LucideIcon; label: string; cls: string; iconCls: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className={cn("flex flex-col items-center gap-2 rounded-lg border p-3 transition-colors", cls)}>
+      <span className={cn("flex h-9 w-9 items-center justify-center rounded-lg", iconCls)}><Icon className="h-4 w-4" /></span>
+      <span className="text-xs font-medium">{label}</span>
+    </button>
+  );
+}
+
+function Donut({ data, currency, total }: { data: { category: string; amount: number }[]; currency: ReturnType<typeof resolveCurrency>; total: number }) {
+  if (total <= 0) {
+    return <div className="flex h-44 items-center justify-center text-sm text-muted-foreground">No expenses yet</div>;
+  }
+  const r = 52, c = 2 * Math.PI * r;
+  let offset = 0;
+  return (
+    <div className="flex items-center gap-5">
+      <svg viewBox="0 0 140 140" className="h-36 w-36 shrink-0">
         {data.map((d) => {
           const len = (d.amount / total) * c;
           const el = (
-            <circle
-              key={d.category}
-              cx={70}
-              cy={70}
-              r={r}
-              fill="none"
-              stroke={categoryColor(d.category)}
-              strokeWidth={18}
-              strokeDasharray={`${len} ${c - len}`}
-              strokeDashoffset={-offset}
-              transform="rotate(-90 70 70)"
-            />
+            <circle key={d.category} cx={70} cy={70} r={r} fill="none" stroke={categoryColor(d.category)} strokeWidth={16}
+              strokeDasharray={`${len} ${c - len}`} strokeDashoffset={-offset} transform="rotate(-90 70 70)" />
           );
           offset += len;
           return el;
         })}
-        <text
-          x={70}
-          y={74}
-          textAnchor="middle"
-          className="fill-foreground text-[13px] font-semibold"
-        >
-          {formatAmount(total, currency)}
-        </text>
+        <text x={70} y={66} textAnchor="middle" className="fill-muted-foreground text-[9px] uppercase">Total</text>
+        <text x={70} y={80} textAnchor="middle" className="fill-foreground text-[13px] font-semibold">{formatAmount(total, currency)}</text>
       </svg>
-      <ul className="min-w-0 flex-1 space-y-1 text-xs">
-        {top.map((d) => (
-          <li key={d.category} className="flex items-center justify-between gap-2">
-            <span className="flex min-w-0 items-center gap-1.5">
-              <span
-                className="h-2.5 w-2.5 shrink-0 rounded-full"
-                style={{ backgroundColor: categoryColor(d.category) }}
-              />
-              <span className="truncate">{categoryLabel(d.category)}</span>
-            </span>
-            <span className="shrink-0 tabular-nums text-muted-foreground">
-              {Math.round((d.amount / total) * 100)}%
-            </span>
-          </li>
-        ))}
+      <ul className="min-w-0 flex-1 space-y-2 text-sm">
+        {data.slice(0, 6).map((d) => {
+          const Icon = iconFor(d.category);
+          return (
+            <li key={d.category} className="flex items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded" style={{ backgroundColor: `${categoryColor(d.category)}22`, color: categoryColor(d.category) }}>
+                <Icon className="h-3.5 w-3.5" />
+              </span>
+              <span className="min-w-0 flex-1 truncate">{categoryLabel(d.category)}</span>
+              <span className="shrink-0 tabular-nums text-muted-foreground">{formatAmount(d.amount, currency)}</span>
+              <span className="w-9 shrink-0 text-right tabular-nums text-xs text-muted-foreground">{Math.round((d.amount / total) * 100)}%</span>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
 }
 
-function IncomeExpenseBars({
-  income,
-  expense,
-  currency,
-}: {
-  income: number;
-  expense: number;
-  currency: ReturnType<typeof resolveCurrency>;
-}) {
+function IncomeExpenseBars({ income, expense, net, currency }: { income: number; expense: number; net: number; currency: ReturnType<typeof resolveCurrency> }) {
   const max = Math.max(income, expense, 1);
   return (
-    <div className="flex h-44 items-end justify-around gap-6 pt-4">
-      {[
-        { label: "Income", value: income, cls: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400" },
-        { label: "Expenses", value: expense, cls: "bg-rose-500", text: "text-rose-600 dark:text-rose-400" },
-      ].map((b) => (
-        <div key={b.label} className="flex h-full flex-1 flex-col items-center justify-end gap-1">
-          <span className={cn("text-xs font-semibold tabular-nums", b.text)}>
-            {formatAmount(b.value, currency)}
-          </span>
-          <div
-            className={cn("w-full max-w-[72px] rounded-t transition-all", b.cls)}
-            style={{ height: `${Math.max(2, (b.value / max) * 100)}%` }}
-          />
-          <span className="text-xs text-muted-foreground">{b.label}</span>
-        </div>
-      ))}
+    <div>
+      <div className="flex h-40 items-end justify-around gap-6">
+        {[
+          { label: "Income", value: income, cls: "bg-emerald-500", text: "text-emerald-500" },
+          { label: "Expenses", value: expense, cls: "bg-rose-500", text: "text-rose-500" },
+        ].map((b) => (
+          <div key={b.label} className="flex h-full flex-1 flex-col items-center justify-end gap-1.5">
+            <span className={cn("text-sm font-semibold tabular-nums", b.text)}>{formatAmount(b.value, currency)}</span>
+            <div className={cn("w-full max-w-[80px] rounded-t transition-all", b.cls)} style={{ height: `${Math.max(2, (b.value / max) * 100)}%` }} />
+            <span className="text-xs text-muted-foreground">{b.label}</span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 flex items-center justify-between border-t pt-3 text-sm">
+        <span className="text-muted-foreground">Net amount</span>
+        <span className={cn("font-semibold tabular-nums", net >= 0 ? "text-emerald-500" : "text-rose-500")}>{formatAmount(net, currency)}</span>
+      </div>
+    </div>
+  );
+}
+
+function TrendChart({ data, currency, highlight }: { data: { m: number; income: number; expense: number }[]; currency: ReturnType<typeof resolveCurrency>; highlight: number }) {
+  const w = 320, h = 150, padX = 6, padY = 10;
+  const max = Math.max(1, ...data.map((d) => Math.max(d.income, d.expense)));
+  const x = (i: number) => padX + (i / 11) * (w - padX * 2);
+  const y = (v: number) => h - padY - (v / max) * (h - padY * 2);
+  const line = (key: "income" | "expense") => data.map((d, i) => `${x(i).toFixed(1)},${y(d[key]).toFixed(1)}`).join(" ");
+  const hasData = data.some((d) => d.income > 0 || d.expense > 0);
+  if (!hasData) return <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">No data this year</div>;
+  return (
+    <div>
+      <svg viewBox={`0 0 ${w} ${h}`} className="h-40 w-full">
+        <polyline points={line("income")} fill="none" stroke="#10b981" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        <polyline points={line("expense")} fill="none" stroke="#f43f5e" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        {data.map((d, i) => (
+          <g key={i}>
+            <circle cx={x(i)} cy={y(d.income)} r={i === highlight ? 3 : 2} fill="#10b981" />
+            <circle cx={x(i)} cy={y(d.expense)} r={i === highlight ? 3 : 2} fill="#f43f5e" />
+          </g>
+        ))}
+      </svg>
+      <div className="mt-1 flex justify-between px-1 text-[10px] text-muted-foreground">
+        {MONTHS_SHORT.map((m, i) => (
+          <span key={m} className={cn(i === highlight && "font-semibold text-foreground")}>{m[0]}</span>
+        ))}
+      </div>
+      <div className="mt-2 flex items-center justify-center gap-4 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Income</span>
+        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-rose-500" /> Expenses</span>
+      </div>
+    </div>
+  );
+}
+
+function Heatmap({ year, month, byDay, todayKey }: {
+  year: number; month: number; byDay: Map<string, { income: Expense[]; expense: Expense[]; net: number }>; todayKey: string;
+}) {
+  const dim = daysInMonth(year, month);
+  const offset = (new Date(year, month, 1).getDay() + 6) % 7; // Mon-first
+  let maxAbs = 1;
+  for (let d = 1; d <= dim; d++) {
+    const b = byDay.get(`${monthKey(year, month)}-${String(d).padStart(2, "0")}`);
+    if (b) maxAbs = Math.max(maxAbs, Math.abs(b.net));
+  }
+  const cells: (number | null)[] = [...Array(offset).fill(null), ...Array.from({ length: dim }, (_, i) => i + 1)];
+  return (
+    <div>
+      <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-muted-foreground">
+        {WEEK_HEADS.map((d) => <span key={d}>{d}</span>)}
+      </div>
+      <div className="mt-1 grid grid-cols-7 gap-1">
+        {cells.map((day, i) => {
+          if (day == null) return <span key={`b${i}`} />;
+          const key = `${monthKey(year, month)}-${String(day).padStart(2, "0")}`;
+          const b = byDay.get(key);
+          const n = b?.net ?? 0;
+          const intensity = Math.min(1, 0.25 + (Math.abs(n) / maxAbs) * 0.75);
+          const bg = n > 0 ? `rgba(16,185,129,${intensity})` : n < 0 ? `rgba(244,63,94,${intensity})` : undefined;
+          const isToday = key === todayKey;
+          return (
+            <div
+              key={key}
+              title={n !== 0 ? `${formatDayLabel(key)}: ${n > 0 ? "+" : ""}${n}` : formatDayLabel(key)}
+              className={cn(
+                "flex aspect-square items-center justify-center rounded text-[11px] tabular-nums",
+                !bg && "bg-muted/40 text-muted-foreground",
+                bg && "font-medium text-white",
+                isToday && "ring-2 ring-primary"
+              )}
+              style={bg ? { backgroundColor: bg } : undefined}
+            >
+              {day}
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-3 flex items-center justify-center gap-4 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" /> Saved more</span>
+        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-rose-500" /> Spent more</span>
+      </div>
     </div>
   );
 }
@@ -1019,138 +928,62 @@ function IncomeExpenseBars({
 // ---------------------------------------------------------------------------
 // Editable inputs
 // ---------------------------------------------------------------------------
-function AmountInput({
-  value,
-  tone,
-  onCommit,
-}: {
-  value: number | null;
-  tone: "income" | "expense";
-  onCommit: (num: number | null) => void;
-}) {
+function AmountInput({ value, tone, onCommit }: { value: number | null; tone: "income" | "expense"; onCommit: (num: number | null) => void }) {
   const [draft, setDraft] = useState(value != null ? String(value) : "");
   const dirty = useRef(false);
-  useEffect(() => {
-    if (!dirty.current) setDraft(value != null ? String(value) : "");
-  }, [value]);
-
+  useEffect(() => { if (!dirty.current) setDraft(value != null ? String(value) : ""); }, [value]);
   function commit() {
     dirty.current = false;
     const raw = draft.trim();
     const num = raw === "" ? null : Number(raw);
-    if (num != null && (Number.isNaN(num) || num < 0)) {
-      setDraft(value != null ? String(value) : "");
-      return;
-    }
+    if (num != null && (Number.isNaN(num) || num < 0)) { setDraft(value != null ? String(value) : ""); return; }
     const normalized = num && num > 0 ? Math.round(num * 100) / 100 : null;
     if (normalized === (value ?? null)) return;
     onCommit(normalized);
   }
-
   return (
     <input
-      type="number"
-      min={0}
-      step="0.01"
-      inputMode="decimal"
-      value={draft}
-      onChange={(e) => {
-        dirty.current = true;
-        setDraft(e.target.value);
-      }}
+      type="number" min={0} step="0.01" inputMode="decimal" value={draft} placeholder="—"
+      onChange={(e) => { dirty.current = true; setDraft(e.target.value); }}
       onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") e.currentTarget.blur();
-        if (e.key === "Escape") {
-          dirty.current = false;
-          setDraft(value != null ? String(value) : "");
-          e.currentTarget.blur();
-        }
-      }}
-      placeholder="—"
-      className={cn(
-        "w-full rounded bg-transparent px-2 py-1 text-right tabular-nums outline-none transition-colors placeholder:text-muted-foreground/30 hover:bg-background/70 focus:bg-background focus:ring-1 focus:ring-primary",
-        value != null &&
-          (tone === "income"
-            ? "font-semibold text-emerald-600 dark:text-emerald-400"
-            : "font-semibold text-rose-600 dark:text-rose-400")
-      )}
+      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") { dirty.current = false; setDraft(value != null ? String(value) : ""); e.currentTarget.blur(); } }}
+      className={cn("w-full rounded bg-transparent px-2 py-1 text-right tabular-nums outline-none transition-colors placeholder:text-muted-foreground/30 hover:bg-background/70 focus:bg-background focus:ring-1 focus:ring-primary",
+        value != null && (tone === "income" ? "font-semibold text-emerald-600 dark:text-emerald-400" : "font-semibold text-rose-600 dark:text-rose-400"))}
     />
   );
 }
 
-function NoteInput({
-  entry,
-  onCommit,
-}: {
-  entry: Expense;
-  onCommit: (text: string) => void;
-}) {
+function NoteInput({ entry, onCommit }: { entry: Expense; onCommit: (text: string) => void }) {
   const value = entry.note ?? "";
   const [draft, setDraft] = useState(value);
   const dirty = useRef(false);
-  useEffect(() => {
-    if (!dirty.current) setDraft(value);
-  }, [value]);
-
+  useEffect(() => { if (!dirty.current) setDraft(value); }, [value]);
   return (
     <input
-      type="text"
-      value={draft}
-      onChange={(e) => {
-        dirty.current = true;
-        setDraft(e.target.value);
-      }}
-      onBlur={() => {
-        dirty.current = false;
-        onCommit(draft);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") e.currentTarget.blur();
-        if (e.key === "Escape") {
-          dirty.current = false;
-          setDraft(value);
-          e.currentTarget.blur();
-        }
-      }}
-      placeholder="add note"
+      type="text" value={draft} placeholder="add note"
+      onChange={(e) => { dirty.current = true; setDraft(e.target.value); }}
+      onBlur={() => { dirty.current = false; onCommit(draft); }}
+      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") { dirty.current = false; setDraft(value); e.currentTarget.blur(); } }}
       className="w-full rounded bg-transparent px-2 py-1 outline-none transition-colors placeholder:text-muted-foreground/30 hover:bg-background/70 focus:bg-background focus:ring-1 focus:ring-primary"
     />
   );
 }
 
-function CategorySelect({
-  entry,
-  kind,
-  onChange,
-}: {
-  entry: Expense;
-  kind: EntryKind;
-  onChange: (category: string) => void;
-}) {
+function CategorySelect({ entry, kind, onChange }: { entry: Expense; kind: EntryKind; onChange: (category: string) => void }) {
   const cats = kind === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
-  const label = (c: string) =>
-    kind === "income"
-      ? INCOME_CATEGORY_LABEL[c as keyof typeof INCOME_CATEGORY_LABEL] ?? c
-      : EXPENSE_CATEGORY_LABEL[c as keyof typeof EXPENSE_CATEGORY_LABEL] ?? c;
-
+  const label = (c: string) => kind === "income"
+    ? INCOME_CATEGORY_LABEL[c as keyof typeof INCOME_CATEGORY_LABEL] ?? c
+    : EXPENSE_CATEGORY_LABEL[c as keyof typeof EXPENSE_CATEGORY_LABEL] ?? c;
   return (
     <Select value={entry.category} onValueChange={onChange}>
       <SelectTrigger className="h-8 border-transparent bg-transparent px-2 text-sm hover:bg-background/70">
         <span className="flex items-center gap-1.5 truncate">
-          <span
-            className="h-2 w-2 shrink-0 rounded-full"
-            style={{ backgroundColor: categoryColor(entry.category) }}
-          />
+          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: categoryColor(entry.category) }} />
           <SelectValue />
         </span>
       </SelectTrigger>
       <SelectContent>
-        {cats.map((c) => (
-          <SelectItem key={c} value={c}>
-            {label(c)}
-          </SelectItem>
-        ))}
+        {cats.map((c) => <SelectItem key={c} value={c}>{label(c)}</SelectItem>)}
       </SelectContent>
     </Select>
   );

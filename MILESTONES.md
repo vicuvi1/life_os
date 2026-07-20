@@ -922,44 +922,48 @@ CAREER
 
 ---
 
-## Finance — full money dashboard (grid + KPIs + charts + summaries)
+## Finance — glanceable money dashboard
 
-**Purpose.** Replace a hand-maintained finance spreadsheet with a complete
-dashboard: type your daily income/expenses into a grid and get KPI cards,
-charts, a 12-month summary, and a savings goal computed for you. MDL-first.
+**Purpose.** Replace a hand-maintained finance spreadsheet with a dashboard you
+can read in 5 seconds: how much money you have, what you spent today and this
+month, whether you're on track for your savings goal, where your money goes, and
+what to do next. MDL-first.
 
-**What it is.** The old **Expenses** page is now a **Finance dashboard** laid out
-like a spreadsheet tracker: a row of KPI cards on top, an editable
-**Transactions** grid on the left, and side panels (Overview, charts, Quick
-summary, Monthly summary, Savings goal, Notes).
+**What it is.** The Finance page is a **glanceable money dashboard** designed so
+that in ~5 seconds you can see how much money you have, what you spent today and
+this month, whether you're on track for your savings goal, where your money is
+going, and what to do next. The editable transactions grid lives below it.
 
 **How it works.**
-- **KPI cards.** Total income, total expenses, net amount, savings rate, start
-  balance, and end balance — each with a **vs-last-month** arrow and %.
-- **Transactions grid.** Every day of the month is a row: **Date · Day · Type ·
-  Category · Description · Income · Expense · Balance**. Type into the Income or
-  Expense cell to create an entry (it picks the type automatically); set its
-  category and note inline. **+** on a day adds another entry; **×** deletes one.
-  The **Balance** column shows end-of-day net worth like a bank statement.
-  Everything saves on the spot (Enter confirms, Esc cancels).
-- **Overview + charts.** An Overview box (income/expenses/net/savings rate), an
-  **Expenses-by-category donut**, and an **Income-vs-Expenses bar** chart (both
-  drawn as inline SVG — no libraries).
-- **Quick summary.** Highest income day, highest expense day, average daily
-  expense, current balance.
-- **Monthly summary.** A 12-month table for the year (income / expenses / net per
-  month + a Total row), with the current month highlighted.
-- **Savings goal.** Set a target (Settings ⚙) and see progress vs your total net
-  worth, with a progress bar.
-- **Accounts, filter, export, MDL.** Wallet & Safe accounts with starting
-  balances; an **account filter**; a **"New → account"** picker for where typed
-  rows land; one-click **CSV export** (month or all time); Moldovan Leu default.
+- **Greeting + header.** "Good morning, {name}" with the month, an account
+  filter, CSV export, settings, and a prominent **Add transaction** button.
+- **KPI cards.** Total net worth (with a net-worth **sparkline** and vs-last-month
+  change), Wallet (cash), Safe (savings), Spent this month (+ today), and the
+  Savings goal with a progress bar. Each has a colored icon chip.
+- **Insights — what to do next.** Auto-generated tips: are you spending more/less
+  than last month, your biggest category, "at this pace you'll hit your goal in
+  ~N days," and today's net.
+- **Charts.** Spending-overview **donut** (top categories with icons + %),
+  **Income vs Expenses** bars with net, and a **calendar heatmap** coloring each
+  day green (saved) or red (spent) — all inline SVG, no libraries.
+- **Recent activity.** The latest transactions with category icons and signed
+  amounts. **Monthly trend** line chart (income vs expenses across the year).
+  **Quick add** buttons (Income / Expense / Transfer / Settings) and a compact
+  income/expenses/net/savings-rate summary.
+- **Add transaction dialog.** Add/edit via a form (income/expense toggle,
+  account, category) — every control is a real, working button.
+- **Editable transactions grid** (below): every day a row — Date · Day · Type ·
+  Category · Description · Income · Expense · Balance — with inline editing,
+  +/× per day, and an end-of-day running balance.
+- **Accounts, filter, export, MDL.** Wallet & Safe with starting balances; an
+  account filter; CSV export (month or all time); Moldovan Leu default.
 
 **How to use it.**
 1. Open **Finance**. In **Settings ⚙** set account starting balances, an optional
-   monthly budget, and a savings-goal target.
-2. Type income/expenses straight into each day's row; classify and note them.
-   KPIs, charts, and summaries update instantly.
+   monthly budget, and a **savings-goal target** (lights up the goal card + a
+   projection).
+2. Log money with **Add transaction** / **Quick add**, or type straight into the
+   grid below. The whole dashboard updates instantly.
 3. Hit **Export** to pull a month (or everything) into Excel.
 
 > **Follow-ups.** Account **transfers** (Wallet → Safe in one step) and
