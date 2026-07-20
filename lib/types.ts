@@ -226,6 +226,8 @@ export interface Budget {
   byCategory: Partial<Record<string, number>>; // optional per-category caps
   /** Starting balance for each account (e.g. what's already in your safe). */
   openingBalances?: Partial<Record<AccountKey, number>>;
+  /** Savings-goal target amount (progress is measured against net worth). */
+  savingsGoal?: number | null;
 }
 
 /** A reusable meal in the user's library. */

@@ -922,60 +922,46 @@ CAREER
 
 ---
 
-## Finance — editable month grid (income, accounts & Excel export)
+## Finance — full money dashboard (grid + KPIs + charts + summaries)
 
-**Purpose.** Replace a hand-maintained finance spreadsheet with the same thing,
-minus the formulas: a month grid you type straight into, with your monthly
-profit/spent/net and account balances computed for you. MDL-first.
+**Purpose.** Replace a hand-maintained finance spreadsheet with a complete
+dashboard: type your daily income/expenses into a grid and get KPI cards,
+charts, a 12-month summary, and a savings goal computed for you. MDL-first.
 
-**What it is.** The old **Expenses** page is now **Finance** — a full-width,
-spreadsheet-style **month grid**. Every day of the month is a row split into a
-green **Income** side and a red **Expense** side, each with an amount, a
-**category**, and a note, plus a per-day **running balance** column and a
-totals/net footer. Above it sit five stat cards and an account filter, and
-there's one-click **CSV export**.
+**What it is.** The old **Expenses** page is now a **Finance dashboard** laid out
+like a spreadsheet tracker: a row of KPI cards on top, an editable
+**Transactions** grid on the left, and side panels (Overview, charts, Quick
+summary, Monthly summary, Savings goal, Notes).
 
 **How it works.**
-- **Type into the grid.** Click the **Earned** or **Spent** cell and type a
-  number — it saves automatically (creating the entry), and the matching
-  category + **For…** cells appear so you can classify and describe it. Clear a
-  cell to remove that entry. Enter confirms, Esc cancels. No dialogs.
-- **A category on every entry.** Income and expense entries each get an inline
-  category dropdown (colored dot), so the numbers stay classified without extra
-  screens.
-- **More than one entry per day.** Hover a day and hit **+** to add another line
-  to it — days can hold several incomes/expenses, paired side by side. A **×**
-  on hover deletes a row.
-- **Running balance.** The right-hand column shows your **net worth at the end of
-  each day** (opening balances + everything up to that day), like a bank
-  statement.
-- **Stat cards + filter.** Earned, Spent, Net, Net worth, and Avg/day sit on top
-  (with days-logged and budget hints); an **account filter** narrows the grid to
-  Wallet or Safe.
-- **Earned / Spent / Net.** A slim bar above the grid (and the grid's footer)
-  shows the month's money in, money out, and the difference — the sheet's
-  PROFIT / SPENT / TOTAL box, automatic.
-- **Accounts (Wallet & Safe).** Each account shows a live balance = its
-  **starting balance** (set in Settings ⚙ → *Account starting balances*, e.g.
-  what's already in your safe) plus all income minus all expenses against it,
-  with a **Total** (net worth). A small **"New rows → Wallet/Safe"** selector
-  chooses which account grid entries land in.
-- **Export to Excel.** The **Export** menu downloads a CSV (This month or All
-  time) with income and expense in separate columns plus a signed amount, so
-  spreadsheet totals just work.
-- **MDL by default.** New setups display in Moldovan Leu (`L`); change it any
-  time in Settings → Currency.
-- **Budget kept simple.** If a monthly cap is set it shows inline (spent / cap,
-  red when over). Data model still supports categories and multiple entries per
-  day — those days show a summed, read-only cell in the grid.
+- **KPI cards.** Total income, total expenses, net amount, savings rate, start
+  balance, and end balance — each with a **vs-last-month** arrow and %.
+- **Transactions grid.** Every day of the month is a row: **Date · Day · Type ·
+  Category · Description · Income · Expense · Balance**. Type into the Income or
+  Expense cell to create an entry (it picks the type automatically); set its
+  category and note inline. **+** on a day adds another entry; **×** deletes one.
+  The **Balance** column shows end-of-day net worth like a bank statement.
+  Everything saves on the spot (Enter confirms, Esc cancels).
+- **Overview + charts.** An Overview box (income/expenses/net/savings rate), an
+  **Expenses-by-category donut**, and an **Income-vs-Expenses bar** chart (both
+  drawn as inline SVG — no libraries).
+- **Quick summary.** Highest income day, highest expense day, average daily
+  expense, current balance.
+- **Monthly summary.** A 12-month table for the year (income / expenses / net per
+  month + a Total row), with the current month highlighted.
+- **Savings goal.** Set a target (Settings ⚙) and see progress vs your total net
+  worth, with a progress bar.
+- **Accounts, filter, export, MDL.** Wallet & Safe accounts with starting
+  balances; an **account filter**; a **"New → account"** picker for where typed
+  rows land; one-click **CSV export** (month or all time); Moldovan Leu default.
 
 **How to use it.**
-1. Open **Finance**. Set currency, account starting balances, and an optional
-   monthly budget once in **Settings ⚙**.
-2. Each day, type what you **earned** and/or **spent** right into that day's row
-   and add a short note. Balances and Earned/Spent/Net update instantly.
+1. Open **Finance**. In **Settings ⚙** set account starting balances, an optional
+   monthly budget, and a savings-goal target.
+2. Type income/expenses straight into each day's row; classify and note them.
+   KPIs, charts, and summaries update instantly.
 3. Hit **Export** to pull a month (or everything) into Excel.
 
-> **Follow-ups.** Account **transfers** (Wallet → Safe in one step), a
-> **category** column in the grid, and **recurring** entries (auto-insert
-> rent/allowance each month) are the natural next additions.
+> **Follow-ups.** Account **transfers** (Wallet → Safe in one step) and
+> **recurring** entries (auto-insert rent/allowance each month) are the natural
+> next additions.

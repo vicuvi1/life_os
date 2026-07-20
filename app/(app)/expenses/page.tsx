@@ -8,14 +8,11 @@ import {
   Settings2,
   ChevronLeft,
   ChevronRight,
-  Wallet,
-  PiggyBank,
   Plus,
   X,
-  TrendingUp,
-  TrendingDown,
-  CalendarCheck,
-  Scale,
+  ArrowUp,
+  ArrowDown,
+  PiggyBank,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -35,7 +32,9 @@ import {
   totalSpent,
   netTotal,
   accountBalance,
+  spendByCategory,
   categoryColor,
+  categoryLabel,
   EXPENSE_CATEGORIES,
   EXPENSE_CATEGORY_LABEL,
   INCOME_CATEGORIES,
@@ -76,6 +75,11 @@ const DEFAULT_CATEGORY: Record<EntryKind, string> = {
 
 type AccountFilter = "all" | AccountKey;
 
+function pctChange(cur: number, prev: number): number {
+  if (prev === 0) return cur === 0 ? 0 : 100;
+  return ((cur - prev) / Math.abs(prev)) * 100;
+}
+
 export default function FinancePage() {
   const { user } = useAuth();
   const now = new Date();
@@ -115,21 +119,32 @@ export default function FinancePage() {
   const currency = resolveCurrency(budget);
   const mKey = monthKey(year, month);
   const todayKey = toDateKey(now);
+  const inFilter = useCallback(
+    (e: Expense) => filter === "all" || e.account === filter,
+    [filter]
+  );
 
   const monthExpenses = useMemo(
-    () =>
-      expenses.filter(
-        (e) =>
-          inMonth(e.date, mKey) && (filter === "all" || e.account === filter)
-      ),
-    [expenses, mKey, filter]
+    () => expenses.filter((e) => inMonth(e.date, mKey) && inFilter(e)),
+    [expenses, mKey, inFilter]
   );
 
   const earned = useMemo(() => totalEarned(monthExpenses), [monthExpenses]);
   const spent = useMemo(() => totalSpent(monthExpenses), [monthExpenses]);
   const net = useMemo(() => netTotal(monthExpenses), [monthExpenses]);
+  const savingsRate = earned > 0 ? (net / earned) * 100 : 0;
 
-  // Entries per calendar day, oldest first within the day.
+  // Previous month (for the "vs last month" comparisons).
+  const prev = useMemo(() => {
+    const pm = month === 0 ? 11 : month - 1;
+    const py = month === 0 ? year - 1 : year;
+    const pe = expenses.filter((e) => inMonth(e.date, monthKey(py, pm)) && inFilter(e));
+    const inc = totalEarned(pe);
+    const exp = totalSpent(pe);
+    const n = netTotal(pe);
+    return { inc, exp, net: n, rate: inc > 0 ? (n / inc) * 100 : 0 };
+  }, [expenses, month, year, inFilter]);
+
   const byDay = useMemo(() => {
     const m = new Map<string, { income: Expense[]; expense: Expense[] }>();
     for (const e of monthExpenses) {
@@ -144,6 +159,10 @@ export default function FinancePage() {
     return m;
   }, [monthExpenses]);
 
+  const openingTotal = useMemo(
+    () => ACCOUNTS.reduce((s, a) => s + (budget?.openingBalances?.[a] ?? 0), 0),
+    [budget]
+  );
   const accounts = useMemo(
     () =>
       ACCOUNTS.map((a) => ({
@@ -152,25 +171,27 @@ export default function FinancePage() {
       })),
     [expenses, budget]
   );
-  const openingTotal = useMemo(
-    () =>
-      ACCOUNTS.reduce((s, a) => s + (budget?.openingBalances?.[a] ?? 0), 0),
-    [budget]
-  );
   const netWorth = accounts.reduce((s, a) => s + a.balance, 0);
 
   const dim = daysInMonth(year, month);
+  const days = useMemo(
+    () => Array.from({ length: dim }, (_, i) => i + 1),
+    [dim]
+  );
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
 
-  // End-of-day net worth across every day of the month (like a bank statement),
-  // seeded by everything before this month plus opening balances.
-  const dayBalances = useMemo(() => {
-    let base = openingTotal;
+  // Balance carried before this month → start / end balance + per-day balances.
+  const { startBalance, dayBalances } = useMemo(() => {
     const firstOfMonth = `${mKey}-01`;
+    let base = openingTotal;
     for (const e of expenses) {
-      if (e.date < firstOfMonth) base += e.kind === "income" ? e.amount : -e.amount;
+      if (e.date < firstOfMonth && inFilter(e)) {
+        base += e.kind === "income" ? e.amount : -e.amount;
+      }
     }
+    const start = Math.round(base * 100) / 100;
     const map: Record<string, number> = {};
-    let running = base;
+    let running = start;
     for (let d = 1; d <= dim; d++) {
       const key = `${mKey}-${String(d).padStart(2, "0")}`;
       const b = byDay.get(key);
@@ -180,23 +201,66 @@ export default function FinancePage() {
       }
       map[key] = Math.round(running * 100) / 100;
     }
-    return map;
-  }, [expenses, byDay, openingTotal, mKey, dim]);
+    return { startBalance: start, dayBalances: map };
+  }, [expenses, byDay, openingTotal, mKey, dim, inFilter]);
+  const endBalance = Math.round((startBalance + net) * 100) / 100;
 
-  // --- Stats -----------------------------------------------------------------
-  const stats = useMemo(() => {
-    const daysLogged = new Set(monthExpenses.map((e) => e.date)).size;
-    const expenseEntries = monthExpenses.filter((e) => e.kind === "expense");
-    const biggest = expenseEntries.reduce<Expense | null>(
-      (max, e) => (!max || e.amount > max.amount ? e : max),
-      null
-    );
-    const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
+  // 12-month summary for the selected year.
+  const monthly = useMemo(
+    () =>
+      Array.from({ length: 12 }, (_, m) => {
+        const me = expenses.filter(
+          (e) => inMonth(e.date, monthKey(year, m)) && inFilter(e)
+        );
+        return {
+          m,
+          income: totalEarned(me),
+          expense: totalSpent(me),
+          net: netTotal(me),
+        };
+      }),
+    [expenses, year, inFilter]
+  );
+  const yearTotal = monthly.reduce(
+    (a, x) => ({
+      income: a.income + x.income,
+      expense: a.expense + x.expense,
+      net: a.net + x.net,
+    }),
+    { income: 0, expense: 0, net: 0 }
+  );
+
+  const byCategory = useMemo(() => spendByCategory(monthExpenses), [monthExpenses]);
+
+  // Quick summary.
+  const quick = useMemo(() => {
+    const perDay = new Map<string, { inc: number; exp: number }>();
+    for (const e of monthExpenses) {
+      const p = perDay.get(e.date) ?? { inc: 0, exp: 0 };
+      if (e.kind === "income") p.inc += e.amount;
+      else p.exp += e.amount;
+      perDay.set(e.date, p);
+    }
+    let hiInc: { date: string; amt: number } | null = null;
+    let hiExp: { date: string; amt: number } | null = null;
+    for (const [date, p] of perDay) {
+      if (p.inc > 0 && (!hiInc || p.inc > hiInc.amt)) hiInc = { date, amt: p.inc };
+      if (p.exp > 0 && (!hiExp || p.exp > hiExp.amt)) hiExp = { date, amt: p.exp };
+    }
     const activeDays = isCurrentMonth ? now.getDate() : dim;
-    const avgPerDay = activeDays > 0 ? spent / activeDays : 0;
-    return { daysLogged, biggest, avgPerDay };
+    return {
+      hiInc,
+      hiExp,
+      avgExpense: activeDays > 0 ? spent / activeDays : 0,
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [monthExpenses, spent, dim, year, month]);
+  }, [monthExpenses, spent, dim, isCurrentMonth]);
+
+  const savingsTarget = budget?.savingsGoal ?? null;
+  const savingsProgress =
+    savingsTarget && savingsTarget > 0
+      ? Math.max(0, (netWorth / savingsTarget) * 100)
+      : null;
 
   // --- Inline mutations (optimistic; resync on error) ------------------------
   async function commitAmount(
@@ -242,8 +306,7 @@ export default function FinancePage() {
     }
   }
 
-  async function commitNote(entry: Expense | undefined, text: string) {
-    if (!entry) return;
+  async function commitNote(entry: Expense, text: string) {
     const note = text.trim() || null;
     if (note === (entry.note ?? null)) return;
     setExpenses((prev) =>
@@ -256,8 +319,8 @@ export default function FinancePage() {
     }
   }
 
-  async function commitCategory(entry: Expense | undefined, category: string) {
-    if (!entry || category === entry.category) return;
+  async function commitCategory(entry: Expense, category: string) {
+    if (category === entry.category) return;
     setExpenses((prev) =>
       prev.map((x) => (x.id === entry.id ? { ...x, category } : x))
     );
@@ -268,12 +331,10 @@ export default function FinancePage() {
     }
   }
 
-  async function deleteRow(rowEntries: Expense[]) {
-    if (rowEntries.length === 0) return;
-    const ids = new Set(rowEntries.map((e) => e.id));
-    setExpenses((prev) => prev.filter((x) => !ids.has(x.id)));
+  async function removeEntry(entry: Expense) {
+    setExpenses((prev) => prev.filter((x) => x.id !== entry.id));
     try {
-      await Promise.all([...ids].map((id) => deleteExpense(id)));
+      await deleteExpense(entry.id);
     } catch {
       await load({ quiet: true });
     }
@@ -303,21 +364,54 @@ export default function FinancePage() {
     } else setMonth((m) => m + 1);
   }
 
-  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
-  const days = Array.from({ length: dim }, (_, i) => i + 1);
-  const budgetCap = budget?.monthlyTotal ?? null;
+  // Flattened transaction rows: every day shown; one row per entry (+ an empty
+  // row to add to a day), balance on the day's last row.
+  const rows = useMemo(() => {
+    const out: {
+      dateKey: string;
+      day: number;
+      weekday: string;
+      firstOfDay: boolean;
+      lastOfDay: boolean;
+      entry?: Expense;
+      kind: EntryKind | null;
+    }[] = [];
+    for (const day of days) {
+      const dateKey = `${mKey}-${String(day).padStart(2, "0")}`;
+      const weekday = WEEKDAYS_SHORT[new Date(year, month, day).getDay()];
+      const b = byDay.get(dateKey) ?? { income: [], expense: [] };
+      const items: { entry: Expense; kind: EntryKind }[] = [
+        ...b.income.map((e) => ({ entry: e, kind: "income" as EntryKind })),
+        ...b.expense.map((e) => ({ entry: e, kind: "expense" as EntryKind })),
+      ].sort((a, c) => a.entry.createdAt - c.entry.createdAt);
+      const empties = (items.length === 0 ? 1 : 0) + (extraRows[dateKey] ?? 0);
+      const total = items.length + empties;
+      for (let i = 0; i < total; i++) {
+        const rec = items[i];
+        out.push({
+          dateKey,
+          day,
+          weekday,
+          firstOfDay: i === 0,
+          lastOfDay: i === total - 1,
+          entry: rec?.entry,
+          kind: rec?.kind ?? null,
+        });
+      }
+    }
+    return out;
+  }, [days, byDay, extraRows, mKey, year, month]);
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-4">
+    <div className="mx-auto max-w-[1500px] space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold md:text-3xl">Finance</h1>
           <p className="text-muted-foreground">
-            Type earned and spent straight into the grid — totals, balances and
-            running worth update themselves.
+            Track your income, expenses and savings.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Select value={filter} onValueChange={(v) => setFilter(v as AccountFilter)}>
             <SelectTrigger className="h-9 w-[130px]">
               <SelectValue />
@@ -331,6 +425,21 @@ export default function FinancePage() {
               ))}
             </SelectContent>
           </Select>
+          <div className="flex items-center gap-1 rounded-md border px-2 text-sm text-muted-foreground">
+            <PiggyBank className="h-3.5 w-3.5" /> New →
+            <Select value={newAccount} onValueChange={(v) => setNewAccount(v as AccountKey)}>
+              <SelectTrigger className="h-8 w-[92px] border-0 px-1 shadow-none">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ACCOUNTS.map((a) => (
+                  <SelectItem key={a} value={a}>
+                    {ACCOUNT_LABEL[a]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline">
@@ -382,214 +491,325 @@ export default function FinancePage() {
         </div>
       </div>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <StatCard label="Earned" value={formatAmount(earned, currency)} tone="up" icon={TrendingUp} />
-        <StatCard label="Spent" value={formatAmount(spent, currency)} tone="down" icon={TrendingDown} />
-        <StatCard
-          label="Net"
-          value={formatAmount(net, currency)}
-          tone={net >= 0 ? "up" : "down"}
-          icon={Scale}
-        />
-        <StatCard
-          label="Net worth"
-          value={formatAmount(netWorth, currency)}
-          tone="neutral"
-          icon={Wallet}
-          hint={accounts
-            .map((a) => `${ACCOUNT_LABEL[a.key]} ${formatAmount(a.balance, currency)}`)
-            .join(" · ")}
-        />
-        <StatCard
-          label="Avg / day"
-          value={formatAmount(stats.avgPerDay, currency)}
-          tone="neutral"
-          icon={CalendarCheck}
-          hint={`${stats.daysLogged} day${stats.daysLogged === 1 ? "" : "s"} logged${
-            budgetCap != null
-              ? ` · budget ${formatAmount(spent, currency)}/${formatAmount(budgetCap, currency)}`
-              : ""
-          }`}
-        />
-      </div>
-
       {loading ? (
-        <SkeletonCard lines={10} />
+        <SkeletonCard lines={12} />
       ) : (
-        <Card className="overflow-x-auto p-0">
-          <table className="w-full min-w-[900px] table-fixed border-collapse text-[15px]">
-            <colgroup>
-              <col className="w-[132px]" />
-              <col className="w-[112px]" />
-              <col className="w-[136px]" />
-              <col />
-              <col className="w-[112px]" />
-              <col className="w-[136px]" />
-              <col />
-              <col className="w-[128px]" />
-              <col className="w-[44px]" />
-            </colgroup>
-            <thead>
-              <tr className="border-b text-left text-xs font-semibold uppercase tracking-wide">
-                <th className="px-3 py-2.5 text-muted-foreground">Date</th>
-                <th className="bg-emerald-500/5 px-3 py-2.5 text-right text-emerald-600 dark:text-emerald-400">
-                  Earned
-                </th>
-                <th className="bg-emerald-500/5 px-3 py-2.5 text-emerald-600 dark:text-emerald-400">
-                  Category
-                </th>
-                <th className="bg-emerald-500/5 px-3 py-2.5 text-emerald-600 dark:text-emerald-400">
-                  For…
-                </th>
-                <th className="border-l bg-rose-500/5 px-3 py-2.5 text-right text-rose-600 dark:text-rose-400">
-                  Spent
-                </th>
-                <th className="bg-rose-500/5 px-3 py-2.5 text-rose-600 dark:text-rose-400">
-                  Category
-                </th>
-                <th className="bg-rose-500/5 px-3 py-2.5 text-rose-600 dark:text-rose-400">
-                  For…
-                </th>
-                <th className="border-l px-3 py-2.5 text-right text-muted-foreground">
-                  Balance
-                </th>
-                <th className="px-1 py-2.5" />
-              </tr>
-            </thead>
-            <tbody>
-              {days.map((day) => {
-                const dateKey = `${mKey}-${String(day).padStart(2, "0")}`;
-                const bucket = byDay.get(dateKey) ?? { income: [], expense: [] };
-                const extra = extraRows[dateKey] ?? 0;
-                const lineCount = Math.max(
-                  1,
-                  bucket.income.length,
-                  bucket.expense.length
-                );
-                const rows = lineCount + extra;
-                const weekday = WEEKDAYS_SHORT[new Date(year, month, day).getDay()];
-                const isToday = dateKey === todayKey;
-                const isWeekend = weekday === "Sat" || weekday === "Sun";
+        <>
+          {/* KPI cards */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+            <Kpi label="Total income" value={formatAmount(earned, currency)} tone="up"
+              delta={{ pct: pctChange(earned, prev.inc), good: earned >= prev.inc }} />
+            <Kpi label="Total expenses" value={formatAmount(spent, currency)} tone="down"
+              delta={{ pct: pctChange(spent, prev.exp), good: spent <= prev.exp }} />
+            <Kpi label="Net amount" value={formatAmount(net, currency)} tone={net >= 0 ? "up" : "down"}
+              delta={{ pct: pctChange(net, prev.net), good: net >= prev.net }} />
+            <Kpi label="Savings rate" value={`${savingsRate.toFixed(1)}%`} tone="neutral"
+              delta={{ pct: savingsRate - prev.rate, good: savingsRate >= prev.rate, unit: "pp" }} />
+            <Kpi label="Start balance" value={formatAmount(startBalance, currency)} tone="neutral" />
+            <Kpi label="End balance" value={formatAmount(endBalance, currency)} tone={endBalance >= 0 ? "up" : "down"} />
+          </div>
 
-                return Array.from({ length: rows }, (_, i) => {
-                  const inc = bucket.income[i];
-                  const exp = bucket.expense[i];
-                  const first = i === 0;
-                  const rowEntries = [inc, exp].filter(Boolean) as Expense[];
-                  return (
-                    <tr
-                      key={`${dateKey}-${i}`}
-                      className={cn(
-                        "group border-b last:border-0",
-                        isWeekend && "bg-muted/20",
-                        isToday && "bg-primary/5",
-                        "hover:bg-accent/40"
-                      )}
-                    >
-                      <td className="px-3 py-1.5 align-middle">
-                        {first && (
-                          <div className="flex items-center gap-2">
-                            <span className="tabular-nums font-semibold">
-                              {day} {MONTHS_SHORT[month]}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {weekday}
-                            </span>
-                            <button
-                              onClick={() => addLine(dateKey)}
-                              aria-label={`Add another entry on ${day} ${MONTHS_SHORT[month]}`}
-                              className="ml-auto rounded p-0.5 text-muted-foreground/50 opacity-0 transition hover:bg-accent hover:text-foreground group-hover:opacity-100"
-                            >
-                              <Plus className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Income side */}
-                      <AmountCell
-                        entry={inc}
-                        tone="income"
-                        onCommit={(num) => commitAmount(dateKey, "income", inc, num)}
-                      />
-                      <CategoryCell
-                        entry={inc}
-                        kind="income"
-                        onCommit={(c) => commitCategory(inc, c)}
-                      />
-                      <NoteCell entry={inc} onCommit={(t) => commitNote(inc, t)} />
-
-                      {/* Expense side */}
-                      <AmountCell
-                        entry={exp}
-                        tone="expense"
-                        bordered
-                        onCommit={(num) => commitAmount(dateKey, "expense", exp, num)}
-                      />
-                      <CategoryCell
-                        entry={exp}
-                        kind="expense"
-                        onCommit={(c) => commitCategory(exp, c)}
-                      />
-                      <NoteCell entry={exp} onCommit={(t) => commitNote(exp, t)} />
-
-                      {/* Balance */}
-                      <td
-                        className={cn(
-                          "border-l px-3 py-1.5 text-right tabular-nums",
-                          first ? "text-foreground" : "text-transparent",
-                          first && dayBalances[dateKey] < 0 && "text-destructive"
-                        )}
-                      >
-                        {first ? formatAmount(dayBalances[dateKey] ?? 0, currency) : ""}
-                      </td>
-
-                      {/* Delete */}
-                      <td className="px-1 py-1.5 text-center">
-                        {rowEntries.length > 0 && (
-                          <button
-                            onClick={() => deleteRow(rowEntries)}
-                            aria-label="Delete this row"
-                            className="rounded p-1 text-muted-foreground/40 opacity-0 transition hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+          {/* Dashboard grid */}
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+            {/* Transactions */}
+            <div className="xl:col-span-6">
+              <Panel title="Transactions" bodyClassName="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[780px] table-fixed border-collapse text-sm">
+                    <colgroup>
+                      <col className="w-[70px]" />
+                      <col className="w-[46px]" />
+                      <col className="w-[88px]" />
+                      <col className="w-[128px]" />
+                      <col />
+                      <col className="w-[92px]" />
+                      <col className="w-[92px]" />
+                      <col className="w-[100px]" />
+                      <col className="w-[32px]" />
+                    </colgroup>
+                    <thead>
+                      <tr className="border-b bg-muted/40 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        <th className="px-2 py-2">Date</th>
+                        <th className="px-1 py-2">Day</th>
+                        <th className="px-2 py-2">Type</th>
+                        <th className="px-2 py-2">Category</th>
+                        <th className="px-2 py-2">Description</th>
+                        <th className="px-2 py-2 text-right text-emerald-600 dark:text-emerald-400">Income</th>
+                        <th className="px-2 py-2 text-right text-rose-600 dark:text-rose-400">Expense</th>
+                        <th className="px-2 py-2 text-right">Balance</th>
+                        <th className="px-1 py-2" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r, idx) => {
+                        const isToday = r.dateKey === todayKey;
+                        const isWeekend = r.weekday === "Sat" || r.weekday === "Sun";
+                        return (
+                          <tr
+                            key={`${r.dateKey}-${idx}`}
+                            className={cn(
+                              "group border-b last:border-0",
+                              isWeekend && "bg-muted/20",
+                              isToday && "bg-primary/5",
+                              "hover:bg-accent/40"
+                            )}
                           >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                });
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 bg-muted/40 text-[15px] font-semibold">
-                <td className="px-3 py-3">Total</td>
-                <td className="bg-emerald-500/5 px-3 py-3 text-right tabular-nums text-emerald-600 dark:text-emerald-400">
-                  {formatAmount(earned, currency)}
-                </td>
-                <td className="bg-emerald-500/5" colSpan={2} />
-                <td className="border-l bg-rose-500/5 px-3 py-3 text-right tabular-nums text-rose-600 dark:text-rose-400">
-                  {formatAmount(spent, currency)}
-                </td>
-                <td className="bg-rose-500/5" colSpan={2} />
-                <td
-                  className={cn(
-                    "border-l px-3 py-3 text-right tabular-nums",
-                    net >= 0
-                      ? "text-emerald-600 dark:text-emerald-400"
-                      : "text-destructive"
-                  )}
-                  title="Net this month"
-                >
-                  {net >= 0 ? "+" : ""}
-                  {formatAmount(net, currency)}
-                </td>
-                <td />
-              </tr>
-            </tfoot>
-          </table>
-        </Card>
+                            <td className="px-2 py-1 align-middle">
+                              {r.firstOfDay && (
+                                <span className="tabular-nums font-medium">
+                                  {r.day} {MONTHS_SHORT[month]}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-1 py-1 align-middle">
+                              {r.firstOfDay && (
+                                <span className="text-xs text-muted-foreground">{r.weekday}</span>
+                              )}
+                            </td>
+                            <td className="px-2 py-1 align-middle">
+                              {r.entry ? (
+                                <span
+                                  className={cn(
+                                    "inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase",
+                                    r.kind === "income"
+                                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                                      : "bg-rose-500/15 text-rose-600 dark:text-rose-400"
+                                  )}
+                                >
+                                  {r.kind}
+                                </span>
+                              ) : (
+                                r.firstOfDay && <span className="text-muted-foreground/40">—</span>
+                              )}
+                            </td>
+                            <td className="px-1 py-1 align-middle">
+                              {r.entry && (
+                                <CategorySelect
+                                  entry={r.entry}
+                                  kind={r.kind as EntryKind}
+                                  onChange={(c) => commitCategory(r.entry!, c)}
+                                />
+                              )}
+                            </td>
+                            <td className="px-1 py-1 align-middle">
+                              {r.entry && (
+                                <NoteInput entry={r.entry} onCommit={(t) => commitNote(r.entry!, t)} />
+                              )}
+                            </td>
+                            {/* Income */}
+                            <td className="px-1 py-1 text-right align-middle">
+                              {r.kind === "income" || r.kind === null ? (
+                                <AmountInput
+                                  value={r.entry?.amount ?? null}
+                                  tone="income"
+                                  onCommit={(num) =>
+                                    commitAmount(r.dateKey, "income", r.entry, num)
+                                  }
+                                />
+                              ) : (
+                                <span className="pr-2 text-muted-foreground/30">–</span>
+                              )}
+                            </td>
+                            {/* Expense */}
+                            <td className="px-1 py-1 text-right align-middle">
+                              {r.kind === "expense" || r.kind === null ? (
+                                <AmountInput
+                                  value={r.entry?.amount ?? null}
+                                  tone="expense"
+                                  onCommit={(num) =>
+                                    commitAmount(r.dateKey, "expense", r.entry, num)
+                                  }
+                                />
+                              ) : (
+                                <span className="pr-2 text-muted-foreground/30">–</span>
+                              )}
+                            </td>
+                            {/* Balance */}
+                            <td
+                              className={cn(
+                                "px-2 py-1 text-right align-middle tabular-nums",
+                                r.lastOfDay
+                                  ? dayBalances[r.dateKey] < 0
+                                    ? "text-destructive"
+                                    : "text-muted-foreground"
+                                  : "text-transparent"
+                              )}
+                            >
+                              {r.lastOfDay ? formatAmount(dayBalances[r.dateKey] ?? 0, currency) : ""}
+                            </td>
+                            {/* Actions */}
+                            <td className="px-1 py-1 text-center align-middle">
+                              {r.entry ? (
+                                <button
+                                  onClick={() => removeEntry(r.entry!)}
+                                  aria-label="Delete entry"
+                                  className="rounded p-1 text-muted-foreground/40 opacity-0 transition hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              ) : (
+                                r.firstOfDay && (
+                                  <button
+                                    onClick={() => addLine(r.dateKey)}
+                                    aria-label="Add entry"
+                                    className="rounded p-1 text-muted-foreground/40 opacity-0 transition hover:bg-accent hover:text-foreground group-hover:opacity-100"
+                                  >
+                                    <Plus className="h-3.5 w-3.5" />
+                                  </button>
+                                )
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 bg-muted/40 font-semibold">
+                        <td className="px-2 py-2.5" colSpan={5}>Total</td>
+                        <td className="px-2 py-2.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">
+                          {formatAmount(earned, currency)}
+                        </td>
+                        <td className="px-2 py-2.5 text-right tabular-nums text-rose-600 dark:text-rose-400">
+                          {formatAmount(spent, currency)}
+                        </td>
+                        <td className="px-2 py-2.5 text-right tabular-nums">
+                          {formatAmount(endBalance, currency)}
+                        </td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </Panel>
+            </div>
+
+            {/* Middle column: overview + charts + quick summary */}
+            <div className="space-y-4 xl:col-span-3">
+              <Panel title="Overview">
+                <dl className="space-y-2 text-sm">
+                  <Row label="Total Income" value={formatAmount(earned, currency)} valueClass="text-emerald-600 dark:text-emerald-400" />
+                  <Row label="Total Expenses" value={formatAmount(spent, currency)} valueClass="text-rose-600 dark:text-rose-400" />
+                  <Row label="Net Amount" value={formatAmount(net, currency)} valueClass={net >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"} />
+                  <Row label="Savings Rate" value={`${savingsRate.toFixed(1)}%`} />
+                </dl>
+              </Panel>
+
+              <Panel title="Expenses by category">
+                <Donut data={byCategory} currency={currency} />
+              </Panel>
+
+              <Panel title="Income vs expenses">
+                <IncomeExpenseBars income={earned} expense={spent} currency={currency} />
+              </Panel>
+
+              <Panel title="Quick summary">
+                <dl className="space-y-2 text-sm">
+                  <Row
+                    label="Highest income day"
+                    value={quick.hiInc ? formatDate(quick.hiInc.date) : "—"}
+                  />
+                  <Row
+                    label="Highest expense day"
+                    value={quick.hiExp ? formatDate(quick.hiExp.date) : "—"}
+                  />
+                  <Row label="Average daily expense" value={formatAmount(quick.avgExpense, currency)} />
+                  <Row label="Current balance" value={formatAmount(endBalance, currency)} />
+                </dl>
+              </Panel>
+            </div>
+
+            {/* Right column: monthly summary + savings goal + notes */}
+            <div className="space-y-4 xl:col-span-3">
+              <Panel title="Monthly summary" bodyClassName="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        <th className="px-3 py-2">Month</th>
+                        <th className="px-2 py-2 text-right text-emerald-600 dark:text-emerald-400">Income</th>
+                        <th className="px-2 py-2 text-right text-rose-600 dark:text-rose-400">Expenses</th>
+                        <th className="px-3 py-2 text-right">Net</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {monthly.map((row) => (
+                        <tr
+                          key={row.m}
+                          className={cn(
+                            "border-b last:border-0",
+                            row.m === month && "bg-primary/5 font-medium"
+                          )}
+                        >
+                          <td className="px-3 py-1.5">{MONTHS_SHORT[row.m]} {year}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">
+                            {formatAmount(row.income, currency)}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums text-rose-600 dark:text-rose-400">
+                            {formatAmount(row.expense, currency)}
+                          </td>
+                          <td className={cn("px-3 py-1.5 text-right tabular-nums", row.net < 0 && "text-destructive")}>
+                            {formatAmount(row.net, currency)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 bg-muted/40 font-semibold">
+                        <td className="px-3 py-2">Total</td>
+                        <td className="px-2 py-2 text-right tabular-nums text-emerald-600 dark:text-emerald-400">
+                          {formatAmount(yearTotal.income, currency)}
+                        </td>
+                        <td className="px-2 py-2 text-right tabular-nums text-rose-600 dark:text-rose-400">
+                          {formatAmount(yearTotal.expense, currency)}
+                        </td>
+                        <td className={cn("px-3 py-2 text-right tabular-nums", yearTotal.net < 0 && "text-destructive")}>
+                          {formatAmount(yearTotal.net, currency)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </Panel>
+
+              <Panel title="Savings goal">
+                {savingsTarget && savingsTarget > 0 ? (
+                  <div className="space-y-3">
+                    <Row label="Target amount" value={formatAmount(savingsTarget, currency)} />
+                    <Row label="Current savings" value={formatAmount(netWorth, currency)} />
+                    <div>
+                      <div className="mb-1 flex justify-between text-sm">
+                        <span className="text-muted-foreground">Progress</span>
+                        <span className="font-semibold">{(savingsProgress ?? 0).toFixed(1)}%</span>
+                      </div>
+                      <div className="h-3 w-full overflow-hidden rounded-full bg-secondary">
+                        <div
+                          className="h-full rounded-full bg-emerald-500 transition-all"
+                          style={{ width: `${Math.min(100, savingsProgress ?? 0)}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    <p>Set a savings target to track progress against your net worth.</p>
+                    <Button variant="outline" size="sm" onClick={() => setBudgetOpen(true)}>
+                      Set a goal
+                    </Button>
+                  </div>
+                )}
+              </Panel>
+
+              <Panel title="Notes">
+                <ul className="space-y-1.5 text-sm text-muted-foreground">
+                  <li>• Enter income and expenses every day.</li>
+                  <li>• Review your spending weekly.</li>
+                  <li>• Keep an eye on your savings rate.</li>
+                  <li>• Save more, stress less!</li>
+                </ul>
+              </Panel>
+            </div>
+          </div>
+        </>
       )}
 
       {user && (
@@ -605,61 +825,209 @@ export default function FinancePage() {
   );
 }
 
+function formatDate(dateKey: string): string {
+  const d = new Date(dateKey + "T00:00:00");
+  return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
+}
+
 // ---------------------------------------------------------------------------
-// Stat card
+// Presentational
 // ---------------------------------------------------------------------------
-function StatCard({
+function Panel({
+  title,
+  children,
+  bodyClassName,
+}: {
+  title: string;
+  children: React.ReactNode;
+  bodyClassName?: string;
+}) {
+  return (
+    <Card className="overflow-hidden">
+      <div className="border-b bg-muted/30 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {title}
+      </div>
+      <div className={cn("p-4", bodyClassName)}>{children}</div>
+    </Card>
+  );
+}
+
+function Row({
+  label,
+  value,
+  valueClass,
+}: {
+  label: string;
+  value: string;
+  valueClass?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={cn("font-semibold tabular-nums", valueClass)}>{value}</span>
+    </div>
+  );
+}
+
+function Kpi({
   label,
   value,
   tone,
-  icon: Icon,
-  hint,
+  delta,
 }: {
   label: string;
   value: string;
   tone: "up" | "down" | "neutral";
-  icon: React.ComponentType<{ className?: string }>;
-  hint?: string;
+  delta?: { pct: number; good: boolean; unit?: string };
 }) {
   return (
     <Card className="p-4">
-      <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        <Icon className="h-3.5 w-3.5" />
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         {label}
-      </div>
+      </p>
       <p
         className={cn(
-          "mt-1 text-xl font-semibold tabular-nums",
+          "mt-1 text-2xl font-bold tabular-nums",
           tone === "up" && "text-emerald-600 dark:text-emerald-400",
-          tone === "down" && "text-destructive"
+          tone === "down" && "text-rose-600 dark:text-rose-400"
         )}
       >
         {value}
       </p>
-      {hint && (
-        <p className="mt-0.5 truncate text-xs text-muted-foreground" title={hint}>
-          {hint}
+      {delta && (
+        <p className="mt-1 flex items-center gap-1 text-xs">
+          <span
+            className={cn(
+              "inline-flex items-center gap-0.5 font-medium",
+              delta.good
+                ? "text-emerald-600 dark:text-emerald-400"
+                : "text-rose-600 dark:text-rose-400"
+            )}
+          >
+            {delta.pct >= 0 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+            {Math.abs(delta.pct).toFixed(delta.unit === "pp" ? 1 : 0)}
+            {delta.unit === "pp" ? "pp" : "%"}
+          </span>
+          <span className="text-muted-foreground">vs last month</span>
         </p>
       )}
     </Card>
   );
 }
 
+function Donut({
+  data,
+  currency,
+}: {
+  data: { category: string; amount: number }[];
+  currency: ReturnType<typeof resolveCurrency>;
+}) {
+  const total = data.reduce((s, d) => s + d.amount, 0);
+  if (total <= 0) {
+    return (
+      <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
+        No expenses yet
+      </div>
+    );
+  }
+  const r = 52;
+  const c = 2 * Math.PI * r;
+  let offset = 0;
+  const top = data.slice(0, 6);
+  return (
+    <div className="flex items-center gap-4">
+      <svg viewBox="0 0 140 140" className="h-32 w-32 shrink-0">
+        {data.map((d) => {
+          const len = (d.amount / total) * c;
+          const el = (
+            <circle
+              key={d.category}
+              cx={70}
+              cy={70}
+              r={r}
+              fill="none"
+              stroke={categoryColor(d.category)}
+              strokeWidth={18}
+              strokeDasharray={`${len} ${c - len}`}
+              strokeDashoffset={-offset}
+              transform="rotate(-90 70 70)"
+            />
+          );
+          offset += len;
+          return el;
+        })}
+        <text
+          x={70}
+          y={74}
+          textAnchor="middle"
+          className="fill-foreground text-[13px] font-semibold"
+        >
+          {formatAmount(total, currency)}
+        </text>
+      </svg>
+      <ul className="min-w-0 flex-1 space-y-1 text-xs">
+        {top.map((d) => (
+          <li key={d.category} className="flex items-center justify-between gap-2">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{ backgroundColor: categoryColor(d.category) }}
+              />
+              <span className="truncate">{categoryLabel(d.category)}</span>
+            </span>
+            <span className="shrink-0 tabular-nums text-muted-foreground">
+              {Math.round((d.amount / total) * 100)}%
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function IncomeExpenseBars({
+  income,
+  expense,
+  currency,
+}: {
+  income: number;
+  expense: number;
+  currency: ReturnType<typeof resolveCurrency>;
+}) {
+  const max = Math.max(income, expense, 1);
+  return (
+    <div className="flex h-44 items-end justify-around gap-6 pt-4">
+      {[
+        { label: "Income", value: income, cls: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400" },
+        { label: "Expenses", value: expense, cls: "bg-rose-500", text: "text-rose-600 dark:text-rose-400" },
+      ].map((b) => (
+        <div key={b.label} className="flex h-full flex-1 flex-col items-center justify-end gap-1">
+          <span className={cn("text-xs font-semibold tabular-nums", b.text)}>
+            {formatAmount(b.value, currency)}
+          </span>
+          <div
+            className={cn("w-full max-w-[72px] rounded-t transition-all", b.cls)}
+            style={{ height: `${Math.max(2, (b.value / max) * 100)}%` }}
+          />
+          <span className="text-xs text-muted-foreground">{b.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
-// Editable cells
+// Editable inputs
 // ---------------------------------------------------------------------------
-function AmountCell({
-  entry,
+function AmountInput({
+  value,
   tone,
-  bordered,
   onCommit,
 }: {
-  entry: Expense | undefined;
+  value: number | null;
   tone: "income" | "expense";
-  bordered?: boolean;
   onCommit: (num: number | null) => void;
 }) {
-  const value = entry?.amount ?? null;
   const [draft, setDraft] = useState(value != null ? String(value) : "");
   const dirty = useRef(false);
   useEffect(() => {
@@ -680,56 +1048,86 @@ function AmountCell({
   }
 
   return (
-    <td
+    <input
+      type="number"
+      min={0}
+      step="0.01"
+      inputMode="decimal"
+      value={draft}
+      onChange={(e) => {
+        dirty.current = true;
+        setDraft(e.target.value);
+      }}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") {
+          dirty.current = false;
+          setDraft(value != null ? String(value) : "");
+          e.currentTarget.blur();
+        }
+      }}
+      placeholder="—"
       className={cn(
-        "px-1 py-1 text-right",
-        tone === "income" ? "bg-emerald-500/[0.03]" : "bg-rose-500/[0.03]",
-        bordered && "border-l"
+        "w-full rounded bg-transparent px-2 py-1 text-right tabular-nums outline-none transition-colors placeholder:text-muted-foreground/30 hover:bg-background/70 focus:bg-background focus:ring-1 focus:ring-primary",
+        value != null &&
+          (tone === "income"
+            ? "font-semibold text-emerald-600 dark:text-emerald-400"
+            : "font-semibold text-rose-600 dark:text-rose-400")
       )}
-    >
-      <input
-        type="number"
-        min={0}
-        step="0.01"
-        inputMode="decimal"
-        value={draft}
-        onChange={(e) => {
-          dirty.current = true;
-          setDraft(e.target.value);
-        }}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") e.currentTarget.blur();
-          if (e.key === "Escape") {
-            dirty.current = false;
-            setDraft(value != null ? String(value) : "");
-            e.currentTarget.blur();
-          }
-        }}
-        placeholder="—"
-        className={cn(
-          "w-full rounded bg-transparent px-2 py-1.5 text-right tabular-nums outline-none transition-colors placeholder:text-muted-foreground/30 hover:bg-background/60 focus:bg-background focus:ring-1 focus:ring-primary",
-          value != null &&
-            (tone === "income"
-              ? "font-semibold text-emerald-600 dark:text-emerald-400"
-              : "font-semibold text-rose-600 dark:text-rose-400")
-        )}
-      />
-    </td>
+    />
   );
 }
 
-function CategoryCell({
+function NoteInput({
   entry,
-  kind,
   onCommit,
 }: {
-  entry: Expense | undefined;
-  kind: EntryKind;
-  onCommit: (category: string) => void;
+  entry: Expense;
+  onCommit: (text: string) => void;
 }) {
-  const cells = kind === "income" ? "bg-emerald-500/[0.03]" : "bg-rose-500/[0.03]";
-  if (!entry) return <td className={cn("px-1 py-1", cells)} />;
+  const value = entry.note ?? "";
+  const [draft, setDraft] = useState(value);
+  const dirty = useRef(false);
+  useEffect(() => {
+    if (!dirty.current) setDraft(value);
+  }, [value]);
+
+  return (
+    <input
+      type="text"
+      value={draft}
+      onChange={(e) => {
+        dirty.current = true;
+        setDraft(e.target.value);
+      }}
+      onBlur={() => {
+        dirty.current = false;
+        onCommit(draft);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") {
+          dirty.current = false;
+          setDraft(value);
+          e.currentTarget.blur();
+        }
+      }}
+      placeholder="add note"
+      className="w-full rounded bg-transparent px-2 py-1 outline-none transition-colors placeholder:text-muted-foreground/30 hover:bg-background/70 focus:bg-background focus:ring-1 focus:ring-primary"
+    />
+  );
+}
+
+function CategorySelect({
+  entry,
+  kind,
+  onChange,
+}: {
+  entry: Expense;
+  kind: EntryKind;
+  onChange: (category: string) => void;
+}) {
   const cats = kind === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
   const label = (c: string) =>
     kind === "income"
@@ -737,69 +1135,23 @@ function CategoryCell({
       : EXPENSE_CATEGORY_LABEL[c as keyof typeof EXPENSE_CATEGORY_LABEL] ?? c;
 
   return (
-    <td className={cn("px-1 py-1", cells)}>
-      <Select value={entry.category} onValueChange={onCommit}>
-        <SelectTrigger className="h-8 border-transparent bg-transparent px-2 hover:bg-background/60">
-          <span className="flex items-center gap-1.5 truncate">
-            <span
-              className="h-2 w-2 shrink-0 rounded-full"
-              style={{ backgroundColor: categoryColor(entry.category) }}
-            />
-            <SelectValue />
-          </span>
-        </SelectTrigger>
-        <SelectContent>
-          {cats.map((c) => (
-            <SelectItem key={c} value={c}>
-              {label(c)}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </td>
-  );
-}
-
-function NoteCell({
-  entry,
-  onCommit,
-}: {
-  entry: Expense | undefined;
-  onCommit: (text: string) => void;
-}) {
-  const value = entry?.note ?? "";
-  const [draft, setDraft] = useState(value);
-  const dirty = useRef(false);
-  useEffect(() => {
-    if (!dirty.current) setDraft(value);
-  }, [value]);
-
-  if (!entry) return <td className="px-1 py-1" />;
-
-  return (
-    <td className="px-1 py-1">
-      <input
-        type="text"
-        value={draft}
-        onChange={(e) => {
-          dirty.current = true;
-          setDraft(e.target.value);
-        }}
-        onBlur={() => {
-          dirty.current = false;
-          onCommit(draft);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") e.currentTarget.blur();
-          if (e.key === "Escape") {
-            dirty.current = false;
-            setDraft(value);
-            e.currentTarget.blur();
-          }
-        }}
-        placeholder="add note"
-        className="w-full rounded bg-transparent px-2 py-1.5 outline-none transition-colors placeholder:text-muted-foreground/30 hover:bg-background/60 focus:bg-background focus:ring-1 focus:ring-primary"
-      />
-    </td>
+    <Select value={entry.category} onValueChange={onChange}>
+      <SelectTrigger className="h-8 border-transparent bg-transparent px-2 text-sm hover:bg-background/70">
+        <span className="flex items-center gap-1.5 truncate">
+          <span
+            className="h-2 w-2 shrink-0 rounded-full"
+            style={{ backgroundColor: categoryColor(entry.category) }}
+          />
+          <SelectValue />
+        </span>
+      </SelectTrigger>
+      <SelectContent>
+        {cats.map((c) => (
+          <SelectItem key={c} value={c}>
+            {label(c)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }

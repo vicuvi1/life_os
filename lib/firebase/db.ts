@@ -899,12 +899,13 @@ export async function getBudget(userId: string): Promise<Budget | null> {
     monthlyTotal: d.monthlyTotal ?? null,
     byCategory: d.byCategory ?? {},
     openingBalances: d.openingBalances ?? {},
+    savingsGoal: d.savingsGoal ?? null,
   };
 }
 
 export type BudgetInput = Pick<
   Budget,
-  "currency" | "monthlyTotal" | "byCategory" | "openingBalances"
+  "currency" | "monthlyTotal" | "byCategory" | "openingBalances" | "savingsGoal"
 >;
 
 export async function upsertBudget(
@@ -1256,5 +1257,6 @@ export async function setCurrency(userId: string, code: string): Promise<void> {
     monthlyTotal: existing?.monthlyTotal ?? null,
     byCategory: existing?.byCategory ?? {},
     openingBalances: existing?.openingBalances ?? {},
+    savingsGoal: existing?.savingsGoal ?? null,
   });
 }

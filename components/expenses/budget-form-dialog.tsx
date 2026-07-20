@@ -40,6 +40,7 @@ export function BudgetFormDialog({
   // budget preserves the user's existing selection.
   const [currency, setCurrency] = useState("MDL");
   const [monthlyTotal, setMonthlyTotal] = useState("");
+  const [savingsGoal, setSavingsGoal] = useState("");
   const [byCategory, setByCategory] = useState<Record<string, string>>({});
   const [opening, setOpening] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -48,6 +49,7 @@ export function BudgetFormDialog({
     if (!open) return;
     setCurrency(budget?.currency ?? "MDL");
     setMonthlyTotal(budget?.monthlyTotal != null ? String(budget.monthlyTotal) : "");
+    setSavingsGoal(budget?.savingsGoal != null ? String(budget.savingsGoal) : "");
     const initial: Record<string, string> = {};
     for (const c of EXPENSE_CATEGORIES) {
       const v = budget?.byCategory?.[c];
@@ -87,6 +89,7 @@ export function BudgetFormDialog({
       monthlyTotal: num(monthlyTotal),
       byCategory: cats,
       openingBalances: balances,
+      savingsGoal: num(savingsGoal),
     };
     try {
       await upsertBudget(userId, payload);
@@ -120,6 +123,21 @@ export function BudgetFormDialog({
             />
             <p className="text-xs text-muted-foreground">
               Display currency is set in Settings → Currency.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="savings-goal">Savings goal target</Label>
+            <Input
+              id="savings-goal"
+              type="number"
+              min={0}
+              value={savingsGoal}
+              onChange={(e) => setSavingsGoal(e.target.value)}
+              placeholder="e.g. 1000"
+            />
+            <p className="text-xs text-muted-foreground">
+              Progress is tracked against your total net worth.
             </p>
           </div>
 
