@@ -3,6 +3,7 @@ import {
   Target,
   FolderKanban,
   CheckSquare,
+  Shirt,
   Flame,
   CalendarClock,
   Moon,
@@ -38,6 +39,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: "/projects", label: "Projects", icon: FolderKanban },
       { href: "/tasks", label: "Tasks", icon: CheckSquare },
       { href: "/calendar", label: "Calendar", icon: CalendarDays },
+      { href: "/routines", label: "Routines", icon: Shirt },
     ],
   },
   {

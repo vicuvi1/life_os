@@ -205,6 +205,22 @@ export interface ShoppingCheck {
   extra: string[]; // manually added items
 }
 
+export type WeekdayKey =
+  | "mon"
+  | "tue"
+  | "wed"
+  | "thu"
+  | "fri"
+  | "sat"
+  | "sun";
+
+/** Pre-decided daily defaults (doc id = userId) — the "zero decision" config. */
+export interface DecisionConfig {
+  userId: string;
+  outfits: Partial<Record<WeekdayKey, string>>; // outfit per weekday
+  defaults: { label: string; value: string }[]; // fixed decisions (bedtime, etc.)
+}
+
 /** Firestore collection names, centralized to avoid typos. */
 export const COLLECTIONS = {
   goals: "goals",
@@ -221,4 +237,5 @@ export const COLLECTIONS = {
   meals: "meals",
   mealPlan: "mealPlan",
   shoppingChecks: "shoppingChecks",
+  decisions: "decisions",
 } as const;

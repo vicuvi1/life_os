@@ -281,8 +281,15 @@ export default function MealsPage() {
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {MEAL_SLOTS.map((slot) => {
-                    const slotMeals = meals.filter((m) => m.slot === slot);
-                    const value = entryFor(date, slot) ?? NONE;
+                    const assignedId = entryFor(date, slot);
+                    const options = meals.filter((m) => m.slot === slot);
+                    // Keep a still-assigned meal selectable even if its slot was
+                    // later changed (otherwise it becomes an invisible phantom).
+                    if (assignedId && !options.some((m) => m.id === assignedId)) {
+                      const assigned = mealsById.get(assignedId);
+                      if (assigned) options.push(assigned);
+                    }
+                    const value = assignedId ?? NONE;
                     return (
                       <div key={slot} className="space-y-1">
                         <p className="text-xs text-muted-foreground">
@@ -297,7 +304,7 @@ export default function MealsPage() {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value={NONE}>—</SelectItem>
-                            {slotMeals.map((m) => (
+                            {options.map((m) => (
                               <SelectItem key={m.id} value={m.id}>
                                 {m.name}
                               </SelectItem>

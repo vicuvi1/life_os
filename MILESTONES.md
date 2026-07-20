@@ -475,3 +475,50 @@ ingredients into one de-duplicated shopping list — the Meal Prep spec's "Sunda
 > **Note:** requires publishing the updated `firestore.rules` (adds the
 > `meals`, `mealPlan`, and `shoppingChecks` collections) in the Firebase
 > Console.
+
+---
+
+## Milestone 12 — Decision Eliminator (Routines)
+
+**Purpose.** Every day you make dozens of trivial decisions ("what do I wear?",
+"when's laundry?") and each one drains mental energy. The Decision Eliminator
+spec's idea is to **pre-decide once and just execute** — freeing your focus for
+what matters.
+
+**How it works.**
+- A single **decisions** config doc per user (`doc id = userId`) holds an outfit
+  for each weekday and a list of fixed defaults (label → value).
+- The page derives **today's** outfit from the current weekday, so the morning
+  view needs zero thought.
+- Saving fully replaces the config (no stale entries from deep-merge).
+- Security rules: owner-scoped — publish the updated `firestore.rules`.
+
+**Features.**
+- Routines page (`/routines`):
+  - A **Today** hero showing the outfit pre-decided for the current weekday.
+  - **Your defaults** — a clean list of fixed decisions (wake time, bedtime,
+    entertainment limit, laundry day, …).
+  - **Outfits this week** — all seven days at a glance, today highlighted.
+  - An **Edit** dialog to set the 7 outfits and add/remove any number of
+    defaults.
+
+**How to use.**
+1. Open **Routines → Edit** and fill in an outfit for each day plus your fixed
+   defaults.
+2. Each morning, glance at **Today** — wear what it says, follow your defaults.
+   No deciding.
+
+> **Note:** requires publishing the updated `firestore.rules` (adds the
+> `decisions` collection) in the Firebase Console.
+
+---
+
+## Maintenance — Meal Prep review fixes
+
+Follow-up hardening for Milestone 11 from the adversarial review:
+- Editing a meal's slot no longer orphans its planned days — a still-assigned
+  meal stays selectable in its cell even if its slot changed, so it can't become
+  an invisible "phantom" that silently inflates the shopping list.
+- Deleting a meal now cascade-deletes its meal-plan entries (no dangling docs).
+- The per-week shopping-check fetch is guarded against out-of-order responses,
+  and the meal library/plan load once per user instead of on every week change.

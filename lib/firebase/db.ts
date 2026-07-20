@@ -19,6 +19,7 @@ import { db } from "@/lib/firebase/config";
 import {
   COLLECTIONS,
   type Budget,
+  type DecisionConfig,
   type Expense,
   type Goal,
   type Habit,
@@ -860,7 +861,14 @@ export async function updateMeal(
 }
 
 export async function deleteMeal(id: string): Promise<void> {
-  await deleteDoc(doc(db, COLLECTIONS.meals, id));
+  // Cascade-delete this meal's plan entries so no orphans linger.
+  const batch = writeBatch(db);
+  const planSnap = await getDocs(
+    query(collection(db, COLLECTIONS.mealPlan), where("mealId", "==", id))
+  );
+  planSnap.forEach((p) => batch.delete(p.ref));
+  batch.delete(doc(db, COLLECTIONS.meals, id));
+  await batch.commit();
 }
 
 function mapPlanEntry(snap: QueryDocumentSnapshot<DocumentData>): MealPlanEntry {
@@ -922,4 +930,32 @@ export async function upsertShoppingCheck(
 ): Promise<void> {
   const ref = doc(db, COLLECTIONS.shoppingChecks, `${userId}_${weekStart}`);
   await setDoc(ref, { userId, weekStart, ...input });
+}
+
+// ---------------------------------------------------------------------------
+// Decision Eliminator (pre-decided defaults; one config doc per user)
+// ---------------------------------------------------------------------------
+export async function getDecisions(
+  userId: string
+): Promise<DecisionConfig | null> {
+  const ref = doc(db, COLLECTIONS.decisions, userId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return null;
+  const d = snap.data();
+  return {
+    userId: d.userId,
+    outfits: d.outfits ?? {},
+    defaults: Array.isArray(d.defaults) ? d.defaults : [],
+  };
+}
+
+export type DecisionInput = Pick<DecisionConfig, "outfits" | "defaults">;
+
+export async function upsertDecisions(
+  userId: string,
+  input: DecisionInput
+): Promise<void> {
+  const ref = doc(db, COLLECTIONS.decisions, userId);
+  // Full replace so cleared outfits/defaults don't linger via deep merge.
+  await setDoc(ref, { userId, ...input });
 }
