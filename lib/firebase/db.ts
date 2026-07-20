@@ -5,6 +5,7 @@ import {
   getDocs,
   getDoc,
   addDoc,
+  setDoc,
   updateDoc,
   deleteDoc,
   doc,
@@ -19,9 +20,12 @@ import {
   COLLECTIONS,
   type Goal,
   type Habit,
+  type HabitLog,
   type Project,
   type Task,
 } from "@/lib/types";
+import { currentStreak, longestStreak } from "@/lib/habits";
+import { toDateKey } from "@/lib/greeting";
 
 /** Convert a Firestore Timestamp (or null during pending writes) to epoch ms. */
 function toMillis(value: unknown): number {
@@ -317,16 +321,117 @@ export async function recalcGoalProgress(goalId: string): Promise<number> {
 }
 
 // ---------------------------------------------------------------------------
-// Habits (read-only helpers used by the dashboard; full CRUD in Milestone 3)
+// Habits
 // ---------------------------------------------------------------------------
-export async function getDailyHabits(userId: string): Promise<Habit[]> {
+function mapHabitLog(snap: QueryDocumentSnapshot<DocumentData>): HabitLog {
+  const d = snap.data();
+  return {
+    id: snap.id,
+    habitId: d.habitId,
+    userId: d.userId,
+    completedDate: d.completedDate,
+    createdAt: toMillis(d.createdAt),
+  };
+}
+
+export async function getHabits(userId: string): Promise<Habit[]> {
   const q = query(
     collection(db, COLLECTIONS.habits),
     where("userId", "==", userId)
   );
   const snap = await getDocs(q);
-  return snap.docs
-    .map(mapHabit)
-    .filter((h) => h.frequency === "daily")
-    .sort((a, b) => a.createdAt - b.createdAt);
+  return snap.docs.map(mapHabit).sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function getDailyHabits(userId: string): Promise<Habit[]> {
+  const habits = await getHabits(userId);
+  return habits.filter((h) => h.frequency === "daily");
+}
+
+/** All habit logs for a user (used to derive completion + streaks client-side). */
+export async function getHabitLogs(userId: string): Promise<HabitLog[]> {
+  const q = query(
+    collection(db, COLLECTIONS.habitLogs),
+    where("userId", "==", userId)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(mapHabitLog);
+}
+
+export type HabitInput = Pick<
+  Habit,
+  "title" | "description" | "frequency" | "category" | "color"
+>;
+
+export async function createHabit(
+  userId: string,
+  input: HabitInput
+): Promise<string> {
+  const ref = await addDoc(collection(db, COLLECTIONS.habits), {
+    userId,
+    ...input,
+    streak: 0,
+    bestStreak: 0,
+    lastCompleted: null,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export async function updateHabit(
+  id: string,
+  input: Partial<HabitInput>
+): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.habits, id), { ...input });
+}
+
+export async function deleteHabit(id: string): Promise<void> {
+  const batch = writeBatch(db);
+  const logSnap = await getDocs(
+    query(collection(db, COLLECTIONS.habitLogs), where("habitId", "==", id))
+  );
+  logSnap.forEach((l) => batch.delete(l.ref));
+  batch.delete(doc(db, COLLECTIONS.habits, id));
+  await batch.commit();
+}
+
+/**
+ * Mark (or unmark) a habit as done for a given date, then recompute and persist
+ * its current streak, best streak, and last-completed date.
+ * Log docs use a deterministic id (`habitId_date`) so completion is idempotent.
+ */
+export async function toggleHabitLog(
+  userId: string,
+  habitId: string,
+  date: string,
+  done: boolean
+): Promise<void> {
+  const logRef = doc(db, COLLECTIONS.habitLogs, `${habitId}_${date}`);
+  if (done) {
+    await setDoc(logRef, {
+      userId,
+      habitId,
+      completedDate: date,
+      createdAt: serverTimestamp(),
+    });
+  } else {
+    await deleteDoc(logRef);
+  }
+
+  // Recompute streaks from the habit's full log history.
+  const snap = await getDocs(
+    query(collection(db, COLLECTIONS.habitLogs), where("habitId", "==", habitId))
+  );
+  const dates = snap.docs.map((d) => d.data().completedDate as string);
+  const today = toDateKey(new Date());
+  const streak = currentStreak(new Set(dates), today);
+  const best = longestStreak(dates);
+  const lastCompleted =
+    dates.length > 0 ? dates.reduce((a, b) => (a > b ? a : b)) : null;
+
+  await updateDoc(doc(db, COLLECTIONS.habits, habitId), {
+    streak,
+    bestStreak: best,
+    lastCompleted,
+  });
 }

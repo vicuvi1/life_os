@@ -12,12 +12,20 @@ import {
   Loader2,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
-import { getActiveGoals, getDailyHabits, getTasks } from "@/lib/firebase/db";
-import { greetingFor, nameFromEmail } from "@/lib/greeting";
+import {
+  getActiveGoals,
+  getDailyHabits,
+  getHabitLogs,
+  getTasks,
+  toggleHabitLog,
+} from "@/lib/firebase/db";
+import { greetingFor, nameFromEmail, toDateKey } from "@/lib/greeting";
+import { habitStateFromDates } from "@/lib/habits";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { TaskRow } from "@/components/tasks/task-row";
+import { HabitRow } from "@/components/habits/habit-row";
 import type { Goal, Habit, Task } from "@/lib/types";
 
 function StatCard({
@@ -48,21 +56,32 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
+  const [logDatesByHabit, setLogDatesByHabit] = useState<
+    Record<string, string[]>
+  >({});
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const today = toDateKey(new Date());
 
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     try {
-      const [g, h, t] = await Promise.all([
+      const [g, h, t, logs] = await Promise.all([
         getActiveGoals(user.uid),
         getDailyHabits(user.uid),
         getTasks(user.uid),
+        getHabitLogs(user.uid),
       ]);
+      const byHabit: Record<string, string[]> = {};
+      for (const log of logs) {
+        (byHabit[log.habitId] ??= []).push(log.completedDate);
+      }
       setGoals(g);
       setHabits(h);
       setTasks(t);
+      setLogDatesByHabit(byHabit);
     } finally {
       setLoading(false);
     }
@@ -71,6 +90,18 @@ export default function DashboardPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  async function handleHabitToggle(habitId: string, done: boolean) {
+    if (!user) return;
+    setLogDatesByHabit((prev) => {
+      const dates = new Set(prev[habitId] ?? []);
+      if (done) dates.add(today);
+      else dates.delete(today);
+      return { ...prev, [habitId]: Array.from(dates) };
+    });
+    await toggleHabitLog(user.uid, habitId, today, done);
+    setHabits(await getDailyHabits(user.uid));
+  }
 
   // Top open tasks: due first (soonest, incl. overdue), then by priority.
   const priorityRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
@@ -240,16 +271,15 @@ export default function DashboardPage() {
           <Card>
             <CardContent className="divide-y p-0">
               {habits.map((h) => (
-                <div
+                <HabitRow
                   key={h.id}
-                  className="flex items-center justify-between px-5 py-3"
-                >
-                  <span>{h.title}</span>
-                  <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                    <Flame className="h-4 w-4 text-orange-500" />
-                    {h.streak ?? 0}d
-                  </span>
-                </div>
+                  habit={h}
+                  state={habitStateFromDates(
+                    logDatesByHabit[h.id] ?? [],
+                    today
+                  )}
+                  onToggle={(done) => handleHabitToggle(h.id, done)}
+                />
               ))}
             </CardContent>
           </Card>
