@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   UtensilsCrossed,
   ChevronLeft,
@@ -69,6 +69,8 @@ export default function MealsPage() {
   const [deletingMeal, setDeletingMeal] = useState<Meal | null>(null);
   const [newItem, setNewItem] = useState("");
 
+  const weekReqRef = useRef(0);
+
   const loadCore = useCallback(async () => {
     if (!user) return;
     const [m, p] = await Promise.all([getMeals(user.uid), getMealPlan(user.uid)]);
@@ -76,26 +78,33 @@ export default function MealsPage() {
     setPlan(p);
   }, [user]);
 
-  const loadWeekCheck = useCallback(
-    async (ws: string) => {
-      if (!user) return;
-      const sc = await getShoppingCheck(user.uid, ws);
-      setChecked(sc?.checked ?? []);
-      setExtra(sc?.extra ?? []);
-    },
-    [user]
-  );
-
+  // Meal library + plan load once per user (not on every week change).
   useEffect(() => {
+    let active = true;
     (async () => {
       setLoading(true);
       try {
-        await Promise.all([loadCore(), loadWeekCheck(weekStart)]);
+        await loadCore();
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     })();
-  }, [loadCore, loadWeekCheck, weekStart]);
+    return () => {
+      active = false;
+    };
+  }, [loadCore]);
+
+  // Shopping-check state is per week; guard against out-of-order responses.
+  useEffect(() => {
+    if (!user) return;
+    const req = ++weekReqRef.current;
+    (async () => {
+      const sc = await getShoppingCheck(user.uid, weekStart);
+      if (weekReqRef.current !== req) return; // a newer week was selected
+      setChecked(sc?.checked ?? []);
+      setExtra(sc?.extra ?? []);
+    })();
+  }, [user, weekStart]);
 
   const mealsById = useMemo(
     () => new Map(meals.map((m) => [m.id, m])),
