@@ -202,6 +202,7 @@ export default function SessionsPage() {
           userId={user.uid}
           defaultDate={date}
           goals={goals}
+          sessions={sessions}
           session={form.session}
           onSaved={load}
         />

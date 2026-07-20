@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -30,6 +30,7 @@ import {
   SESSION_CATEGORY_LABEL,
   timeToMin,
   minToTime,
+  computeSessionDefaults,
 } from "@/lib/sessions";
 import type {
   Goal,
@@ -45,6 +46,8 @@ interface Props {
   /** Date preselected for new sessions (YYYY-MM-DD). */
   defaultDate: string;
   goals: Goal[];
+  /** The user's existing sessions, used to learn smart default times. */
+  sessions?: Session[];
   session?: Session | null;
   onSaved: () => void;
 }
@@ -57,10 +60,15 @@ export function SessionFormDialog({
   userId,
   defaultDate,
   goals,
+  sessions = [],
   session,
   onSaved,
 }: Props) {
   const isEdit = Boolean(session);
+  const defaults = useMemo(
+    () => computeSessionDefaults(sessions),
+    [sessions]
+  );
 
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState<SessionCategory>("study");
@@ -73,20 +81,64 @@ export function SessionFormDialog({
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [prefilled, setPrefilled] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    setTitle(session?.title ?? "");
-    setCategory(session?.category ?? "study");
-    setGoalId(session?.goalId ?? NO_GOAL);
-    setDate(session?.date ?? defaultDate);
-    setStart(session ? minToTime(session.startMin) : "07:00");
-    setEnd(session ? minToTime(session.endMin) : "09:00");
-    setStatus(session?.status ?? "planned");
-    setQuality(session?.quality != null ? String(session.quality) : "");
-    setNotes(session?.notes ?? "");
+    if (session) {
+      // Editing: use the session's own values.
+      setTitle(session.title);
+      setCategory(session.category);
+      setGoalId(session.goalId ?? NO_GOAL);
+      setDate(session.date);
+      setStart(minToTime(session.startMin));
+      setEnd(minToTime(session.endMin));
+      setStatus(session.status);
+      setQuality(session.quality != null ? String(session.quality) : "");
+      setNotes(session.notes ?? "");
+      setPrefilled(false);
+    } else {
+      // New: pre-fill category + times from the user's usual patterns.
+      const cat = defaults.category ?? "study";
+      const block = defaults.byCategory[cat];
+      setTitle("");
+      setCategory(cat);
+      setGoalId(NO_GOAL);
+      setDate(defaultDate);
+      setStart(block ? minToTime(block.startMin) : "07:00");
+      setEnd(block ? minToTime(block.endMin) : "09:00");
+      setStatus("planned");
+      setQuality("");
+      setNotes("");
+      setPrefilled(Boolean(block));
+    }
     setError(null);
-  }, [open, session, defaultDate]);
+  }, [open, session, defaultDate, defaults]);
+
+  // Switching category (when creating) snaps times to that category's usual block.
+  function handleCategoryChange(v: SessionCategory) {
+    setCategory(v);
+    if (!isEdit) {
+      const block = defaults.byCategory[v];
+      if (block) {
+        setStart(minToTime(block.startMin));
+        setEnd(minToTime(block.endMin));
+        setPrefilled(true);
+      }
+    }
+  }
+
+  // Typing a title you've used before pulls in its usual category + time.
+  function handleTitleBlur() {
+    if (isEdit) return;
+    const match = defaults.byTitle[title.trim().toLowerCase()];
+    if (match) {
+      setCategory(match.category);
+      setStart(minToTime(match.startMin));
+      setEnd(minToTime(match.endMin));
+      setPrefilled(true);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -162,6 +214,7 @@ export function SessionFormDialog({
               id="s-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              onBlur={handleTitleBlur}
               placeholder="e.g. Spanish study"
               autoFocus
             />
@@ -172,7 +225,7 @@ export function SessionFormDialog({
               <Label>Category</Label>
               <Select
                 value={category}
-                onValueChange={(v) => setCategory(v as SessionCategory)}
+                onValueChange={(v) => handleCategoryChange(v as SessionCategory)}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -221,7 +274,10 @@ export function SessionFormDialog({
                 id="s-start"
                 type="time"
                 value={start}
-                onChange={(e) => setStart(e.target.value)}
+                onChange={(e) => {
+                  setStart(e.target.value);
+                  setPrefilled(false);
+                }}
               />
             </div>
             <div className="space-y-2">
@@ -230,10 +286,20 @@ export function SessionFormDialog({
                 id="s-end"
                 type="time"
                 value={end}
-                onChange={(e) => setEnd(e.target.value)}
+                onChange={(e) => {
+                  setEnd(e.target.value);
+                  setPrefilled(false);
+                }}
               />
             </div>
           </div>
+          {prefilled && !isEdit && (
+            <p className="-mt-2 text-xs text-muted-foreground">
+              ✨ Prefilled from your usual{" "}
+              {SESSION_CATEGORY_LABEL[category].toLowerCase()} time — edit if
+              needed.
+            </p>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">

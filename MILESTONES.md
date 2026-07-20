@@ -490,6 +490,29 @@ alive, and less like a static dashboard.
 
 ---
 
+## Polish pass — smart session defaults
+
+**Purpose.** Reduce typing when scheduling. The app learns your usual times from
+your history and pre-fills them, so a recurring block is one tap, not a form.
+
+**How it works.**
+- `computeSessionDefaults` scans your past sessions and finds, per category, the
+  **most common (start, end) block** (ties broken by most recent), the category
+  you schedule most, and the usual block per **title**.
+- Opening **New session** pre-fills the category and time from these patterns
+  (e.g. once you've logged gym 5–6pm a few times, it defaults there).
+- Changing the category snaps the times to that category's usual block, and
+  typing a **title you've used before** ("Spanish") pulls in its usual category
+  and time. A subtle "✨ Prefilled from your usual … time" hint shows, and it
+  disappears the moment you edit a time yourself.
+- Editing an existing session is untouched — it always shows that session's own
+  values.
+
+**How to use.** Just keep logging sessions normally. After a few, **New session**
+will already have your typical time filled in — adjust only when it differs.
+
+---
+
 ## Milestone 11 — Meal Prep + Shopping List
 
 **Purpose.** Kill the daily "what should I eat?" decision and the time wasted at

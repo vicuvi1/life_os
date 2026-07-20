@@ -92,3 +92,100 @@ export function findConflicts(sessions: Session[]): Set<string> {
 export function totalMinutes(sessions: Session[]): number {
   return sessions.reduce((sum, s) => sum + (s.endMin - s.startMin), 0);
 }
+
+// ---------------------------------------------------------------------------
+// Smart defaults — learn the user's usual times from their history.
+// ---------------------------------------------------------------------------
+export interface TimeBlock {
+  startMin: number;
+  endMin: number;
+}
+
+export interface SessionDefaults {
+  /** The category the user schedules most often. */
+  category: SessionCategory | null;
+  /** The usual time block per category. */
+  byCategory: Partial<Record<SessionCategory, TimeBlock>>;
+  /** The usual category + time block per (normalized) title. */
+  byTitle: Record<string, TimeBlock & { category: SessionCategory }>;
+}
+
+/** Most-frequent (start,end) block in a list; ties broken by most recent. */
+function topBlock(list: Session[]): TimeBlock | null {
+  if (list.length === 0) return null;
+  const counts = new Map<
+    string,
+    { count: number; latest: number; startMin: number; endMin: number }
+  >();
+  for (const s of list) {
+    const key = `${s.startMin}_${s.endMin}`;
+    const cur = counts.get(key);
+    if (cur) {
+      cur.count += 1;
+      cur.latest = Math.max(cur.latest, s.createdAt);
+    } else {
+      counts.set(key, {
+        count: 1,
+        latest: s.createdAt,
+        startMin: s.startMin,
+        endMin: s.endMin,
+      });
+    }
+  }
+  let best: TimeBlock | null = null;
+  let bestCount = 0;
+  let bestLatest = -1;
+  for (const v of Array.from(counts.values())) {
+    if (v.count > bestCount || (v.count === bestCount && v.latest > bestLatest)) {
+      bestCount = v.count;
+      bestLatest = v.latest;
+      best = { startMin: v.startMin, endMin: v.endMin };
+    }
+  }
+  return best;
+}
+
+function modeCategory(list: Session[]): SessionCategory | null {
+  const counts = new Map<SessionCategory, number>();
+  for (const s of list) counts.set(s.category, (counts.get(s.category) ?? 0) + 1);
+  let best: SessionCategory | null = null;
+  let bestN = 0;
+  for (const [c, n] of Array.from(counts.entries())) {
+    if (n > bestN) {
+      bestN = n;
+      best = c;
+    }
+  }
+  return best;
+}
+
+export function computeSessionDefaults(sessions: Session[]): SessionDefaults {
+  if (sessions.length === 0) {
+    return { category: null, byCategory: {}, byTitle: {} };
+  }
+
+  const byCategory: Partial<Record<SessionCategory, TimeBlock>> = {};
+  for (const c of SESSION_CATEGORIES) {
+    const b = topBlock(sessions.filter((s) => s.category === c));
+    if (b) byCategory[c] = b;
+  }
+
+  const titleGroups = new Map<string, Session[]>();
+  for (const s of sessions) {
+    const key = s.title.trim().toLowerCase();
+    if (!key) continue;
+    const arr = titleGroups.get(key) ?? [];
+    arr.push(s);
+    titleGroups.set(key, arr);
+  }
+  const byTitle: Record<string, TimeBlock & { category: SessionCategory }> = {};
+  for (const [key, list] of Array.from(titleGroups.entries())) {
+    const b = topBlock(list);
+    if (b) {
+      byTitle[key] = { ...b, category: modeCategory(list) ?? list[0].category };
+    }
+  }
+
+  return { category: modeCategory(sessions), byCategory, byTitle };
+}
+
