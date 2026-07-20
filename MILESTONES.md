@@ -440,6 +440,31 @@ No data or behaviour changed — this is purely visual.
 
 ---
 
+## Design refresh v2 — modular Notion-style workspace
+
+**Purpose.** Move the dashboard from a fixed SaaS grid toward a personal,
+modular workspace — while keeping the violet-on-black identity.
+
+**What changed.**
+- **Emoji as a functional icon language**: consistent emojis for goal categories
+  (📚 education, 💼 career, 🏋️ health, 💰 financial, 🌱 personal), habits, and
+  section headers (📋 Focus, 🎯 Goals, 🔥 Habits, 💧 Water, 😴 Sleep), plus a
+  time-of-day emoji in the greeting.
+- **Expandable stat tiles**: the four headline tiles (Goals, Progress, Streak,
+  Sleep) now click to reveal a breakdown inline — which goals, per-goal bars,
+  top streaks, recent nights.
+- **Collapsible sections**: Today's Focus, Active Goals, Habits, and Schedule
+  are collapsible blocks that remember their open/closed state per section.
+- **Flexible bento layout**: important blocks (Focus, Goals) span wide while the
+  Water tracker sits as a compact widget; the Schedule block only appears when
+  there's something scheduled, so empty trackers don't reserve equal space.
+- **Modular feel**: rounded elevated cards with hover lift, subtle drag-handle
+  affordances on section headers, and clear "+ add" actions.
+- **Collapsible sidebar groups**: Plan / Track / Review can each be collapsed to
+  hide areas you're not using; the choice is remembered.
+
+---
+
 ## Milestone 11 — Meal Prep + Shopping List
 
 **Purpose.** Kill the daily "what should I eat?" decision and the time wasted at

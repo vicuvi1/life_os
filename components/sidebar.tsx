@@ -1,8 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Rocket } from "lucide-react";
+import { Rocket, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_SECTIONS, NAV_FOOTER } from "@/lib/nav";
 import { useAuth } from "@/components/auth-provider";
@@ -41,6 +42,28 @@ function NavLink({
 export function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("lifeos:navCollapsed");
+      if (raw) setCollapsed(JSON.parse(raw));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  function toggleSection(label: string) {
+    setCollapsed((prev) => {
+      const next = { ...prev, [label]: !prev[label] };
+      try {
+        localStorage.setItem("lifeos:navCollapsed", JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
@@ -57,17 +80,30 @@ export function Sidebar() {
         </div>
       </div>
 
-      <nav className="flex-1 space-y-5 overflow-y-auto p-3">
-        {NAV_SECTIONS.map((section) => (
-          <div key={section.label} className="space-y-1">
-            <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-              {section.label}
-            </p>
-            {section.items.map((item) => (
-              <NavLink key={item.href} {...item} active={isActive(item.href)} />
-            ))}
-          </div>
-        ))}
+      <nav className="flex-1 space-y-4 overflow-y-auto p-3">
+        {NAV_SECTIONS.map((section) => {
+          const isCollapsed = collapsed[section.label];
+          return (
+            <div key={section.label} className="space-y-1">
+              <button
+                onClick={() => toggleSection(section.label)}
+                className="flex w-full items-center gap-1 px-3 pb-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+              >
+                {section.label}
+                <ChevronDown
+                  className={cn(
+                    "h-3 w-3 transition-transform",
+                    isCollapsed && "-rotate-90"
+                  )}
+                />
+              </button>
+              {!isCollapsed &&
+                section.items.map((item) => (
+                  <NavLink key={item.href} {...item} active={isActive(item.href)} />
+                ))}
+            </div>
+          );
+        })}
       </nav>
 
       <div className="space-y-1 border-t p-3">
@@ -79,9 +115,7 @@ export function Sidebar() {
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
               {nameFromEmail(user.email).charAt(0)}
             </div>
-            <p className="truncate text-xs text-muted-foreground">
-              {user.email}
-            </p>
+            <p className="truncate text-xs text-muted-foreground">{user.email}</p>
           </div>
         )}
       </div>
