@@ -922,54 +922,46 @@ CAREER
 
 ---
 
-## Finance — income, accounts, table view & Excel export
+## Finance — editable month grid (income, accounts & Excel export)
 
-**Purpose.** Replace a hand-maintained finance spreadsheet with something that
-does the math for you: log what comes in and what goes out each day, and get
-your monthly profit/spent/net, your account balances, and a clean export —
-without dragging a single formula. Everything is MDL-first.
+**Purpose.** Replace a hand-maintained finance spreadsheet with the same thing,
+minus the formulas: a month grid you type straight into, with your monthly
+profit/spent/net and account balances computed for you. MDL-first.
 
-**What it is.** The old **Expenses** page is now **Finance** — it tracks both
-**income and expenses**, keeps running **account balances**, and offers a
-sortable **table view** and one-click **CSV export** (opens in Excel).
+**What it is.** The old **Expenses** page is now **Finance** — a
+spreadsheet-style **month grid**: one row per calendar day with **Earned** and
+**Spent** columns (each with a description), a totals/net row at the bottom, and
+one-click **CSV export** (opens in Excel).
 
 **How it works.**
-- **Income + expenses in one log.** Each entry has a **type** (income or
-  expense), an **amount**, an **account**, a **category**, a description, and a
-  date. The add form has an Income/Expense toggle; income uses income categories
-  (Salary, Allowance, Gift, Sale, Refund, Investment…), expenses use the usual
-  ones. Existing data is untouched — old records simply read as wallet expenses.
-- **Monthly Earned / Spent / Net.** Three tiles at the top compute your month's
-  money in, money out, and the difference — the same idea as the sheet's
-  PROFIT / SPENT / TOTAL box, but automatic.
-- **Accounts (Wallet & Safe).** Every entry is assigned to an account. Each
-  account shows a live balance = its **starting balance** (set in
-  Settings ⚙ → *Account starting balances*, e.g. what's already in your safe)
-  plus all income minus all expenses recorded against it. A **Total** across
-  accounts is your net worth.
-- **Sortable day-by-day table.** Toggle between the card list and a spreadsheet
-  table (Date · Type · Account · Category · Description · Amount · **Running
-  net**). Click any column header to sort. The running-net column accumulates in
-  date order so it stays correct no matter how you sort the display.
+- **Type into the grid.** Every day of the month is a row. Click the **Earned**
+  or **Spent** cell and type a number — it saves automatically (creating the
+  entry), and the matching **For…** cell lets you describe it. Clear a cell to
+  remove that day's entry. Press Enter to confirm, Esc to cancel. No dialogs.
+- **Earned / Spent / Net.** A slim bar above the grid (and the grid's footer)
+  shows the month's money in, money out, and the difference — the sheet's
+  PROFIT / SPENT / TOTAL box, automatic.
+- **Accounts (Wallet & Safe).** Each account shows a live balance = its
+  **starting balance** (set in Settings ⚙ → *Account starting balances*, e.g.
+  what's already in your safe) plus all income minus all expenses against it,
+  with a **Total** (net worth). A small **"New rows → Wallet/Safe"** selector
+  chooses which account grid entries land in.
 - **Export to Excel.** The **Export** menu downloads a CSV (This month or All
-  time) that opens directly in Excel, with income and expense in separate
-  columns plus a signed-amount column so totals just work.
-- **MDL by default.** New setups display in Moldovan Leu (`L`) out of the box;
-  you can still change it in Settings → Currency.
-- **Budget stays.** The optional monthly cap, per-category limits, pace
-  projection, and over-budget warnings all still work (now driven by the expense
-  side of the ledger).
+  time) with income and expense in separate columns plus a signed amount, so
+  spreadsheet totals just work.
+- **MDL by default.** New setups display in Moldovan Leu (`L`); change it any
+  time in Settings → Currency.
+- **Budget kept simple.** If a monthly cap is set it shows inline (spent / cap,
+  red when over). Data model still supports categories and multiple entries per
+  day — those days show a summed, read-only cell in the grid.
 
 **How to use it.**
-1. Open **Finance** in the sidebar. Set your currency/accounts once in
-   **Settings ⚙** (starting balances for Wallet and Safe, optional monthly
-   budget).
-2. Each day, hit **Add → Add expense** or **Add income**, pick the account and
-   category, and jot a description. Balances and the month's Earned/Spent/Net
-   update instantly.
-3. Switch to the **table view** to sort by date/amount/category, or hit
-   **Export** to pull a month (or everything) into Excel.
+1. Open **Finance**. Set currency, account starting balances, and an optional
+   monthly budget once in **Settings ⚙**.
+2. Each day, type what you **earned** and/or **spent** right into that day's row
+   and add a short note. Balances and Earned/Spent/Net update instantly.
+3. Hit **Export** to pull a month (or everything) into Excel.
 
-> **Follow-ups.** Account **transfers** (move money Wallet → Safe in one step)
-> and **recurring** entries (auto-insert rent/allowance each month) are the
-> natural next additions.
+> **Follow-ups.** Account **transfers** (Wallet → Safe in one step), a
+> **category** column in the grid, and **recurring** entries (auto-insert
+> rent/allowance each month) are the natural next additions.

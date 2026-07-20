@@ -2,97 +2,64 @@
 
 import { SkeletonCard } from "@/components/ui/skeleton";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Wallet,
-  Plus,
+  Download,
+  Settings2,
   ChevronLeft,
   ChevronRight,
-  Settings2,
-  AlertTriangle,
-  MoreVertical,
-  Pencil,
-  Trash2,
-  Download,
+  Wallet,
   PiggyBank,
-  TrendingUp,
-  TrendingDown,
-  ArrowUpDown,
-  List,
-  Table2,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
-import { getExpenses, getBudget, deleteExpense } from "@/lib/firebase/db";
+import {
+  getExpenses,
+  getBudget,
+  createExpense,
+  updateExpense,
+  deleteExpense,
+} from "@/lib/firebase/db";
 import { toDateKey } from "@/lib/greeting";
 import {
-  categoryLabel,
-  categoryColor,
   monthKey,
   inMonth,
   monthLabel,
-  spendByCategory,
-  monthStatus,
+  daysInMonth,
   totalEarned,
   totalSpent,
   netTotal,
   accountBalance,
-  withRunningBalance,
   ACCOUNTS,
   ACCOUNT_LABEL,
 } from "@/lib/expenses";
 import { entriesToCsv, downloadCsv } from "@/lib/export";
 import { resolveCurrency, formatAmount } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ExpenseFormDialog } from "@/components/expenses/expense-form-dialog";
 import { BudgetFormDialog } from "@/components/expenses/budget-form-dialog";
-import { ConfirmDialog } from "@/components/confirm-dialog";
 import { cn } from "@/lib/utils";
-import type { Budget, EntryKind, Expense } from "@/lib/types";
+import type { AccountKey, Budget, EntryKind, Expense } from "@/lib/types";
 
-type SortKey = "date" | "amount" | "category" | "account" | "kind";
+const MONTHS_SHORT = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+const WEEKDAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function StatTile({
-  label,
-  value,
-  tone,
-  icon: Icon,
-}: {
-  label: string;
-  value: string;
-  tone: "up" | "down" | "neutral";
-  icon: React.ComponentType<{ className?: string }>;
-}) {
-  return (
-    <Card>
-      <CardContent className="space-y-1 p-4">
-        <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          <Icon className="h-3.5 w-3.5" />
-          {label}
-        </div>
-        <p
-          className={cn(
-            "text-xl font-semibold tabular-nums",
-            tone === "up" && "text-emerald-600 dark:text-emerald-400",
-            tone === "down" && "text-destructive"
-          )}
-        >
-          {value}
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
-export default function ExpensesPage() {
+export default function FinancePage() {
   const { user } = useAuth();
   const now = new Date();
 
@@ -101,35 +68,26 @@ export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [budget, setBudget] = useState<Budget | null>(null);
   const [loading, setLoading] = useState(true);
-
-  const [expenseForm, setExpenseForm] = useState<{
-    open: boolean;
-    expense: Expense | null;
-    kind: EntryKind;
-  }>({ open: false, expense: null, kind: "expense" });
   const [budgetOpen, setBudgetOpen] = useState(false);
-  const [deleting, setDeleting] = useState<Expense | null>(null);
+  const [newAccount, setNewAccount] = useState<AccountKey>("wallet");
 
-  const [view, setView] = useState<"list" | "table">("list");
-  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({
-    key: "date",
-    dir: "desc",
-  });
-
-  const load = useCallback(async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      const [ex, bg] = await Promise.all([
-        getExpenses(user.uid),
-        getBudget(user.uid),
-      ]);
-      setExpenses(ex);
-      setBudget(bg);
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
+  const load = useCallback(
+    async (opts?: { quiet?: boolean }) => {
+      if (!user) return;
+      if (!opts?.quiet) setLoading(true);
+      try {
+        const [ex, bg] = await Promise.all([
+          getExpenses(user.uid),
+          getBudget(user.uid),
+        ]);
+        setExpenses(ex);
+        setBudget(bg);
+      } finally {
+        if (!opts?.quiet) setLoading(false);
+      }
+    },
+    [user]
+  );
 
   useEffect(() => {
     load();
@@ -137,6 +95,7 @@ export default function ExpensesPage() {
 
   const currency = resolveCurrency(budget);
   const mKey = monthKey(year, month);
+  const todayKey = toDateKey(now);
 
   const monthExpenses = useMemo(
     () => expenses.filter((e) => inMonth(e.date, mKey)),
@@ -147,70 +106,82 @@ export default function ExpensesPage() {
   const spent = useMemo(() => totalSpent(monthExpenses), [monthExpenses]);
   const net = useMemo(() => netTotal(monthExpenses), [monthExpenses]);
 
-  const status = useMemo(
-    () =>
-      monthStatus(monthExpenses, budget?.monthlyTotal ?? null, {
-        year,
-        month,
-        today: new Date(),
-      }),
-    [monthExpenses, budget, year, month]
-  );
+  // One bucket of income / expense entries per calendar day.
+  const byDay = useMemo(() => {
+    const m = new Map<string, { income: Expense[]; expense: Expense[] }>();
+    for (const e of monthExpenses) {
+      const b = m.get(e.date) ?? { income: [], expense: [] };
+      (e.kind === "income" ? b.income : b.expense).push(e);
+      m.set(e.date, b);
+    }
+    return m;
+  }, [monthExpenses]);
 
-  const byCategory = useMemo(
-    () => spendByCategory(monthExpenses),
-    [monthExpenses]
-  );
-
-  // Account balances use ALL entries (not just this month) for a true current
-  // balance, seeded by each account's opening balance.
   const accounts = useMemo(
     () =>
       ACCOUNTS.map((a) => ({
         key: a,
-        balance: accountBalance(
-          expenses,
-          a,
-          budget?.openingBalances?.[a] ?? 0
-        ),
+        balance: accountBalance(expenses, a, budget?.openingBalances?.[a] ?? 0),
       })),
     [expenses, budget]
   );
   const netWorth = accounts.reduce((s, a) => s + a.balance, 0);
 
-  const rows = useMemo(() => {
-    const withBal = withRunningBalance(monthExpenses);
-    const dir = sort.dir === "asc" ? 1 : -1;
-    return [...withBal].sort((a, b) => {
-      let cmp = 0;
-      switch (sort.key) {
-        case "date":
-          cmp =
-            a.date < b.date ? -1 : a.date > b.date ? 1 : a.createdAt - b.createdAt;
-          break;
-        case "amount":
-          cmp = a.amount - b.amount;
-          break;
-        case "category":
-          cmp = categoryLabel(a.category).localeCompare(categoryLabel(b.category));
-          break;
-        case "account":
-          cmp = a.account.localeCompare(b.account);
-          break;
-        case "kind":
-          cmp = a.kind.localeCompare(b.kind);
-          break;
+  // --- Inline cell mutations (optimistic; resync on error) -------------------
+  async function commitAmount(
+    dateKey: string,
+    kind: EntryKind,
+    entries: Expense[],
+    num: number | null
+  ) {
+    if (!user) return;
+    const existing = entries[0];
+    try {
+      if (num == null) {
+        if (existing) {
+          setExpenses((prev) => prev.filter((x) => x.id !== existing.id));
+          await deleteExpense(existing.id);
+        }
+        return;
       }
-      return cmp * dir;
-    });
-  }, [monthExpenses, sort]);
+      if (existing) {
+        setExpenses((prev) =>
+          prev.map((x) => (x.id === existing.id ? { ...x, amount: num } : x))
+        );
+        await updateExpense(existing.id, { amount: num });
+      } else {
+        const draft = {
+          kind,
+          amount: num,
+          account: newAccount,
+          category: "other",
+          note: null,
+          date: dateKey,
+        };
+        const id = await createExpense(user.uid, draft);
+        setExpenses((prev) => [
+          ...prev,
+          { id, userId: user.uid, createdAt: Date.now(), ...draft },
+        ]);
+      }
+    } catch {
+      await load({ quiet: true });
+    }
+  }
 
-  function toggleSort(key: SortKey) {
-    setSort((s) =>
-      s.key === key
-        ? { key, dir: s.dir === "asc" ? "desc" : "asc" }
-        : { key, dir: key === "date" ? "desc" : "asc" }
+  async function commitNote(entries: Expense[], text: string) {
+    const existing = entries[0];
+    if (!existing) return; // enter an amount first
+    const note = text.trim() || null;
+    if (note === (existing.note ?? null)) return;
+    setExpenses((prev) =>
+      prev.map((x) => (x.id === existing.id ? { ...x, note } : x))
     );
+    try {
+      await updateExpense(existing.id, { note });
+    } catch {
+      await load({ quiet: true });
+    }
   }
 
   function exportCsv(scope: "month" | "all") {
@@ -218,10 +189,6 @@ export default function ExpensesPage() {
     if (data.length === 0) return;
     const name = scope === "month" ? `finance-${mKey}.csv` : "finance-all.csv";
     downloadCsv(name, entriesToCsv(data));
-  }
-
-  function openAdd(kind: EntryKind) {
-    setExpenseForm({ open: true, expense: null, kind });
   }
 
   function prevMonth() {
@@ -238,16 +205,18 @@ export default function ExpensesPage() {
   }
 
   const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
-  const defaultDate = isCurrentMonth ? toDateKey(now) : `${mKey}-01`;
-  const hasBudget = budget?.monthlyTotal != null;
+  const dim = daysInMonth(year, month);
+  const days = Array.from({ length: dim }, (_, i) => i + 1);
+  const budgetCap = budget?.monthlyTotal ?? null;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold md:text-3xl">Finance</h1>
           <p className="text-muted-foreground">
-            Track income, spending, and your balances.
+            Type earned and spent straight into the grid — totals update
+            themselves.
           </p>
         </div>
         <div className="flex gap-2">
@@ -274,21 +243,6 @@ export default function ExpensesPage() {
           >
             <Settings2 className="h-4 w-4" />
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4" /> Add
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => openAdd("expense")}>
-                <TrendingDown className="h-4 w-4" /> Add expense
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => openAdd("income")}>
-                <TrendingUp className="h-4 w-4" /> Add income
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       </div>
 
@@ -317,528 +271,316 @@ export default function ExpensesPage() {
         </div>
       </div>
 
-      {loading ? (
-        <div className="space-y-3">
-          <SkeletonCard lines={3} />
-          <SkeletonCard lines={3} />
-        </div>
-      ) : (
-        <>
-          {/* Earned / Spent / Net — this month */}
-          <div className="grid grid-cols-3 gap-3">
-            <StatTile
-              label="Earned"
-              value={formatAmount(earned, currency)}
-              tone="up"
-              icon={TrendingUp}
-            />
-            <StatTile
-              label="Spent"
-              value={formatAmount(spent, currency)}
-              tone="down"
-              icon={TrendingDown}
-            />
-            <StatTile
-              label="Net"
-              value={formatAmount(net, currency)}
-              tone={net >= 0 ? "up" : "down"}
-              icon={Wallet}
-            />
-          </div>
-
-          {/* Account balances */}
-          <Card>
-            <CardHeader className="flex-row items-center justify-between space-y-0">
-              <CardTitle className="text-base">Accounts</CardTitle>
-              <span className="text-sm text-muted-foreground">
-                Total{" "}
-                <span className="font-semibold text-foreground">
-                  {formatAmount(netWorth, currency)}
-                </span>
-              </span>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-3">
-              {accounts.map((a) => (
-                <div
-                  key={a.key}
-                  className="flex items-center gap-3 rounded-lg border p-3"
-                >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                    {a.key === "safe" ? (
-                      <PiggyBank className="h-4 w-4" />
-                    ) : (
-                      <Wallet className="h-4 w-4" />
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs text-muted-foreground">
-                      {ACCOUNT_LABEL[a.key]}
-                    </p>
-                    <p
-                      className={cn(
-                        "text-lg font-semibold tabular-nums",
-                        a.balance < 0 && "text-destructive"
-                      )}
-                    >
-                      {formatAmount(a.balance, currency)}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          {/* Budget (only if a monthly cap is set) */}
-          {hasBudget && (
-            <Card>
-              <CardContent className="space-y-4 p-5">
-                <div className="flex items-end justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">
-                      Spent {formatAmount(status.spent, currency)} of{" "}
-                      {formatAmount(status.budget ?? 0, currency)}
-                    </p>
-                  </div>
-                  <Badge variant={status.overBudget ? "destructive" : "success"}>
-                    {status.overBudget
-                      ? `${formatAmount(-(status.remaining ?? 0), currency)} over`
-                      : `${formatAmount(status.remaining ?? 0, currency)} left`}
-                  </Badge>
-                </div>
-
-                {status.pctUsed != null && (
-                  <Progress
-                    value={Math.min(100, status.pctUsed)}
-                    indicatorClassName={
-                      status.overBudget
-                        ? "bg-destructive"
-                        : status.pctUsed > 85
-                          ? "bg-amber-500"
-                          : undefined
-                    }
-                  />
-                )}
-
-                <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
-                  {isCurrentMonth && <span>{status.daysRemaining} days left</span>}
-                  {isCurrentMonth && status.daysElapsed > 0 && (
-                    <span>
-                      Projected: {formatAmount(status.projected, currency)}
-                      {status.budget != null &&
-                        status.projected > status.budget &&
-                        " ⚠️"}
-                    </span>
-                  )}
-                </div>
-
-                {status.overBudget && (
-                  <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                    <AlertTriangle className="h-4 w-4 shrink-0" />
-                    You&apos;re over budget this month by{" "}
-                    {formatAmount(-(status.remaining ?? 0), currency)}.
-                  </div>
-                )}
-                {!status.overBudget &&
-                  isCurrentMonth &&
-                  status.budget != null &&
-                  status.projected > status.budget && (
-                    <div className="flex items-center gap-2 rounded-md bg-amber-500/10 p-3 text-sm text-amber-600 dark:text-amber-400">
-                      <AlertTriangle className="h-4 w-4 shrink-0" />
-                      At this pace you&apos;ll finish around{" "}
-                      {formatAmount(status.projected, currency)} — over your{" "}
-                      {formatAmount(status.budget, currency)} budget.
-                    </div>
-                  )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* By category */}
-          {byCategory.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Spending by category</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {byCategory.map((c) => {
-                  const cap = budget?.byCategory?.[c.category] ?? null;
-                  const over = cap != null && c.amount > cap;
-                  const pct =
-                    cap != null && cap > 0
-                      ? Math.min(100, (c.amount / cap) * 100)
-                      : spent > 0
-                        ? (c.amount / spent) * 100
-                        : 0;
-                  return (
-                    <div key={c.category} className="space-y-1">
-                      <div className="flex items-center justify-between text-sm">
-                        <span>{categoryLabel(c.category)}</span>
-                        <span
-                          className={cn(
-                            "text-muted-foreground",
-                            over && "text-destructive"
-                          )}
-                        >
-                          {formatAmount(c.amount, currency)}
-                          {cap != null && ` / ${formatAmount(cap, currency)}`}
-                        </span>
-                      </div>
-                      <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
-                        <div
-                          className="h-full rounded-full"
-                          style={{
-                            width: `${Math.round(pct)}%`,
-                            backgroundColor: over
-                              ? "hsl(var(--destructive))"
-                              : categoryColor(c.category),
-                          }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Entries */}
-          <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-muted-foreground">
-                {monthExpenses.length}{" "}
-                {monthExpenses.length === 1 ? "entry" : "entries"} this month
-              </h2>
-              {monthExpenses.length > 0 && (
-                <div className="flex items-center gap-1 rounded-lg bg-muted p-0.5">
-                  <button
-                    onClick={() => setView("list")}
-                    aria-label="List view"
-                    className={cn(
-                      "rounded-md p-1.5 transition-colors",
-                      view === "list"
-                        ? "bg-background shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    <List className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => setView("table")}
-                    aria-label="Table view"
-                    className={cn(
-                      "rounded-md p-1.5 transition-colors",
-                      view === "table"
-                        ? "bg-background shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    <Table2 className="h-4 w-4" />
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {monthExpenses.length === 0 ? (
-              <Card>
-                <CardContent className="flex flex-col items-center gap-3 p-12 text-center">
-                  <Wallet className="h-8 w-8 text-muted-foreground" />
-                  <p className="font-medium">Nothing logged yet</p>
-                  <p className="max-w-sm text-sm text-muted-foreground">
-                    Add income and expenses to see your net, balances, and where
-                    your money goes.
-                  </p>
-                  <div className="flex gap-2">
-                    <Button onClick={() => openAdd("expense")}>
-                      <Plus className="h-4 w-4" /> Add expense
-                    </Button>
-                    <Button variant="outline" onClick={() => openAdd("income")}>
-                      <Plus className="h-4 w-4" /> Add income
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : view === "table" ? (
-              <TableView
-                rows={rows}
-                currency={currency}
-                sort={sort}
-                onSort={toggleSort}
-                onEdit={(e) =>
-                  setExpenseForm({ open: true, expense: e, kind: e.kind })
-                }
-                onDelete={(e) => setDeleting(e)}
-              />
-            ) : (
-              <Card>
-                <CardContent className="divide-y p-0">
-                  {rows.map((e) => (
-                    <div
-                      key={e.id}
-                      className="animate-fade-slide-in flex items-center gap-3 px-4 py-3"
-                    >
-                      <span
-                        className="h-8 w-1.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: categoryColor(e.category) }}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium">
-                          {e.note || categoryLabel(e.category)}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {categoryLabel(e.category)} · {ACCOUNT_LABEL[e.account]}{" "}
-                          · {e.date}
-                        </p>
-                      </div>
-                      <span
-                        className={cn(
-                          "text-sm font-semibold tabular-nums",
-                          e.kind === "income"
-                            ? "text-emerald-600 dark:text-emerald-400"
-                            : "text-foreground"
-                        )}
-                      >
-                        {e.kind === "income" ? "+" : "−"}
-                        {formatAmount(e.amount, currency)}
-                      </span>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 shrink-0"
-                            aria-label="Entry actions"
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() =>
-                              setExpenseForm({
-                                open: true,
-                                expense: e,
-                                kind: e.kind,
-                              })
-                            }
-                          >
-                            <Pencil className="h-4 w-4" /> Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
-                            onClick={() => setDeleting(e)}
-                          >
-                            <Trash2 className="h-4 w-4" /> Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
+      {/* Compact summary strip */}
+      <Card className="flex flex-wrap items-center gap-x-6 gap-y-2 p-3 text-sm">
+        <span>
+          Earned{" "}
+          <b className="tabular-nums text-emerald-600 dark:text-emerald-400">
+            {formatAmount(earned, currency)}
+          </b>
+        </span>
+        <span>
+          Spent{" "}
+          <b className="tabular-nums text-destructive">
+            {formatAmount(spent, currency)}
+          </b>
+        </span>
+        <span>
+          Net{" "}
+          <b
+            className={cn(
+              "tabular-nums",
+              net >= 0
+                ? "text-emerald-600 dark:text-emerald-400"
+                : "text-destructive"
             )}
-          </section>
-        </>
+          >
+            {formatAmount(net, currency)}
+          </b>
+        </span>
+        {budgetCap != null && (
+          <span className="text-muted-foreground">
+            Budget{" "}
+            <b
+              className={cn(
+                "tabular-nums",
+                spent > budgetCap ? "text-destructive" : "text-foreground"
+              )}
+            >
+              {formatAmount(spent, currency)} / {formatAmount(budgetCap, currency)}
+            </b>
+          </span>
+        )}
+        <span className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-muted-foreground">
+          {accounts.map((a) => (
+            <span key={a.key} className="inline-flex items-center gap-1">
+              {a.key === "safe" ? (
+                <PiggyBank className="h-3.5 w-3.5" />
+              ) : (
+                <Wallet className="h-3.5 w-3.5" />
+              )}
+              {ACCOUNT_LABEL[a.key]}{" "}
+              <b
+                className={cn(
+                  "tabular-nums text-foreground",
+                  a.balance < 0 && "text-destructive"
+                )}
+              >
+                {formatAmount(a.balance, currency)}
+              </b>
+            </span>
+          ))}
+          <span className="inline-flex items-center gap-1.5">
+            New rows →
+            <Select
+              value={newAccount}
+              onValueChange={(v) => setNewAccount(v as AccountKey)}
+            >
+              <SelectTrigger className="h-7 w-[110px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ACCOUNTS.map((a) => (
+                  <SelectItem key={a} value={a}>
+                    {ACCOUNT_LABEL[a]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </span>
+        </span>
+      </Card>
+
+      {loading ? (
+        <SkeletonCard lines={8} />
+      ) : (
+        <Card className="overflow-x-auto p-0">
+          <table className="w-full min-w-[720px] border-collapse text-sm">
+            <thead>
+              <tr className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="px-3 py-2 font-semibold">Date</th>
+                <th className="px-3 py-2 text-right font-semibold text-emerald-600 dark:text-emerald-400">
+                  Earned
+                </th>
+                <th className="px-3 py-2 font-semibold">For…</th>
+                <th className="px-3 py-2 text-right font-semibold text-destructive">
+                  Spent
+                </th>
+                <th className="px-3 py-2 font-semibold">For…</th>
+              </tr>
+            </thead>
+            <tbody>
+              {days.map((day) => {
+                const dateKey = `${mKey}-${String(day).padStart(2, "0")}`;
+                const bucket = byDay.get(dateKey) ?? { income: [], expense: [] };
+                const weekday =
+                  WEEKDAYS_SHORT[new Date(year, month, day).getDay()];
+                const isToday = dateKey === todayKey;
+                const isWeekend = weekday === "Sat" || weekday === "Sun";
+                return (
+                  <tr
+                    key={dateKey}
+                    className={cn(
+                      "border-b last:border-0",
+                      isWeekend && "bg-muted/30",
+                      isToday && "bg-primary/5"
+                    )}
+                  >
+                    <td className="whitespace-nowrap px-3 py-1">
+                      <span className="tabular-nums font-medium">
+                        {day} {MONTHS_SHORT[month]}
+                      </span>
+                      <span className="ml-1.5 text-xs text-muted-foreground">
+                        {weekday}
+                      </span>
+                    </td>
+                    <AmountCell
+                      entries={bucket.income}
+                      tone="income"
+                      onCommit={(num) =>
+                        commitAmount(dateKey, "income", bucket.income, num)
+                      }
+                    />
+                    <NoteCell
+                      entries={bucket.income}
+                      onCommit={(text) => commitNote(bucket.income, text)}
+                    />
+                    <AmountCell
+                      entries={bucket.expense}
+                      tone="expense"
+                      onCommit={(num) =>
+                        commitAmount(dateKey, "expense", bucket.expense, num)
+                      }
+                    />
+                    <NoteCell
+                      entries={bucket.expense}
+                      onCommit={(text) => commitNote(bucket.expense, text)}
+                    />
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 bg-muted/40 font-semibold">
+                <td className="px-3 py-2">Total</td>
+                <td className="px-3 py-2 text-right tabular-nums text-emerald-600 dark:text-emerald-400">
+                  {formatAmount(earned, currency)}
+                </td>
+                <td className="px-3 py-2" />
+                <td className="px-3 py-2 text-right tabular-nums text-destructive">
+                  {formatAmount(spent, currency)}
+                </td>
+                <td className="px-3 py-2 text-right text-muted-foreground">
+                  Net{" "}
+                  <span
+                    className={cn(
+                      "tabular-nums",
+                      net >= 0
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-destructive"
+                    )}
+                  >
+                    {formatAmount(net, currency)}
+                  </span>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </Card>
       )}
 
       {user && (
-        <>
-          <ExpenseFormDialog
-            open={expenseForm.open}
-            onOpenChange={(o) => setExpenseForm((s) => ({ ...s, open: o }))}
-            userId={user.uid}
-            defaultDate={defaultDate}
-            initialKind={expenseForm.kind}
-            expense={expenseForm.expense}
-            onSaved={load}
-          />
-          <BudgetFormDialog
-            open={budgetOpen}
-            onOpenChange={setBudgetOpen}
-            userId={user.uid}
-            budget={budget}
-            onSaved={load}
-          />
-        </>
+        <BudgetFormDialog
+          open={budgetOpen}
+          onOpenChange={setBudgetOpen}
+          userId={user.uid}
+          budget={budget}
+          onSaved={load}
+        />
       )}
-
-      <ConfirmDialog
-        open={Boolean(deleting)}
-        onOpenChange={(o) => !o && setDeleting(null)}
-        title="Delete this entry?"
-        onConfirm={async () => {
-          if (deleting) {
-            await deleteExpense(deleting.id);
-            setDeleting(null);
-            await load();
-          }
-        }}
-      />
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Sortable table view
+// Editable cells
 // ---------------------------------------------------------------------------
-function SortHeader({
-  label,
-  col,
-  sort,
-  onSort,
-  className,
+
+/** Editable amount cell. Empty = no entry; typing a number creates/updates it. */
+function AmountCell({
+  entries,
+  tone,
+  onCommit,
 }: {
-  label: string;
-  col: SortKey;
-  sort: { key: SortKey; dir: "asc" | "desc" };
-  onSort: (k: SortKey) => void;
-  className?: string;
+  entries: Expense[];
+  tone: "income" | "expense";
+  onCommit: (num: number | null) => void;
 }) {
-  const active = sort.key === col;
+  const multiple = entries.length > 1;
+  const value = multiple
+    ? entries.reduce((s, e) => s + e.amount, 0)
+    : entries[0]?.amount ?? null;
+
+  const [draft, setDraft] = useState(value != null ? String(value) : "");
+  const dirty = useRef(false);
+  useEffect(() => {
+    if (!dirty.current) setDraft(value != null ? String(value) : "");
+  }, [value]);
+
+  function commit() {
+    dirty.current = false;
+    const raw = draft.trim();
+    const num = raw === "" ? null : Number(raw);
+    if (num != null && (Number.isNaN(num) || num < 0)) {
+      setDraft(value != null ? String(value) : "");
+      return;
+    }
+    const normalized = num && num > 0 ? Math.round(num * 100) / 100 : null;
+    if (normalized === (value ?? null)) return;
+    onCommit(normalized);
+  }
+
   return (
-    <th className={cn("px-3 py-2 font-medium", className)}>
-      <button
-        onClick={() => onSort(col)}
+    <td className="px-1 py-0.5 text-right">
+      <input
+        type="number"
+        min={0}
+        step="0.01"
+        inputMode="decimal"
+        value={draft}
+        disabled={multiple}
+        title={multiple ? "Multiple entries this day — edit in export/CSV" : undefined}
+        onChange={(e) => {
+          dirty.current = true;
+          setDraft(e.target.value);
+        }}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") {
+            dirty.current = false;
+            setDraft(value != null ? String(value) : "");
+            e.currentTarget.blur();
+          }
+        }}
+        placeholder="—"
         className={cn(
-          "inline-flex items-center gap-1 transition-colors hover:text-foreground",
-          active ? "text-foreground" : "text-muted-foreground"
+          "w-24 rounded bg-transparent px-2 py-1.5 text-right text-sm tabular-nums outline-none transition-colors placeholder:text-muted-foreground/40 focus:bg-accent focus:ring-1 focus:ring-primary disabled:cursor-not-allowed",
+          value != null &&
+            (tone === "income"
+              ? "font-medium text-emerald-600 dark:text-emerald-400"
+              : "font-medium text-destructive")
         )}
-      >
-        {label}
-        <ArrowUpDown className="h-3 w-3" />
-      </button>
-    </th>
+      />
+    </td>
   );
 }
 
-function TableView({
-  rows,
-  currency,
-  sort,
-  onSort,
-  onEdit,
-  onDelete,
+/** Editable description cell — enabled only once the day/kind has an amount. */
+function NoteCell({
+  entries,
+  onCommit,
 }: {
-  rows: (Expense & { balance: number })[];
-  currency: ReturnType<typeof resolveCurrency>;
-  sort: { key: SortKey; dir: "asc" | "desc" };
-  onSort: (k: SortKey) => void;
-  onEdit: (e: Expense) => void;
-  onDelete: (e: Expense) => void;
+  entries: Expense[];
+  onCommit: (text: string) => void;
 }) {
+  const multiple = entries.length > 1;
+  const value = multiple
+    ? `${entries.length} entries`
+    : entries[0]?.note ?? "";
+  const disabled = entries.length === 0 || multiple;
+
+  const [draft, setDraft] = useState(value);
+  const dirty = useRef(false);
+  useEffect(() => {
+    if (!dirty.current) setDraft(value);
+  }, [value]);
+
   return (
-    <Card>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-sm">
-          <thead>
-            <tr className="border-b text-left text-xs">
-              <SortHeader label="Date" col="date" sort={sort} onSort={onSort} />
-              <SortHeader label="Type" col="kind" sort={sort} onSort={onSort} />
-              <SortHeader
-                label="Account"
-                col="account"
-                sort={sort}
-                onSort={onSort}
-              />
-              <SortHeader
-                label="Category"
-                col="category"
-                sort={sort}
-                onSort={onSort}
-              />
-              <th className="px-3 py-2 font-medium text-muted-foreground">
-                Description
-              </th>
-              <SortHeader
-                label="Amount"
-                col="amount"
-                sort={sort}
-                onSort={onSort}
-                className="text-right"
-              />
-              <th className="px-3 py-2 text-right font-medium text-muted-foreground">
-                Running net
-              </th>
-              <th className="w-8 px-2 py-2" />
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {rows.map((e) => (
-              <tr key={e.id} className="hover:bg-accent/40">
-                <td className="whitespace-nowrap px-3 py-2 tabular-nums">
-                  {e.date}
-                </td>
-                <td className="px-3 py-2">
-                  <Badge
-                    variant={e.kind === "income" ? "success" : "secondary"}
-                    className="px-1.5 py-0 text-[10px]"
-                  >
-                    {e.kind === "income" ? "Income" : "Expense"}
-                  </Badge>
-                </td>
-                <td className="px-3 py-2 text-muted-foreground">
-                  {ACCOUNT_LABEL[e.account]}
-                </td>
-                <td className="px-3 py-2">
-                  <span className="inline-flex items-center gap-1.5">
-                    <span
-                      className="h-2 w-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: categoryColor(e.category) }}
-                    />
-                    {categoryLabel(e.category)}
-                  </span>
-                </td>
-                <td className="max-w-[220px] truncate px-3 py-2 text-muted-foreground">
-                  {e.note || "—"}
-                </td>
-                <td
-                  className={cn(
-                    "whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums",
-                    e.kind === "income"
-                      ? "text-emerald-600 dark:text-emerald-400"
-                      : "text-foreground"
-                  )}
-                >
-                  {e.kind === "income" ? "+" : "−"}
-                  {formatAmount(e.amount, currency)}
-                </td>
-                <td
-                  className={cn(
-                    "whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground",
-                    e.balance < 0 && "text-destructive"
-                  )}
-                >
-                  {formatAmount(e.balance, currency)}
-                </td>
-                <td className="px-2 py-2">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        aria-label="Entry actions"
-                      >
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => onEdit(e)}>
-                        <Pencil className="h-4 w-4" /> Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-destructive focus:text-destructive"
-                        onClick={() => onDelete(e)}
-                      >
-                        <Trash2 className="h-4 w-4" /> Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Card>
+    <td className="px-1 py-0.5">
+      <input
+        type="text"
+        value={draft}
+        disabled={disabled}
+        onChange={(e) => {
+          dirty.current = true;
+          setDraft(e.target.value);
+        }}
+        onBlur={() => {
+          dirty.current = false;
+          onCommit(draft);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") {
+            dirty.current = false;
+            setDraft(value);
+            e.currentTarget.blur();
+          }
+        }}
+        placeholder={disabled && entries.length === 0 ? "" : "add note"}
+        className="w-full min-w-[120px] rounded bg-transparent px-2 py-1.5 text-sm outline-none transition-colors placeholder:text-muted-foreground/40 focus:bg-accent focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:text-muted-foreground"
+      />
+    </td>
   );
 }
