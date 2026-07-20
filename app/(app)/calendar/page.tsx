@@ -1,48 +1,105 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Loader2, CalendarDays } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
-import { getSessions, getTasks } from "@/lib/firebase/db";
+import {
+  getSessions,
+  getTasks,
+  getDailyHabits,
+  getHabitLogs,
+  getSleepLogs,
+  getGoals,
+} from "@/lib/firebase/db";
 import { toDateKey } from "@/lib/greeting";
-import { sessionColor, rangeLabel } from "@/lib/sessions";
+import { addDays } from "@/lib/habits";
 import {
   monthGrid,
   isInMonth,
   dayNum,
   formatMonthYear,
   formatLongDate,
+  formatWeekRange,
+  startOfWeekKey,
   WEEKDAYS_SHORT,
 } from "@/lib/dates";
-import { Button } from "@/components/ui/button";
+import {
+  buildCalData,
+  dayView,
+  dayHasContent,
+  CAL_ELEMENTS,
+  DEFAULT_TOGGLES,
+  type CalToggles,
+  type CalElement,
+} from "@/lib/calendar";
+import { sessionColor } from "@/lib/sessions";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { DayAgenda } from "@/components/calendar/day-agenda";
 import { cn } from "@/lib/utils";
-import { PRIORITY_VARIANT, PRIORITY_LABEL } from "@/lib/labels";
-import type { Session, Task } from "@/lib/types";
+import type { Goal, Habit, HabitLog, Session, SleepLog, Task } from "@/lib/types";
+
+const TOGGLES_KEY = "lifeos:calendar:toggles";
+type ViewMode = "month" | "week";
 
 export default function CalendarPage() {
   const { user } = useAuth();
   const today = toDateKey(new Date());
-  const now = new Date();
 
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth());
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [view, setView] = useState<ViewMode>("month");
+  const [cursor, setCursor] = useState(today); // focus date
+  const [selected, setSelected] = useState(today);
+  const [toggles, setToggles] = useState<CalToggles>(DEFAULT_TOGGLES);
+
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [dailyHabits, setDailyHabits] = useState<Habit[]>([]);
+  const [habitLogs, setHabitLogs] = useState<HabitLog[]>([]);
+  const [sleep, setSleep] = useState<SleepLog[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<string>(today);
+
+  // Restore toggle preferences.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(TOGGLES_KEY);
+      if (raw) setToggles({ ...DEFAULT_TOGGLES, ...JSON.parse(raw) });
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  function toggle(key: CalElement) {
+    setToggles((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      try {
+        localStorage.setItem(TOGGLES_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
 
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     try {
-      const [t, s] = await Promise.all([
-        getTasks(user.uid),
+      const [se, t, h, hl, sl, g] = await Promise.all([
         getSessions(user.uid),
+        getTasks(user.uid),
+        getDailyHabits(user.uid),
+        getHabitLogs(user.uid),
+        getSleepLogs(user.uid),
+        getGoals(user.uid),
       ]);
+      setSessions(se);
       setTasks(t);
-      setSessions(s);
+      setDailyHabits(h);
+      setHabitLogs(hl);
+      setSleep(sl);
+      setGoals(g);
     } finally {
       setLoading(false);
     }
@@ -52,84 +109,114 @@ export default function CalendarPage() {
     load();
   }, [load]);
 
-  // Map due-date → tasks with a due date.
-  const tasksByDate = useMemo(() => {
-    const map = new Map<string, Task[]>();
-    for (const t of tasks) {
-      if (!t.dueDate) continue;
-      const arr = map.get(t.dueDate) ?? [];
-      arr.push(t);
-      map.set(t.dueDate, arr);
-    }
-    return map;
-  }, [tasks]);
+  const data = useMemo(
+    () =>
+      buildCalData({
+        sessions,
+        tasks,
+        dailyHabits,
+        habitLogs,
+        sleep,
+        goals,
+      }),
+    [sessions, tasks, dailyHabits, habitLogs, sleep, goals]
+  );
 
-  const sessionsByDate = useMemo(() => {
-    const map = new Map<string, Session[]>();
-    for (const s of sessions) {
-      const arr = map.get(s.date) ?? [];
-      arr.push(s);
-      map.set(s.date, arr);
-    }
-    return map;
-  }, [sessions]);
-
+  const cursorDate = new Date(cursor + "T00:00:00");
+  const year = cursorDate.getFullYear();
+  const month = cursorDate.getMonth();
   const grid = useMemo(() => monthGrid(year, month), [year, month]);
-  const selectedTasks = tasksByDate.get(selected) ?? [];
-  const selectedSessions = sessionsByDate.get(selected) ?? [];
+  const weekStart = startOfWeekKey(cursor);
+  const weekDates = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
+    [weekStart]
+  );
 
-  function prevMonth() {
-    setMonth((m) => (m === 0 ? 11 : m - 1));
-    if (month === 0) setYear((y) => y - 1);
+  function navigate(dir: -1 | 1) {
+    if (view === "month") {
+      const d = new Date(year, month + dir, 1);
+      setCursor(toDateKey(d));
+    } else {
+      setCursor(addDays(weekStart, dir * 7));
+    }
   }
-  function nextMonth() {
-    setMonth((m) => (m === 11 ? 0 : m + 1));
-    if (month === 11) setYear((y) => y + 1);
-  }
+
   function goToday() {
-    setYear(now.getFullYear());
-    setMonth(now.getMonth());
+    setCursor(today);
     setSelected(today);
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="mx-auto max-w-4xl space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold md:text-3xl">Calendar</h1>
-          <p className="text-muted-foreground">Your tasks by due date.</p>
+          <p className="text-muted-foreground">
+            Your whole life in one view.
+          </p>
         </div>
-        <Button variant="outline" size="sm" onClick={goToday}>
-          Today
+        <div className="flex items-center gap-1 rounded-lg border p-0.5">
+          {(["month", "week"] as ViewMode[]).map((v) => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              className={cn(
+                "rounded-md px-3 py-1 text-sm font-medium capitalize transition-colors",
+                view === v
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Toggles */}
+      <div className="flex flex-wrap gap-1.5">
+        {CAL_ELEMENTS.map((el) => (
+          <button
+            key={el.key}
+            onClick={() => toggle(el.key)}
+            className={cn(
+              "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+              toggles[el.key]
+                ? "border-primary/40 bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-accent"
+            )}
+          >
+            {el.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Nav */}
+      <div className="flex items-center justify-between">
+        <Button variant="outline" size="icon" aria-label="Previous" onClick={() => navigate(-1)}>
+          <ChevronLeft className="h-4 w-4" />
         </Button>
+        <p className="font-medium">
+          {view === "month"
+            ? formatMonthYear(year, month)
+            : formatWeekRange(weekStart)}
+        </p>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={goToday}>
+            Today
+          </Button>
+          <Button variant="outline" size="icon" aria-label="Next" onClick={() => navigate(1)}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {loading ? (
         <div className="flex h-40 items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      ) : (
+      ) : view === "month" ? (
         <>
-          <div className="flex items-center justify-between">
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Previous month"
-              onClick={prevMonth}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <p className="font-medium">{formatMonthYear(year, month)}</p>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Next month"
-              onClick={nextMonth}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-
           <Card>
             <CardContent className="p-2 sm:p-4">
               <div className="grid grid-cols-7 gap-1">
@@ -143,58 +230,60 @@ export default function CalendarPage() {
                 ))}
                 {grid.flat().map((key) => {
                   const inMonth = isInMonth(key, year, month);
-                  const dayTasks = tasksByDate.get(key) ?? [];
-                  const openCount = dayTasks.filter(
-                    (t) => t.status !== "done"
-                  ).length;
+                  const dv = dayView(data, key);
                   const isToday = key === today;
                   const isSelected = key === selected;
+                  const openTasks = toggles.tasks
+                    ? dv.tasks.filter((t) => t.status !== "done").length
+                    : 0;
                   return (
                     <button
                       key={key}
                       onClick={() => setSelected(key)}
                       className={cn(
-                        "flex min-h-[52px] flex-col items-center rounded-md border p-1 text-sm transition-colors sm:min-h-[64px]",
+                        "flex min-h-[54px] flex-col items-center gap-1 rounded-md border p-1 text-sm transition-colors sm:min-h-[68px]",
                         inMonth
                           ? "hover:border-primary/50"
                           : "text-muted-foreground/40",
-                        isSelected && "border-primary bg-primary/5",
-                        !isSelected && "border-transparent"
+                        isSelected
+                          ? "border-primary bg-primary/5"
+                          : "border-transparent"
                       )}
                     >
                       <span
                         className={cn(
                           "flex h-6 w-6 items-center justify-center rounded-full text-xs",
-                          isToday && "bg-primary font-semibold text-primary-foreground"
+                          isToday &&
+                            "bg-primary font-semibold text-primary-foreground"
                         )}
                       >
                         {dayNum(key)}
                       </span>
-                      {dayTasks.length > 0 && (
-                        <span
-                          className={cn(
-                            "mt-1 rounded-full px-1.5 text-[10px] font-medium",
-                            openCount > 0
-                              ? "bg-primary/15 text-primary"
-                              : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                      <div className="flex flex-wrap items-center justify-center gap-0.5">
+                        {toggles.goals &&
+                          dv.goalDeadlines.length > 0 && (
+                            <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
                           )}
-                        >
-                          {openCount > 0 ? openCount : "✓"}
-                        </span>
-                      )}
-                      {(sessionsByDate.get(key) ?? []).length > 0 && (
-                        <span className="mt-1 flex items-center gap-0.5">
-                          {(sessionsByDate.get(key) ?? [])
-                            .slice(0, 4)
-                            .map((s) => (
-                              <span
-                                key={s.id}
-                                className="h-1.5 w-1.5 rounded-full"
-                                style={{ backgroundColor: sessionColor(s) }}
-                              />
-                            ))}
-                        </span>
-                      )}
+                        {toggles.sleep && dv.sleep && (
+                          <span className="h-1.5 w-1.5 rounded-full bg-indigo-400" />
+                        )}
+                        {toggles.habits && dv.habitsDone > 0 && (
+                          <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
+                        )}
+                        {toggles.sessions &&
+                          dv.sessions.slice(0, 3).map((s) => (
+                            <span
+                              key={s.id}
+                              className="h-1.5 w-1.5 rounded-full"
+                              style={{ backgroundColor: sessionColor(s) }}
+                            />
+                          ))}
+                        {openTasks > 0 && (
+                          <span className="rounded-full bg-primary/15 px-1 text-[10px] font-medium text-primary">
+                            {openTasks}
+                          </span>
+                        )}
+                      </div>
                     </button>
                   );
                 })}
@@ -202,83 +291,51 @@ export default function CalendarPage() {
             </CardContent>
           </Card>
 
-          {/* Selected day's schedule + tasks */}
+          {/* Selected day detail */}
           <section className="space-y-2">
             <h2 className="text-sm font-semibold text-muted-foreground">
               {formatLongDate(selected)}
             </h2>
-            {selectedSessions.length > 0 && (
-              <Card>
-                <CardContent className="divide-y p-0">
-                  {selectedSessions.map((s) => (
-                    <div key={s.id} className="flex items-center gap-3 px-4 py-3">
-                      <span
-                        className="h-8 w-1.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: sessionColor(s) }}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p
-                          className={cn(
-                            "text-sm",
-                            s.status === "skipped" &&
-                              "text-muted-foreground line-through"
-                          )}
-                        >
-                          {s.title}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {rangeLabel(s.startMin, s.endMin)}
-                        </p>
-                      </div>
-                      {s.status === "done" && s.quality != null && (
-                        <Badge variant="outline">{s.quality}/10</Badge>
-                      )}
-                      {s.status === "done" && s.quality == null && (
-                        <Badge variant="success">Done</Badge>
-                      )}
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
-            {selectedTasks.length === 0 && selectedSessions.length > 0 ? null : selectedTasks.length === 0 ? (
-              <Card>
-                <CardContent className="flex flex-col items-center gap-2 p-8 text-center">
-                  <CalendarDays className="h-7 w-7 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">
-                    No tasks due this day.
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card>
-                <CardContent className="divide-y p-0">
-                  {selectedTasks.map((t) => (
-                    <div
-                      key={t.id}
-                      className="flex items-center justify-between gap-3 px-4 py-3"
-                    >
-                      <span
-                        className={cn(
-                          "text-sm",
-                          t.status === "done" &&
-                            "text-muted-foreground line-through"
-                        )}
-                      >
-                        {t.title}
-                      </span>
-                      {t.status !== "done" && (
-                        <Badge variant={PRIORITY_VARIANT[t.priority]}>
-                          {PRIORITY_LABEL[t.priority]}
-                        </Badge>
-                      )}
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
+            <Card>
+              <CardContent className="p-4">
+                <DayAgenda day={dayView(data, selected)} toggles={toggles} />
+              </CardContent>
+            </Card>
           </section>
         </>
+      ) : (
+        // Week view — an agenda card per day.
+        <div className="space-y-3">
+          {weekDates.map((key) => {
+            const dv = dayView(data, key);
+            const isToday = key === today;
+            return (
+              <Card
+                key={key}
+                className={cn(isToday && "border-primary/50")}
+              >
+                <CardContent className="p-4">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span
+                      className={cn(
+                        "text-sm font-semibold",
+                        isToday && "text-primary"
+                      )}
+                    >
+                      {formatLongDate(key)}
+                    </span>
+                    {isToday && <Badge variant="default">Today</Badge>}
+                  </div>
+                  {dayHasContent(dv, toggles) ? (
+                    <DayAgenda day={dv} toggles={toggles} />
+                  ) : (
+                    <p className="text-sm text-muted-foreground/60">—</p>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
       )}
     </div>
   );

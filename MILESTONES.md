@@ -522,3 +522,40 @@ Follow-up hardening for Milestone 11 from the adversarial review:
 - Deleting a meal now cascade-deletes its meal-plan entries (no dangling docs).
 - The per-week shopping-check fetch is guarded against out-of-order responses,
   and the meal library/plan load once per user instead of on every week change.
+
+---
+
+## Milestone 13 — Smart Calendar
+
+**Purpose.** The finale: one calendar that shows your *entire* Life OS at a
+glance, instead of five separate screens. This is the Smart Calendar spec — not
+just appointments, but everything, customizable.
+
+**How it works.**
+- Pure aggregation over existing data (sessions, tasks, sleep, daily habits +
+  logs, and goal deadlines) — **no new collection or rules**. It replaces the
+  earlier basic calendar at `/calendar`.
+- Everything is joined **per day** into a single view model, with session
+  overlaps flagged as conflicts.
+- **Toggles** let you show/hide each element type (Sessions, Tasks, Habits,
+  Sleep, Deadlines); your choice is saved in the browser so the calendar always
+  opens the way you like it.
+
+**Features.**
+- **Two views**: a **Month** grid with color-coded indicators per day (session
+  category dots, a red deadline dot, an indigo sleep dot, an orange habits dot,
+  and an open-task count) — click any day for its full agenda; and a **Week**
+  view showing an agenda card per day.
+- **Color-coded, unified agenda** per day: goal deadlines with countdowns, sleep
+  with quality, time-ordered sessions (with ⚠ on overlaps), tasks due with
+  priority, and habits completed.
+- Month/Week navigation, a **Today** jump, and element toggles that persist.
+
+**How to use.**
+1. Open **Calendar**. Use the **Month / Week** switch and the toggle chips to
+   show exactly what you care about (e.g. hide everything but Sessions for a
+   focused study view).
+2. In Month view, click a day to see its full agenda below; in Week view, scan
+   all seven days at once.
+3. Watch for ⚠ overlap flags on sessions and the countdown badges on goal
+   deadlines to plan around conflicts and due dates.
