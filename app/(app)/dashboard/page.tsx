@@ -16,6 +16,7 @@ import {
   Bell,
   ChevronRight,
   ChevronDown,
+  CalendarCheck,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -29,8 +30,8 @@ import {
   toggleHabitLog,
   upsertNutritionLog,
 } from "@/lib/firebase/db";
-import { greetingFor, nameFromEmail, toDateKey } from "@/lib/greeting";
-import { habitStateFromDates } from "@/lib/habits";
+import { greetingFor, resolveFirstName, toDateKey } from "@/lib/greeting";
+import { habitStateFromDates, lastNDays } from "@/lib/habits";
 import { sessionColor, rangeLabel } from "@/lib/sessions";
 import { formatHours } from "@/lib/sleep";
 import { DEFAULT_WATER_TARGET, hydrationRating } from "@/lib/nutrition";
@@ -46,10 +47,19 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { CollapsibleSection } from "@/components/collapsible-section";
+import { NameSetup } from "@/components/name-setup";
 import { TaskRow } from "@/components/tasks/task-row";
 import { HabitRow } from "@/components/habits/habit-row";
 import { cn } from "@/lib/utils";
 import type { Goal, Habit, Session, SleepLog, Task } from "@/lib/types";
+
+const NUDGE_EMOJI: Record<string, string> = {
+  session: EMOJI.sessions,
+  tasks: EMOJI.tasks,
+  sleep: EMOJI.sleep,
+  habits: EMOJI.habits,
+  water: EMOJI.water,
+};
 
 function StatTile({
   emoji,
@@ -96,7 +106,7 @@ function StatTile({
 }
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, displayName } = useAuth();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
   const [logDatesByHabit, setLogDatesByHabit] = useState<
@@ -174,7 +184,8 @@ export default function DashboardPage() {
   }
 
   const greeting = greetingFor(new Date().getHours());
-  const name = nameFromEmail(user?.email);
+  const name = resolveFirstName(displayName, user?.email);
+  const isMonday = new Date().getDay() === 1;
 
   const avgProgress =
     goals.length > 0
@@ -185,6 +196,29 @@ export default function DashboardPage() {
   const habitsDoneToday = habits.filter((h) =>
     (logDatesByHabit[h.id] ?? []).includes(today)
   ).length;
+
+  // Sleep trend: last night vs the 7-day average.
+  const sleep7 = useMemo(() => {
+    const cutoff = lastNDays(today, 7)[0];
+    const recent = sleepLogs.filter((s) => s.date >= cutoff);
+    if (recent.length === 0) return null;
+    return recent.reduce((s, l) => s + l.hours, 0) / recent.length;
+  }, [sleepLogs, today]);
+  const sleepTrend =
+    lastNight && sleep7 != null
+      ? Math.round((lastNight.hours - sleep7) * 10) / 10
+      : null;
+
+  // Last-7-days daily-habit completion ratio per day (oldest → newest).
+  const habitStrip = useMemo(() => {
+    if (habits.length === 0) return [];
+    return lastNDays(today, 7).map((d) => {
+      const done = habits.filter((h) =>
+        (logDatesByHabit[h.id] ?? []).includes(d)
+      ).length;
+      return { date: d, ratio: done / habits.length, done };
+    });
+  }, [habits, logDatesByHabit, today]);
 
   const priorityRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
   const focusTasks = tasks
@@ -244,6 +278,9 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, today]);
 
+  const spotlight = nudges[0] ?? null;
+  const attention = nudges.slice(1);
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -266,16 +303,64 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* Needs your attention */}
-      {nudges.length > 0 && (
+      {/* One-time name prompt */}
+      {!displayName && <NameSetup />}
+
+      {/* Monday weekly-recap nudge */}
+      {isMonday && (
+        <Link href="/review" className="block">
+          <Card className="card-interactive border-primary/30">
+            <CardContent className="flex items-center gap-3 p-4">
+              <CalendarCheck className="h-5 w-5 shrink-0 text-primary" />
+              <div className="flex-1">
+                <p className="text-sm font-medium">It&apos;s Monday — review last week</p>
+                <p className="text-xs text-muted-foreground">
+                  Reflect on wins, blockers, and set this week&apos;s focus.
+                </p>
+              </div>
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+      )}
+
+      {/* Spotlight — the single most relevant thing right now */}
+      {spotlight && (
+        <Link href={spotlight.href} className="block">
+          <Card className="card-interactive border-primary/40 bg-gradient-to-br from-primary/15 via-card to-card">
+            <CardContent className="flex items-center gap-4 p-5">
+              <span className="text-3xl leading-none">
+                {NUDGE_EMOJI[spotlight.id] ?? "⭐"}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-primary/80">
+                  Right now
+                </p>
+                <p className="text-lg font-semibold leading-tight">
+                  {spotlight.title}
+                </p>
+                {spotlight.detail && (
+                  <p className="text-sm text-muted-foreground">
+                    {spotlight.detail}
+                  </p>
+                )}
+              </div>
+              <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+      )}
+
+      {/* Everything else that needs attention */}
+      {attention.length > 0 && (
         <Card>
           <CardContent className="p-0">
             <div className="flex items-center gap-2 border-b px-5 py-3">
               <Bell className="h-4 w-4 text-primary" />
-              <span className="text-sm font-semibold">Needs your attention</span>
+              <span className="text-sm font-semibold">Also today</span>
             </div>
             <div className="divide-y">
-              {nudges.map((n) => (
+              {attention.map((n) => (
                 <Link
                   key={n.id}
                   href={n.href}
@@ -373,7 +458,13 @@ export default function DashboardPage() {
 
         <StatTile
           emoji={EMOJI.sleep}
-          label="Last night"
+          label={
+            sleepTrend != null && sleepTrend !== 0
+              ? `Last night · ${sleepTrend > 0 ? "↑" : "↓"} ${Math.abs(
+                  sleepTrend
+                )}h vs avg`
+              : "Last night"
+          }
           value={lastNight ? formatHours(lastNight.hours) : "—"}
         >
           {sleepLogs.length === 0 ? (
@@ -553,19 +644,45 @@ export default function DashboardPage() {
               </Button>
             </div>
           ) : (
-            <div className="divide-y rounded-lg border">
-              {habits.map((h) => (
-                <HabitRow
-                  key={h.id}
-                  habit={h}
-                  state={habitStateFromDates(
-                    logDatesByHabit[h.id] ?? [],
-                    today
-                  )}
-                  onToggle={(done) => handleHabitToggle(h.id, done)}
-                  showWeek={false}
-                />
-              ))}
+            <div className="space-y-3">
+              {/* Last 7 days at a glance */}
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Last 7 days</span>
+                <div className="flex gap-1">
+                  {habitStrip.map((d) => (
+                    <span
+                      key={d.date}
+                      title={`${d.date}: ${d.done}/${habits.length}`}
+                      className={cn(
+                        "h-5 w-5 rounded",
+                        d.ratio === 0 && "bg-muted"
+                      )}
+                      style={
+                        d.ratio > 0
+                          ? {
+                              backgroundColor: "hsl(var(--primary))",
+                              opacity: 0.25 + d.ratio * 0.75,
+                            }
+                          : undefined
+                      }
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="divide-y rounded-lg border">
+                {habits.map((h) => (
+                  <HabitRow
+                    key={h.id}
+                    habit={h}
+                    state={habitStateFromDates(
+                      logDatesByHabit[h.id] ?? [],
+                      today
+                    )}
+                    onToggle={(done) => handleHabitToggle(h.id, done)}
+                    showWeek={false}
+                  />
+                ))}
+              </div>
             </div>
           )}
         </CollapsibleSection>

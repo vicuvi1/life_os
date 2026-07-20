@@ -7,7 +7,7 @@ import { Rocket, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_SECTIONS, NAV_FOOTER } from "@/lib/nav";
 import { useAuth } from "@/components/auth-provider";
-import { nameFromEmail } from "@/lib/greeting";
+import { resolveFirstName } from "@/lib/greeting";
 
 function NavLink({
   href,
@@ -41,7 +41,7 @@ function NavLink({
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { user } = useAuth();
+  const { user, displayName } = useAuth();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -113,9 +113,16 @@ export function Sidebar() {
         {user && (
           <div className="mt-1 flex items-center gap-2.5 rounded-lg px-3 py-2">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
-              {nameFromEmail(user.email).charAt(0)}
+              {resolveFirstName(displayName, user.email).charAt(0).toUpperCase()}
             </div>
-            <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+            <div className="min-w-0 leading-tight">
+              <p className="truncate text-sm font-medium">
+                {resolveFirstName(displayName, user.email)}
+              </p>
+              <p className="truncate text-xs text-muted-foreground">
+                {user.email}
+              </p>
+            </div>
           </div>
         )}
       </div>

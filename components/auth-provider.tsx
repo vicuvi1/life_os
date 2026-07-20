@@ -12,27 +12,33 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut as fbSignOut,
+  updateProfile,
   type User,
 } from "firebase/auth";
 import { auth } from "@/lib/firebase/config";
 
 interface AuthContextValue {
   user: User | null;
+  /** The user's display name, tracked separately so edits re-render reliably. */
+  displayName: string | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  updateName: (name: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
+      setDisplayName(u?.displayName ?? null);
       setLoading(false);
     });
     return () => unsub();
@@ -40,6 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value: AuthContextValue = {
     user,
+    displayName,
     loading,
     signIn: async (email, password) => {
       await signInWithEmailAndPassword(auth, email, password);
@@ -49,6 +56,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     signOut: async () => {
       await fbSignOut(auth);
+    },
+    updateName: async (name) => {
+      if (!auth.currentUser) return;
+      const trimmed = name.trim();
+      await updateProfile(auth.currentUser, { displayName: trimmed });
+      setDisplayName(trimmed);
     },
   };
 

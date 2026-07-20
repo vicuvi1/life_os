@@ -14,6 +14,16 @@ export function nameFromEmail(email?: string | null): string {
   return first ? first.charAt(0).toUpperCase() + first.slice(1) : "there";
 }
 
+/** Prefer a set display name (first word); fall back to the email-derived name. */
+export function resolveFirstName(
+  displayName?: string | null,
+  email?: string | null
+): string {
+  const dn = (displayName ?? "").trim();
+  if (dn) return dn.split(/\s+/)[0];
+  return nameFromEmail(email);
+}
+
 /** Local YYYY-MM-DD string for the given date (used for habit_logs.completed_date). */
 export function toDateKey(d: Date): string {
   const y = d.getFullYear();

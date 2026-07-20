@@ -465,6 +465,31 @@ modular workspace — while keeping the violet-on-black identity.
 
 ---
 
+## Polish pass — personal touches (low-effort tier)
+
+**Purpose.** Small changes that change the whole tone — make it feel personal,
+alive, and less like a static dashboard.
+
+**What changed.**
+- **Real name**: set a first name once (a one-time prompt on the dashboard, or
+  Settings → Account → Name). Greetings and the sidebar now say "Good
+  afternoon, Victor" instead of your email handle. Stored on your Firebase Auth
+  profile — no new collection.
+- **One thing highlighted, not four equal boxes**: a **Spotlight** card surfaces
+  the single most relevant thing right now (next session, tasks left, log sleep,
+  water) larger than everything else; the rest drop into a smaller "Also today"
+  list.
+- **Feels alive over time**:
+  - a **trend arrow** on the sleep tile ("7.2h ↑ 1.1h vs avg"),
+  - a **last-7-days habit strip** — seven squares showing your completion
+    pattern at a glance, more motivating than a lone streak number.
+- **Weekly recap surfaced on Monday**: on Mondays the dashboard shows a prompt
+  to run your weekly review, instead of it being buried in the nav.
+- Time-of-day greeting + icon (🌅/☀️/🌆/🌙) and "Today's Focus" already hide
+  completed items rather than showing a checked-off list.
+
+---
+
 ## Milestone 11 — Meal Prep + Shopping List
 
 **Purpose.** Kill the daily "what should I eat?" decision and the time wasted at

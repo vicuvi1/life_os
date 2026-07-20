@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { NotificationsCard } from "@/components/settings/notifications-card";
+import { ProfileNameField } from "@/components/settings/profile-name";
 import { useAuth } from "@/components/auth-provider";
 
 export default function SettingsPage() {
@@ -29,14 +30,17 @@ export default function SettingsPage() {
         <CardHeader>
           <CardTitle className="text-base">Account</CardTitle>
         </CardHeader>
-        <CardContent className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium">Signed in as</p>
-            <p className="text-sm text-muted-foreground">{user?.email}</p>
+        <CardContent className="space-y-4">
+          <ProfileNameField />
+          <div className="flex items-center justify-between border-t pt-4">
+            <div>
+              <p className="text-sm font-medium">Signed in as</p>
+              <p className="text-sm text-muted-foreground">{user?.email}</p>
+            </div>
+            <Button variant="outline" onClick={handleLogout}>
+              Log out
+            </Button>
           </div>
-          <Button variant="outline" onClick={handleLogout}>
-            Log out
-          </Button>
         </CardContent>
       </Card>
 
