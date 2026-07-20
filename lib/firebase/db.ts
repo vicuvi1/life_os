@@ -23,6 +23,7 @@ import {
   type HabitLog,
   type Project,
   type Session,
+  type SleepLog,
   type Task,
   type WeeklyReview,
 } from "@/lib/types";
@@ -588,4 +589,63 @@ export async function updateSession(
 
 export async function deleteSession(id: string): Promise<void> {
   await deleteDoc(doc(db, COLLECTIONS.sessions, id));
+}
+
+// ---------------------------------------------------------------------------
+// Sleep logs (one per night, keyed by wake date)
+// ---------------------------------------------------------------------------
+function mapSleepLog(snap: QueryDocumentSnapshot<DocumentData>): SleepLog {
+  const d = snap.data();
+  return {
+    id: snap.id,
+    userId: d.userId,
+    date: d.date,
+    hours: d.hours ?? 0,
+    quality: d.quality ?? 0,
+    notes: d.notes ?? null,
+    createdAt: toMillis(d.createdAt),
+  };
+}
+
+export async function getSleepLogs(userId: string): Promise<SleepLog[]> {
+  const q = query(
+    collection(db, COLLECTIONS.sleepLogs),
+    where("userId", "==", userId)
+  );
+  const snap = await getDocs(q);
+  return snap.docs
+    .map(mapSleepLog)
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+}
+
+export async function getSleepLog(
+  userId: string,
+  date: string
+): Promise<SleepLog | null> {
+  const ref = doc(db, COLLECTIONS.sleepLogs, `${userId}_${date}`);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return null;
+  return mapSleepLog(snap as QueryDocumentSnapshot<DocumentData>);
+}
+
+export type SleepLogInput = Pick<SleepLog, "hours" | "quality" | "notes">;
+
+export async function upsertSleepLog(
+  userId: string,
+  date: string,
+  input: SleepLogInput
+): Promise<void> {
+  const ref = doc(db, COLLECTIONS.sleepLogs, `${userId}_${date}`);
+  await setDoc(
+    ref,
+    { userId, date, ...input, createdAt: serverTimestamp() },
+    { merge: true }
+  );
+}
+
+export async function deleteSleepLog(
+  userId: string,
+  date: string
+): Promise<void> {
+  await deleteDoc(doc(db, COLLECTIONS.sleepLogs, `${userId}_${date}`));
 }

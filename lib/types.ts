@@ -124,6 +124,16 @@ export interface Session {
   createdAt: number;
 }
 
+export interface SleepLog {
+  id: string;
+  userId: string;
+  date: string; // the morning you woke up (YYYY-MM-DD)
+  hours: number; // e.g. 7.5
+  quality: number; // 1-10
+  notes: string | null;
+  createdAt: number;
+}
+
 /** Firestore collection names, centralized to avoid typos. */
 export const COLLECTIONS = {
   goals: "goals",
@@ -133,4 +143,5 @@ export const COLLECTIONS = {
   habitLogs: "habitLogs",
   weeklyReviews: "weeklyReviews",
   sessions: "sessions",
+  sleepLogs: "sleepLogs",
 } as const;

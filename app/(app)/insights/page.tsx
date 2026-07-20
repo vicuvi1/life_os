@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Flame,
   TrendingUp,
+  Moon,
   Loader2,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
@@ -14,14 +15,16 @@ import {
   getTasks,
   getHabits,
   getHabitLogs,
+  getSleepLogs,
 } from "@/lib/firebase/db";
 import { toDateKey } from "@/lib/greeting";
 import { addDays } from "@/lib/habits";
+import { averageHours, formatHours } from "@/lib/sleep";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { HabitHeatmap } from "@/components/insights/habit-heatmap";
 import { cn } from "@/lib/utils";
-import type { Goal, Habit, HabitLog, Task } from "@/lib/types";
+import type { Goal, Habit, HabitLog, SleepLog, Task } from "@/lib/types";
 
 function StatCard({
   icon: Icon,
@@ -58,22 +61,25 @@ export default function InsightsPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
   const [logs, setLogs] = useState<HabitLog[]>([]);
+  const [sleepLogs, setSleepLogs] = useState<SleepLog[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     try {
-      const [g, t, h, l] = await Promise.all([
+      const [g, t, h, l, s] = await Promise.all([
         getGoals(user.uid),
         getTasks(user.uid),
         getHabits(user.uid),
         getHabitLogs(user.uid),
+        getSleepLogs(user.uid),
       ]);
       setGoals(g);
       setTasks(t);
       setHabits(h);
       setLogs(l);
+      setSleepLogs(s);
     } finally {
       setLoading(false);
     }
@@ -110,6 +116,10 @@ export default function InsightsPage() {
 
     const bestStreak = habits.reduce((m, h) => Math.max(m, h.bestStreak), 0);
 
+    const weekCutoff = addDays(today, -6);
+    const recentSleep = sleepLogs.filter((s) => s.date >= weekCutoff);
+    const avgSleep = averageHours(recentSleep);
+
     return {
       activeGoals: activeGoals.length,
       avgProgress,
@@ -118,8 +128,23 @@ export default function InsightsPage() {
       taskRate,
       habitRate,
       bestStreak,
+      avgSleep,
     };
-  }, [goals, tasks, habits, logs, today]);
+  }, [goals, tasks, habits, logs, sleepLogs, today]);
+
+  // Sleep hours per night, last 14 days.
+  const sleepBars = useMemo(() => {
+    const days = Array.from({ length: 14 }, (_, i) => addDays(today, -13 + i));
+    const byDate = new Map(sleepLogs.map((s) => [s.date, s.hours]));
+    return days.map((d) => {
+      const hours = byDate.get(d) ?? 0;
+      return {
+        date: d,
+        hours,
+        pct: Math.round((Math.min(hours, 10) / 10) * 100),
+      };
+    });
+  }, [sleepLogs, today]);
 
   // Tasks completed per day, last 14 days.
   const taskBars = useMemo(() => {
@@ -166,7 +191,7 @@ export default function InsightsPage() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
           icon={Target}
           label="Avg goal progress"
@@ -189,6 +214,11 @@ export default function InsightsPage() {
           icon={Flame}
           label="Best streak"
           value={`${stats.bestStreak}d`}
+        />
+        <StatCard
+          icon={Moon}
+          label="Avg sleep (7d)"
+          value={stats.avgSleep > 0 ? formatHours(stats.avgSleep) : "—"}
         />
       </div>
 
@@ -217,6 +247,44 @@ export default function InsightsPage() {
               </div>
             ))}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Sleep chart */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Sleep · last 14 nights</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {sleepLogs.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Log your sleep to see the trend here.
+            </p>
+          ) : (
+            <div className="flex h-32 items-end gap-1.5">
+              {sleepBars.map((b) => (
+                <div
+                  key={b.date}
+                  className="group flex flex-1 flex-col items-center justify-end gap-1"
+                  title={`${b.date}: ${b.hours > 0 ? formatHours(b.hours) : "no data"}`}
+                >
+                  <div
+                    className={cn(
+                      "w-full rounded-t transition-all",
+                      b.hours === 0
+                        ? "bg-muted"
+                        : b.hours >= 7
+                          ? "bg-emerald-500/80 group-hover:bg-emerald-500"
+                          : b.hours >= 6
+                            ? "bg-amber-500/80 group-hover:bg-amber-500"
+                            : "bg-destructive/80 group-hover:bg-destructive"
+                    )}
+                    style={{ height: `${Math.max(b.pct, b.hours > 0 ? 8 : 3)}%` }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 

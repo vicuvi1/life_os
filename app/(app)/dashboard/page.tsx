@@ -8,6 +8,7 @@ import {
   TrendingUp,
   CheckCircle2,
   ListTodo,
+  Moon,
   Plus,
   Loader2,
 } from "lucide-react";
@@ -17,19 +18,21 @@ import {
   getDailyHabits,
   getHabitLogs,
   getSessionsInRange,
+  getSleepLogs,
   getTasks,
   toggleHabitLog,
 } from "@/lib/firebase/db";
 import { greetingFor, nameFromEmail, toDateKey } from "@/lib/greeting";
 import { habitStateFromDates } from "@/lib/habits";
 import { sessionColor, rangeLabel } from "@/lib/sessions";
+import { formatHours } from "@/lib/sleep";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { TaskRow } from "@/components/tasks/task-row";
 import { HabitRow } from "@/components/habits/habit-row";
 import { Badge } from "@/components/ui/badge";
-import type { Goal, Habit, Session, Task } from "@/lib/types";
+import type { Goal, Habit, Session, SleepLog, Task } from "@/lib/types";
 
 function StatCard({
   icon: Icon,
@@ -64,6 +67,7 @@ export default function DashboardPage() {
   >({});
   const [tasks, setTasks] = useState<Task[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [sleepLogs, setSleepLogs] = useState<SleepLog[]>([]);
   const [loading, setLoading] = useState(true);
 
   const today = toDateKey(new Date());
@@ -72,12 +76,13 @@ export default function DashboardPage() {
     if (!user) return;
     setLoading(true);
     try {
-      const [g, h, t, logs, sess] = await Promise.all([
+      const [g, h, t, logs, sess, sleep] = await Promise.all([
         getActiveGoals(user.uid),
         getDailyHabits(user.uid),
         getTasks(user.uid),
         getHabitLogs(user.uid),
         getSessionsInRange(user.uid, today, today),
+        getSleepLogs(user.uid),
       ]);
       const byHabit: Record<string, string[]> = {};
       for (const log of logs) {
@@ -88,6 +93,7 @@ export default function DashboardPage() {
       setTasks(t);
       setLogDatesByHabit(byHabit);
       setSessions(sess);
+      setSleepLogs(sleep);
     } finally {
       setLoading(false);
     }
@@ -129,6 +135,7 @@ export default function DashboardPage() {
       ? Math.round(goals.reduce((s, g) => s + (g.progress ?? 0), 0) / goals.length)
       : 0;
   const bestStreak = habits.reduce((m, h) => Math.max(m, h.bestStreak ?? 0), 0);
+  const lastNight = sleepLogs[0]; // sorted most-recent first
 
   if (loading) {
     return (
@@ -150,7 +157,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard icon={Target} label="Active goals" value={String(goals.length)} />
         <StatCard
           icon={TrendingUp}
@@ -158,6 +165,11 @@ export default function DashboardPage() {
           value={`${avgProgress}%`}
         />
         <StatCard icon={Flame} label="Best streak" value={`${bestStreak}d`} />
+        <StatCard
+          icon={Moon}
+          label="Last night"
+          value={lastNight ? formatHours(lastNight.hours) : "—"}
+        />
       </div>
 
       {/* Active goals */}

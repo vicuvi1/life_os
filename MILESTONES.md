@@ -217,3 +217,43 @@ later learn which hours of your day produce your best work.
 
 > **Note:** requires publishing the updated `firestore.rules` (adds the
 > `sessions` collection) in the Firebase Console.
+
+---
+
+## Milestone 6 — Sleep Tracking
+
+**Purpose.** Sleep is the single biggest lever on focus and study quality — the
+Dependency Tracker spec puts it first ("Sleep 5h → everything crashes; 7–8h →
+peak"). Logging it is the foundation for energy forecasts, day-quality scoring,
+and the "⚠️ low sleep" alerts the Smart Calendar will show.
+
+**How it works.**
+- A new **sleepLogs** collection stores one entry per night, keyed by the
+  morning you woke up (`userId_date`), so re-opening a day edits the same entry
+  (no duplicates). Each entry holds hours slept, a quality score (1–10), and
+  notes.
+- Two simple ratings turn raw numbers into meaning: **hours** (7–9h = Good,
+  6–7h = Okay, under 6h = Low) and **quality** (8+ Excellent, 6–7 Good, 4–5
+  Low, under 4 Poor).
+- Security rules: sleep logs are owner-scoped — publish the updated
+  `firestore.rules` for this milestone.
+
+**Features.**
+- Sleep page (`/sleep`): log any night with ← / → day navigation; edit past
+  nights by tapping them in the history list; delete entries.
+- A running **7-day average** shown in the page subtitle.
+- History list with Good/Okay/Low and quality badges per night.
+- **Dashboard**: a "Last night" stat card showing your most recent sleep.
+- **Insights**: an "Avg sleep (7d)" stat plus a **14-night bar chart**
+  color-coded green/amber/red by how much you slept.
+
+**How to use.**
+1. Each morning, open **Sleep** and enter hours slept and a 1–10 quality, then
+   **Save**.
+2. Missed a day? Use ← to go back and log it, or tap any night in the history
+   list to edit it.
+3. Watch the **Insights → Sleep** chart — long green bars are the goal; red
+   bars flag the nights that will drag your focus down.
+
+> **Note:** requires publishing the updated `firestore.rules` (adds the
+> `sleepLogs` collection) in the Firebase Console.
