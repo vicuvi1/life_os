@@ -54,10 +54,11 @@ export const EMOJI = {
   review: "📝",
 } as const;
 
-/** Time-of-day emoji, used functionally next to the greeting. */
+/** Time-of-day emoji, used functionally next to the greeting (aligned with greetingFor's bands). */
 export function greetingEmoji(hour: number): string {
   if (hour < 5) return "🌙";
   if (hour < 12) return "🌅";
-  if (hour < 18) return "☀️";
-  return "🌆";
+  if (hour < 17) return "☀️";
+  if (hour < 22) return "🌆";
+  return "🌙";
 }

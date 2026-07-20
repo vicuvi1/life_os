@@ -1,7 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CalendarCheck, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import {
+  CalendarCheck,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  PartyPopper,
+  Construction,
+  Target,
+} from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
   getWeeklyReview,
@@ -15,9 +23,44 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import type { WeeklyReview } from "@/lib/types";
+
+interface ReviewDraft {
+  accomplishments: string;
+  blockers: string;
+  nextWeekFocus: string;
+  score: number;
+}
+
+function draftKey(weekStart: string) {
+  return `lifeos:reviewDraft:${weekStart}`;
+}
+function loadDraft(weekStart: string): ReviewDraft | null {
+  try {
+    const raw = localStorage.getItem(draftKey(weekStart));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+function saveDraft(weekStart: string, draft: ReviewDraft) {
+  try {
+    localStorage.setItem(draftKey(weekStart), JSON.stringify(draft));
+  } catch {
+    /* ignore */
+  }
+}
+function clearDraft(weekStart: string) {
+  try {
+    localStorage.removeItem(draftKey(weekStart));
+  } catch {
+    /* ignore */
+  }
+}
+
+const DEFAULT_SCORE = 50;
 
 export default function ReviewPage() {
   const { user } = useAuth();
@@ -27,8 +70,9 @@ export default function ReviewPage() {
   const [accomplishments, setAccomplishments] = useState("");
   const [blockers, setBlockers] = useState("");
   const [nextWeekFocus, setNextWeekFocus] = useState("");
-  const [score, setScore] = useState("");
+  const [score, setScore] = useState(DEFAULT_SCORE);
   const [history, setHistory] = useState<WeeklyReview[]>([]);
+  const [showAllHistory, setShowAllHistory] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -39,10 +83,13 @@ export default function ReviewPage() {
       setLoading(true);
       try {
         const review = await getWeeklyReview(user.uid, ws);
-        setAccomplishments(review?.accomplishments ?? "");
-        setBlockers(review?.blockers ?? "");
-        setNextWeekFocus(review?.nextWeekFocus ?? "");
-        setScore(review?.score != null ? String(review.score) : "");
+        const draft = loadDraft(ws);
+        // A present draft always represents unsaved edits newer than whatever
+        // is persisted (it's cleared as soon as a save succeeds), so prefer it.
+        setAccomplishments(draft?.accomplishments ?? review?.accomplishments ?? "");
+        setBlockers(draft?.blockers ?? review?.blockers ?? "");
+        setNextWeekFocus(draft?.nextWeekFocus ?? review?.nextWeekFocus ?? "");
+        setScore(draft?.score ?? review?.score ?? DEFAULT_SCORE);
       } finally {
         setLoading(false);
       }
@@ -63,22 +110,25 @@ export default function ReviewPage() {
     loadHistory();
   }, [loadHistory]);
 
+  // Auto-save a draft on every edit so accidental navigation never loses text.
+  useEffect(() => {
+    if (loading) return;
+    saveDraft(weekStart, { accomplishments, blockers, nextWeekFocus, score });
+  }, [accomplishments, blockers, nextWeekFocus, score, weekStart, loading]);
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     if (!user) return;
     setSaving(true);
     setSaved(false);
     try {
-      const parsedScore = score.trim() === "" ? null : Number(score);
       await upsertWeeklyReview(user.uid, weekStart, {
         accomplishments: accomplishments.trim() || null,
         blockers: blockers.trim() || null,
         nextWeekFocus: nextWeekFocus.trim() || null,
-        score:
-          parsedScore != null && !Number.isNaN(parsedScore)
-            ? Math.max(0, Math.min(100, Math.round(parsedScore)))
-            : null,
+        score: Math.round(score),
       });
+      clearDraft(weekStart);
       setSaved(true);
       await loadHistory();
     } finally {
@@ -87,6 +137,7 @@ export default function ReviewPage() {
   }
 
   const isCurrentWeek = weekStart === thisWeek;
+  const visibleHistory = showAllHistory ? history : history.slice(0, 3);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -118,18 +169,32 @@ export default function ReviewPage() {
             </Badge>
           )}
         </div>
-        <Button
-          variant="outline"
-          size="icon"
-          aria-label="Next week"
-          disabled={isCurrentWeek}
-          onClick={() => {
-            setSaved(false);
-            setWeekStart((w) => addDays(w, 7));
-          }}
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-2">
+          {!isCurrentWeek && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSaved(false);
+                setWeekStart(thisWeek);
+              }}
+            >
+              This week
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Next week"
+            disabled={isCurrentWeek}
+            onClick={() => {
+              setSaved(false);
+              setWeekStart((w) => addDays(w, 7));
+            }}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {loading ? (
@@ -141,7 +206,9 @@ export default function ReviewPage() {
           <CardContent className="p-6">
             <form onSubmit={handleSave} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="acc">🎉 What went well?</Label>
+                <Label htmlFor="acc" className="flex items-center gap-2">
+                  <PartyPopper className="h-4 w-4 text-primary" /> What went well?
+                </Label>
                 <Textarea
                   id="acc"
                   value={accomplishments}
@@ -151,7 +218,10 @@ export default function ReviewPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="blk">🚧 What got in the way?</Label>
+                <Label htmlFor="blk" className="flex items-center gap-2">
+                  <Construction className="h-4 w-4 text-primary" /> What got in
+                  the way?
+                </Label>
                 <Textarea
                   id="blk"
                   value={blockers}
@@ -161,7 +231,10 @@ export default function ReviewPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="nxt">🎯 Focus for next week</Label>
+                <Label htmlFor="nxt" className="flex items-center gap-2">
+                  <Target className="h-4 w-4 text-primary" /> Focus for next
+                  week
+                </Label>
                 <Textarea
                   id="nxt"
                   value={nextWeekFocus}
@@ -171,16 +244,18 @@ export default function ReviewPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="score">Week score (0–100)</Label>
-                <Input
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="score">Week score</Label>
+                  <span className="text-sm font-medium">{score}/100</span>
+                </div>
+                <Slider
                   id="score"
-                  type="number"
+                  value={score}
+                  onValueChange={setScore}
                   min={0}
                   max={100}
-                  value={score}
-                  onChange={(e) => setScore(e.target.value)}
-                  placeholder="How was the week overall?"
-                  className="max-w-[160px]"
+                  step={1}
+                  aria-label="Week score"
                 />
               </div>
               <div className="flex items-center gap-3">
@@ -213,39 +288,50 @@ export default function ReviewPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-2">
-            {history.map((r) => (
-              <button
-                key={r.id}
-                onClick={() => {
-                  setSaved(false);
-                  setWeekStart(r.weekStart);
-                }}
-                className="w-full text-left"
+          <>
+            <div className="space-y-2">
+              {visibleHistory.map((r) => (
+                <button
+                  key={r.id}
+                  onClick={() => {
+                    setSaved(false);
+                    setWeekStart(r.weekStart);
+                  }}
+                  className="w-full text-left"
+                >
+                  <Card className="transition-colors hover:border-primary/50">
+                    <CardHeader className="flex-row items-center justify-between py-4">
+                      <CardTitle className="text-sm font-medium">
+                        {formatWeekRange(r.weekStart)}
+                      </CardTitle>
+                      {r.score != null && (
+                        <Badge
+                          variant={
+                            r.score >= 70
+                              ? "success"
+                              : r.score >= 40
+                                ? "warning"
+                                : "destructive"
+                          }
+                        >
+                          {r.score}/100
+                        </Badge>
+                      )}
+                    </CardHeader>
+                  </Card>
+                </button>
+              ))}
+            </div>
+            {history.length > 3 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowAllHistory((v) => !v)}
               >
-                <Card className="transition-colors hover:border-primary/50">
-                  <CardHeader className="flex-row items-center justify-between py-4">
-                    <CardTitle className="text-sm font-medium">
-                      {formatWeekRange(r.weekStart)}
-                    </CardTitle>
-                    {r.score != null && (
-                      <Badge
-                        variant={
-                          r.score >= 70
-                            ? "success"
-                            : r.score >= 40
-                              ? "warning"
-                              : "destructive"
-                        }
-                      >
-                        {r.score}/100
-                      </Badge>
-                    )}
-                  </CardHeader>
-                </Card>
-              </button>
-            ))}
-          </div>
+                {showAllHistory ? "Show fewer" : `View all (${history.length})`}
+              </Button>
+            )}
+          </>
         )}
       </section>
     </div>

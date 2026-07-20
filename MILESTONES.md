@@ -666,3 +666,106 @@ layered on later.
    what's outstanding; tap any item to jump there.
 2. In **Settings → Reminders**, click **Enable** to also get a native
    notification of your top nudge while the app is open.
+
+---
+
+## Design overhaul — Priority Stack, inline logging, Log Today, and app-wide consistency
+
+**Purpose.** A full interaction-and-layout pass (colors/theme untouched) aimed at
+one thing: reduce the number of taps between "I should log this" and "it's
+logged." The dashboard's "Right now" and "Also today" cards are merged into one
+ordered **Priority Stack** where simple trackers (sleep, water, habits, tasks)
+can be completed **inline** — no click-through required — and a single **Log
+today** button handles the whole day's quick logging in one modal.
+
+**How it works.**
+- **`lib/priority.ts`** replaces the old `lib/nudges.ts`. `buildPriorityStack`
+  returns a typed, ordered list — time-sensitive nudges (Monday review) first,
+  then the highest-impact unlogged metric (sleep), then remaining daily
+  trackers (habits, water), then tasks due today, then an informational
+  "up next" session. Each row carries exactly the data it needs to render an
+  inline action.
+- **A toast/undo system** (`components/ui/toast-provider.tsx`, wired into the
+  root layout) replaces confirm-dialogs for reversible actions. Deleting a task
+  now hides it immediately and shows a 5-second **Undo** toast; if you navigate
+  away without clicking Undo, the delete still commits in the background
+  (matching how "undo send" works elsewhere) rather than silently canceling.
+- **Smart default for sleep**: `smartDefaultSleep` looks at your last 14 days of
+  sleep logs and pre-fills the inline slider with your most frequent hours —
+  a simple frequency lookup, not a model.
+- **`components/ui/slider.tsx`**: a small dependency-free styled range input,
+  used for the inline sleep-hours control and the Weekly Review score.
+- **`components/log-today-dialog.tsx`**: one modal listing only the trackers you
+  haven't logged yet today (sleep / water / habits). Each section commits the
+  moment you interact with it — no separate "Save" step — and the modal
+  auto-closes with a small celebration toast once everything's logged. The
+  header's **Log today** button itself shows a checkmark state ("All logged")
+  once there's nothing left, instead of opening an empty modal.
+
+**Dashboard features.**
+- **Priority Stack**: merges the old spotlight/"also today" split into one
+  list, capped at 4 visible rows with a "+N more" expander. Sleep logs via an
+  inline slider + Log button; water via the existing +/- stepper; habits via
+  tappable chips; tasks due today via inline checkboxes (first 4, "+N more —
+  view tasks" beyond that). The separate Water widget card is gone — water now
+  lives in exactly one place.
+- **Stat row auto-hides** on a brand-new account (zero goals **and** zero
+  streak days) behind a single quiet line, instead of a row of four zeros.
+- **Sleep trend arrow** ("7.2h ↑ 1.1h vs avg") only appears once there are 2+
+  nights logged — never a fabricated flat arrow.
+- **Today's Focus** is now grouped by each task's linked goal category
+  (Education/Career/Health/Financial/Personal/Other), each group independently
+  collapsible with its own count badge. Tasks completed **today** stay visible
+  (struck through, muted) instead of vanishing the instant you check them off —
+  they naturally drop off the next day since the grouping is date-based.
+- **Quick Add** popover (header) creates a task or goal without leaving the
+  dashboard. **Keyboard shortcuts** `n` (new task), `g` (new goal), `l` (Log
+  today) work anywhere on the dashboard except while typing in a field or a
+  dialog is already open; a small **?** button (bottom-right) shows the
+  shortcuts list.
+- Real first name, time-of-day greeting/icon, and the 7-day habit strip are
+  unchanged from the previous polish pass — still correct, just re-verified.
+
+**Weekly Review.**
+- Section headers now use outline icons (party-popper / construction / target)
+  instead of raw emoji, matching the rest of the app.
+- The 0–100 score is now a **slider** instead of a number field.
+- **Past reviews** collapse to the 3 most recent by default, with a "View all
+  (N)" expander.
+- **Drafts auto-save** to the browser as you type and restore automatically if
+  you navigate away before clicking Save — nothing is lost.
+- A **"This week"** quick-jump button appears once you've navigated to a
+  different week (mirrors Calendar's "Today").
+
+**Expenses.**
+- Only one **Add expense** entry point is ever visible at once — the header
+  button is hidden while the month is empty (the empty state has its own).
+- A **"This month"** quick-jump button appears once you've navigated away from
+  the current month.
+
+**Calendar.**
+- Filter pills now clearly show on/off state — solid filled when active,
+  outline/ghost when inactive (previously both looked similar).
+- The day-detail empty state is now a full headline + explanation + CTA
+  ("Nothing scheduled" → "Plan a session…" → **Add a session**), matching the
+  warmer pattern already used by Expenses, instead of a single terse line.
+
+**Scope decisions (called out for transparency).**
+- **Icon language:** an earlier pass in this project deliberately introduced
+  emoji as a functional icon language across goal/habit categories and
+  dashboard section headers, per explicit request. This redesign asked for
+  "one icon language app-wide, standardize on outline icons since nav already
+  commits to them" — I applied that specifically to **Weekly Review** (the
+  page actually named as inconsistent), and left the dashboard's intentional
+  emoji language as-is rather than reverting a different, already-shipped
+  request. Worth a conscious look together if the goal is a single icon
+  language everywhere.
+- **Confirm dialogs** are still used for goal/project/habit/session/meal/expense
+  deletion — these cascade-delete related data (projects+tasks, habit history,
+  meal-plan entries, etc.), so they stay in the "genuinely destructive"
+  category the spec carves out. Only task deletion (called out explicitly, and
+  the lowest-stakes of the bunch) moved to undo-toast.
+- **Log Today** commits each section the moment you interact with it (matching
+  the rest of the app's "no separate Save step" pattern) rather than having one
+  global Submit button — functionally equivalent ("update your day in one
+  place, under 15 seconds") but worth knowing if you expected a single button.

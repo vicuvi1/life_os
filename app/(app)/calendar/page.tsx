@@ -179,11 +179,12 @@ export default function CalendarPage() {
           <button
             key={el.key}
             onClick={() => toggle(el.key)}
+            aria-pressed={toggles[el.key]}
             className={cn(
               "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
               toggles[el.key]
-                ? "border-primary/40 bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-accent"
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-input text-muted-foreground hover:bg-accent hover:text-foreground"
             )}
           >
             {el.label}

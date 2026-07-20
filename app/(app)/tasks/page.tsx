@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Loader2, ListTodo } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { getTasks, getGoals, createTask, deleteTask } from "@/lib/firebase/db";
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { TaskRow } from "@/components/tasks/task-row";
 import { TaskFormDialog } from "@/components/tasks/task-form-dialog";
-import { ConfirmDialog } from "@/components/confirm-dialog";
+import { useToast } from "@/components/ui/toast-provider";
 import { cn } from "@/lib/utils";
 import type { Goal, Task } from "@/lib/types";
 
@@ -18,6 +18,7 @@ type Filter = "today" | "open" | "all";
 
 export default function TasksPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,7 +28,10 @@ export default function TasksPage() {
   const [adding, setAdding] = useState(false);
 
   const [editing, setEditing] = useState<Task | null>(null);
-  const [deleting, setDeleting] = useState<Task | null>(null);
+  // Optimistically hidden while the undo window is open; actually deleted once
+  // the timer fires (see handleDelete).
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<string>>(new Set());
+  const deleteTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -45,6 +49,11 @@ export default function TasksPage() {
     load();
   }, [load]);
 
+  // Deliberately no unmount cleanup here: a pending delete's timer should
+  // keep running (and actually commit) even if the user navigates away
+  // within the undo window, the same way "undo send" works elsewhere —
+  // navigating away isn't a cancel, only clicking Undo is.
+
   const goalTitle = useMemo(() => {
     const m = new Map(goals.map((g) => [g.id, g.title]));
     return (id: string | null) => (id ? m.get(id) ?? null : null);
@@ -53,13 +62,15 @@ export default function TasksPage() {
   const today = toDateKey(new Date());
 
   const filtered = useMemo(() => {
-    return tasks.filter((t) => {
-      if (filter === "all") return true;
-      if (filter === "open") return t.status !== "done";
-      // today: due today or overdue, and not done
-      return t.status !== "done" && t.dueDate !== null && t.dueDate <= today;
-    });
-  }, [tasks, filter, today]);
+    return tasks
+      .filter((t) => !pendingDeleteIds.has(t.id))
+      .filter((t) => {
+        if (filter === "all") return true;
+        if (filter === "open") return t.status !== "done";
+        // today: due today or overdue, and not done
+        return t.status !== "done" && t.dueDate !== null && t.dueDate <= today;
+      });
+  }, [tasks, filter, today, pendingDeleteIds]);
 
   async function handleQuickAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -79,6 +90,41 @@ export default function TasksPage() {
     } finally {
       setAdding(false);
     }
+  }
+
+  // Reversible delete: hide immediately, show an Undo toast, and only commit
+  // the actual deletion after the toast window elapses.
+  function handleDelete(task: Task) {
+    setPendingDeleteIds((prev) => new Set(prev).add(task.id));
+    const timer = setTimeout(async () => {
+      deleteTimers.current.delete(task.id);
+      await deleteTask({ id: task.id, goalId: task.goalId });
+      setPendingDeleteIds((prev) => {
+        const next = new Set(prev);
+        next.delete(task.id);
+        return next;
+      });
+      await load();
+    }, 5000);
+    deleteTimers.current.set(task.id, timer);
+
+    toast({
+      title: "Task deleted",
+      description: task.title,
+      actionLabel: "Undo",
+      onAction: () => {
+        const t = deleteTimers.current.get(task.id);
+        if (t) {
+          clearTimeout(t);
+          deleteTimers.current.delete(task.id);
+        }
+        setPendingDeleteIds((prev) => {
+          const next = new Set(prev);
+          next.delete(task.id);
+          return next;
+        });
+      },
+    });
   }
 
   const FILTERS: { key: Filter; label: string }[] = [
@@ -152,7 +198,7 @@ export default function TasksPage() {
                 task={t}
                 onChanged={load}
                 onEdit={setEditing}
-                onDelete={setDeleting}
+                onDelete={handleDelete}
                 context={goalTitle(t.goalId)}
               />
             ))}
@@ -172,19 +218,6 @@ export default function TasksPage() {
           onSaved={load}
         />
       )}
-
-      <ConfirmDialog
-        open={Boolean(deleting)}
-        onOpenChange={(o) => !o && setDeleting(null)}
-        title="Delete this task?"
-        onConfirm={async () => {
-          if (deleting) {
-            await deleteTask({ id: deleting.id, goalId: deleting.goalId });
-            setDeleting(null);
-            await load();
-          }
-        }}
-      />
     </div>
   );
 }

@@ -1,9 +1,10 @@
 /** Time-of-day greeting. Hour is 0-23 in the viewer's context. */
 export function greetingFor(hour: number): string {
-  if (hour < 5) return "Still up";
+  if (hour < 5) return "Still up?";
   if (hour < 12) return "Good morning";
-  if (hour < 18) return "Good afternoon";
-  return "Good evening";
+  if (hour < 17) return "Good afternoon";
+  if (hour < 22) return "Good evening";
+  return "Still up?";
 }
 
 /** Derive a friendly display name from an email address. */

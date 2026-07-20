@@ -1,3 +1,5 @@
+import type { SleepLog } from "@/lib/types";
+
 type BadgeVariant =
   | "default"
   | "secondary"
@@ -39,4 +41,36 @@ export function formatHours(hours: number): string {
 export function averageHours(logs: { hours: number }[]): number {
   if (logs.length === 0) return 0;
   return logs.reduce((s, l) => s + l.hours, 0) / logs.length;
+}
+
+/**
+ * Smart default for a quick sleep log: the most frequent hours/quality value
+ * logged in the last 14 days (simple frequency lookup, not ML). Falls back to
+ * a sensible default (7h, quality 7) when there's no recent history.
+ */
+export function smartDefaultSleep(
+  logs: SleepLog[],
+  cutoffDateInclusive: string
+): { hours: number; quality: number } {
+  const recent = logs.filter((l) => l.date >= cutoffDateInclusive);
+  if (recent.length === 0) return { hours: 7, quality: 7 };
+
+  const mode = <T extends string | number>(values: T[]): T => {
+    const counts = new Map<T, number>();
+    for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
+    let best = values[0];
+    let bestCount = 0;
+    for (const [v, c] of Array.from(counts.entries())) {
+      if (c > bestCount) {
+        bestCount = c;
+        best = v;
+      }
+    }
+    return best;
+  };
+
+  return {
+    hours: mode(recent.map((l) => l.hours)),
+    quality: mode(recent.map((l) => l.quality)),
+  };
 }

@@ -140,7 +140,9 @@ export default function ExpensesPage() {
           >
             <Settings2 className="h-4 w-4" />
           </Button>
-          {user && (
+          {/* Only show this once expenses already exist — the empty state
+              below has its own "Add expense" CTA, so we never show both. */}
+          {user && monthExpenses.length > 0 && (
             <Button onClick={() => setExpenseForm({ open: true, expense: null })}>
               <Plus className="h-4 w-4" /> Add
             </Button>
@@ -154,9 +156,16 @@ export default function ExpensesPage() {
           <ChevronLeft className="h-4 w-4" />
         </Button>
         <p className="font-medium">{monthLabel(year, month)}</p>
-        <Button variant="outline" size="icon" aria-label="Next month" onClick={nextMonth}>
-          <ChevronRight className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-2">
+          {!isCurrentMonth && (
+            <Button variant="outline" size="sm" onClick={() => { setYear(now.getFullYear()); setMonth(now.getMonth()); }}>
+              This month
+            </Button>
+          )}
+          <Button variant="outline" size="icon" aria-label="Next month" onClick={nextMonth}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {loading ? (

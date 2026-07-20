@@ -1,7 +1,9 @@
 "use client";
 
-import { Moon, Flame, Target, CalendarClock, CheckSquare } from "lucide-react";
+import Link from "next/link";
+import { Moon, Flame, Target, CalendarClock, CheckSquare, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { sessionColor, rangeLabel } from "@/lib/sessions";
 import { PRIORITY_LABEL, PRIORITY_VARIANT, deadlineLabel } from "@/lib/labels";
 import { hoursRating } from "@/lib/sleep";
@@ -124,9 +126,18 @@ export function DayAgenda({
 
   if (rows.length === 0) {
     return (
-      <p className="flex items-center gap-2 py-1 text-sm text-muted-foreground">
-        <CalendarClock className="h-4 w-4" /> Nothing scheduled.
-      </p>
+      <div className="flex flex-col items-center gap-2 py-6 text-center">
+        <CalendarClock className="h-7 w-7 text-muted-foreground" />
+        <p className="text-sm font-medium">Nothing scheduled</p>
+        <p className="max-w-xs text-xs text-muted-foreground">
+          Plan a session or add a task to make the most of this day.
+        </p>
+        <Button asChild variant="outline" size="sm">
+          <Link href="/sessions">
+            <Plus className="h-3.5 w-3.5" /> Add a session
+          </Link>
+        </Button>
+      </div>
     );
   }
 
