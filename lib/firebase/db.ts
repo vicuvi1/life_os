@@ -23,6 +23,7 @@ import {
   type HabitLog,
   type Project,
   type Task,
+  type WeeklyReview,
 } from "@/lib/types";
 import { currentStreak, longestStreak } from "@/lib/habits";
 import { toDateKey } from "@/lib/greeting";
@@ -434,4 +435,73 @@ export async function toggleHabitLog(
     bestStreak: best,
     lastCompleted,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Weekly reviews
+// ---------------------------------------------------------------------------
+function mapWeeklyReview(snap: QueryDocumentSnapshot<DocumentData>): WeeklyReview {
+  const d = snap.data();
+  return {
+    id: snap.id,
+    userId: d.userId,
+    weekStart: d.weekStart,
+    accomplishments: d.accomplishments ?? null,
+    blockers: d.blockers ?? null,
+    nextWeekFocus: d.nextWeekFocus ?? null,
+    score: d.score ?? null,
+    createdAt: toMillis(d.createdAt),
+  };
+}
+
+export async function getWeeklyReviews(userId: string): Promise<WeeklyReview[]> {
+  const q = query(
+    collection(db, COLLECTIONS.weeklyReviews),
+    where("userId", "==", userId)
+  );
+  const snap = await getDocs(q);
+  return snap.docs
+    .map(mapWeeklyReview)
+    .sort((a, b) => (a.weekStart < b.weekStart ? 1 : -1));
+}
+
+export async function getWeeklyReview(
+  userId: string,
+  weekStart: string
+): Promise<WeeklyReview | null> {
+  const ref = doc(db, COLLECTIONS.weeklyReviews, `${userId}_${weekStart}`);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return null;
+  return mapWeeklyReview(snap as QueryDocumentSnapshot<DocumentData>);
+}
+
+export type WeeklyReviewInput = Pick<
+  WeeklyReview,
+  "accomplishments" | "blockers" | "nextWeekFocus" | "score"
+>;
+
+/** Create or update the review for a given week (one review per week). */
+export async function upsertWeeklyReview(
+  userId: string,
+  weekStart: string,
+  input: WeeklyReviewInput
+): Promise<void> {
+  const ref = doc(db, COLLECTIONS.weeklyReviews, `${userId}_${weekStart}`);
+  await setDoc(
+    ref,
+    {
+      userId,
+      weekStart,
+      ...input,
+      createdAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+export async function deleteWeeklyReview(
+  userId: string,
+  weekStart: string
+): Promise<void> {
+  await deleteDoc(doc(db, COLLECTIONS.weeklyReviews, `${userId}_${weekStart}`));
 }

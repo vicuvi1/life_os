@@ -4,7 +4,9 @@ import {
   FolderKanban,
   CheckSquare,
   Flame,
+  CalendarDays,
   CalendarCheck,
+  BarChart3,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -21,6 +23,8 @@ export const NAV: NavItem[] = [
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/habits", label: "Habits", icon: Flame },
+  { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/review", label: "Weekly Review", icon: CalendarCheck },
+  { href: "/insights", label: "Insights", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
