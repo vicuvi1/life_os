@@ -919,3 +919,57 @@ CAREER
 > **Note.** *Mock exam score* from the original sketch isn't included yet: the
 > Goal model has no field for it, and adding one would mean extra manual entry.
 > It's a natural follow-up if scored practice tracking becomes worth the input.
+
+---
+
+## Finance — income, accounts, table view & Excel export
+
+**Purpose.** Replace a hand-maintained finance spreadsheet with something that
+does the math for you: log what comes in and what goes out each day, and get
+your monthly profit/spent/net, your account balances, and a clean export —
+without dragging a single formula. Everything is MDL-first.
+
+**What it is.** The old **Expenses** page is now **Finance** — it tracks both
+**income and expenses**, keeps running **account balances**, and offers a
+sortable **table view** and one-click **CSV export** (opens in Excel).
+
+**How it works.**
+- **Income + expenses in one log.** Each entry has a **type** (income or
+  expense), an **amount**, an **account**, a **category**, a description, and a
+  date. The add form has an Income/Expense toggle; income uses income categories
+  (Salary, Allowance, Gift, Sale, Refund, Investment…), expenses use the usual
+  ones. Existing data is untouched — old records simply read as wallet expenses.
+- **Monthly Earned / Spent / Net.** Three tiles at the top compute your month's
+  money in, money out, and the difference — the same idea as the sheet's
+  PROFIT / SPENT / TOTAL box, but automatic.
+- **Accounts (Wallet & Safe).** Every entry is assigned to an account. Each
+  account shows a live balance = its **starting balance** (set in
+  Settings ⚙ → *Account starting balances*, e.g. what's already in your safe)
+  plus all income minus all expenses recorded against it. A **Total** across
+  accounts is your net worth.
+- **Sortable day-by-day table.** Toggle between the card list and a spreadsheet
+  table (Date · Type · Account · Category · Description · Amount · **Running
+  net**). Click any column header to sort. The running-net column accumulates in
+  date order so it stays correct no matter how you sort the display.
+- **Export to Excel.** The **Export** menu downloads a CSV (This month or All
+  time) that opens directly in Excel, with income and expense in separate
+  columns plus a signed-amount column so totals just work.
+- **MDL by default.** New setups display in Moldovan Leu (`L`) out of the box;
+  you can still change it in Settings → Currency.
+- **Budget stays.** The optional monthly cap, per-category limits, pace
+  projection, and over-budget warnings all still work (now driven by the expense
+  side of the ledger).
+
+**How to use it.**
+1. Open **Finance** in the sidebar. Set your currency/accounts once in
+   **Settings ⚙** (starting balances for Wallet and Safe, optional monthly
+   budget).
+2. Each day, hit **Add → Add expense** or **Add income**, pick the account and
+   category, and jot a description. Balances and the month's Earned/Spent/Net
+   update instantly.
+3. Switch to the **table view** to sort by date/amount/category, or hit
+   **Export** to pull a month (or everything) into Excel.
+
+> **Follow-ups.** Account **transfers** (move money Wallet → Safe in one step)
+> and **recurring** entries (auto-insert rent/allowance each month) are the
+> natural next additions.

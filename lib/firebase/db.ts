@@ -838,7 +838,10 @@ function mapExpense(snap: QueryDocumentSnapshot<DocumentData>): Expense {
   return {
     id: snap.id,
     userId: d.userId,
+    // Legacy docs have no kind/account — treat them as wallet expenses.
+    kind: d.kind === "income" ? "income" : "expense",
     amount: d.amount ?? 0,
+    account: d.account === "safe" ? "safe" : "wallet",
     category: d.category ?? "other",
     note: d.note ?? null,
     date: d.date,
@@ -857,7 +860,10 @@ export async function getExpenses(userId: string): Promise<Expense[]> {
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.createdAt - a.createdAt));
 }
 
-export type ExpenseInput = Pick<Expense, "amount" | "category" | "note" | "date">;
+export type ExpenseInput = Pick<
+  Expense,
+  "kind" | "amount" | "account" | "category" | "note" | "date"
+>;
 
 export async function createExpense(
   userId: string,
@@ -889,15 +895,16 @@ export async function getBudget(userId: string): Promise<Budget | null> {
   const d = snap.data();
   return {
     userId: d.userId,
-    currency: d.currency ?? "$",
+    currency: d.currency ?? "MDL",
     monthlyTotal: d.monthlyTotal ?? null,
     byCategory: d.byCategory ?? {},
+    openingBalances: d.openingBalances ?? {},
   };
 }
 
 export type BudgetInput = Pick<
   Budget,
-  "currency" | "monthlyTotal" | "byCategory"
+  "currency" | "monthlyTotal" | "byCategory" | "openingBalances"
 >;
 
 export async function upsertBudget(
@@ -1248,5 +1255,6 @@ export async function setCurrency(userId: string, code: string): Promise<void> {
     currency: code,
     monthlyTotal: existing?.monthlyTotal ?? null,
     byCategory: existing?.byCategory ?? {},
+    openingBalances: existing?.openingBalances ?? {},
   });
 }

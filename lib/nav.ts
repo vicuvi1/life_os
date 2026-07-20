@@ -51,7 +51,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: "/sleep", label: "Sleep", icon: Moon },
       { href: "/nutrition", label: "Nutrition", icon: GlassWater },
       { href: "/meals", label: "Meals", icon: UtensilsCrossed },
-      { href: "/expenses", label: "Expenses", icon: Wallet },
+      { href: "/expenses", label: "Finance", icon: Wallet },
       { href: "/trackers", label: "Trackers", icon: SlidersHorizontal },
     ],
   },

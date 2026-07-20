@@ -16,8 +16,10 @@ import { upsertBudget, type BudgetInput } from "@/lib/firebase/db";
 import {
   EXPENSE_CATEGORIES,
   EXPENSE_CATEGORY_LABEL,
+  ACCOUNTS,
+  ACCOUNT_LABEL,
 } from "@/lib/expenses";
-import type { Budget, ExpenseCategory } from "@/lib/types";
+import type { AccountKey, Budget, ExpenseCategory } from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -36,14 +38,15 @@ export function BudgetFormDialog({
 }: Props) {
   // Currency is managed in Settings → Currency; kept here only so saving the
   // budget preserves the user's existing selection.
-  const [currency, setCurrency] = useState("USD");
+  const [currency, setCurrency] = useState("MDL");
   const [monthlyTotal, setMonthlyTotal] = useState("");
   const [byCategory, setByCategory] = useState<Record<string, string>>({});
+  const [opening, setOpening] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    setCurrency(budget?.currency ?? "USD");
+    setCurrency(budget?.currency ?? "MDL");
     setMonthlyTotal(budget?.monthlyTotal != null ? String(budget.monthlyTotal) : "");
     const initial: Record<string, string> = {};
     for (const c of EXPENSE_CATEGORIES) {
@@ -51,6 +54,12 @@ export function BudgetFormDialog({
       initial[c] = v != null ? String(v) : "";
     }
     setByCategory(initial);
+    const initialOpening: Record<string, string> = {};
+    for (const a of ACCOUNTS) {
+      const v = budget?.openingBalances?.[a];
+      initialOpening[a] = v != null ? String(v) : "";
+    }
+    setOpening(initialOpening);
   }, [open, budget]);
 
   function num(v: string): number | null {
@@ -67,11 +76,17 @@ export function BudgetFormDialog({
       const n = num(byCategory[c] ?? "");
       if (n != null && n > 0) cats[c] = n;
     }
+    const balances: Partial<Record<AccountKey, number>> = {};
+    for (const a of ACCOUNTS) {
+      const n = num(opening[a] ?? "");
+      if (n != null) balances[a] = n;
+    }
     const payload: BudgetInput = {
       // Currency is chosen in Settings → Currency; preserve it here.
-      currency: currency.trim() || "USD",
+      currency: currency.trim() || "MDL",
       monthlyTotal: num(monthlyTotal),
       byCategory: cats,
+      openingBalances: balances,
     };
     try {
       await upsertBudget(userId, payload);
@@ -106,6 +121,33 @@ export function BudgetFormDialog({
             <p className="text-xs text-muted-foreground">
               Display currency is set in Settings → Currency.
             </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Account starting balances (optional)</Label>
+            <p className="text-xs text-muted-foreground">
+              What&apos;s already in each account. Balances update automatically
+              as you log income and expenses against them.
+            </p>
+            <div className="space-y-2">
+              {ACCOUNTS.map((a) => (
+                <div key={a} className="flex items-center gap-3">
+                  <span className="w-28 text-sm text-muted-foreground">
+                    {ACCOUNT_LABEL[a]}
+                  </span>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={opening[a] ?? ""}
+                    onChange={(e) =>
+                      setOpening((s) => ({ ...s, [a]: e.target.value }))
+                    }
+                    placeholder="0"
+                    className="h-9"
+                  />
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="space-y-2">

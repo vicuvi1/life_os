@@ -51,6 +51,22 @@ export type ExpenseCategory =
   | "health"
   | "other";
 
+/** Categories for money coming IN. */
+export type IncomeCategory =
+  | "salary"
+  | "allowance"
+  | "gift"
+  | "sale"
+  | "refund"
+  | "investment"
+  | "other";
+
+/** Whether a money entry is money in (income) or money out (expense). */
+export type EntryKind = "income" | "expense";
+
+/** Which pot money moves through. */
+export type AccountKey = "wallet" | "safe";
+
 export type MealSlot = "breakfast" | "lunch" | "dinner";
 
 export interface Goal {
@@ -182,11 +198,21 @@ export interface NutritionLog {
   createdAt: number;
 }
 
+/**
+ * A single money entry — income or expense. (The interface keeps the historical
+ * name `Expense`, and the Firestore collection is still `expenses`, so existing
+ * documents keep working: they default to kind "expense" in the wallet.)
+ */
 export interface Expense {
   id: string;
   userId: string;
+  /** Money in ("income") or money out ("expense"). Defaults to "expense". */
+  kind: EntryKind;
   amount: number;
-  category: ExpenseCategory;
+  /** Which account the money moved through. Defaults to "wallet". */
+  account: AccountKey;
+  /** ExpenseCategory for expenses, IncomeCategory for income (stored as a string). */
+  category: string;
   note: string | null;
   date: string; // YYYY-MM-DD
   createdAt: number;
@@ -195,9 +221,11 @@ export interface Expense {
 /** One budget config per user (doc id = userId). */
 export interface Budget {
   userId: string;
-  currency: string; // symbol, e.g. "$"
+  currency: string; // currency code, e.g. "MDL"
   monthlyTotal: number | null; // overall monthly cap
-  byCategory: Partial<Record<ExpenseCategory, number>>; // optional per-category caps
+  byCategory: Partial<Record<string, number>>; // optional per-category caps
+  /** Starting balance for each account (e.g. what's already in your safe). */
+  openingBalances?: Partial<Record<AccountKey, number>>;
 }
 
 /** A reusable meal in the user's library. */

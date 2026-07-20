@@ -19,7 +19,9 @@ export const CURRENCIES: Currency[] = [
   { code: "CHF", label: "Swiss Franc", symbol: "CHF", suffix: true },
 ];
 
-const DEFAULT_CURRENCY = CURRENCIES[0];
+// Default to Moldovan Leu — this is a MDL-first setup for now.
+const DEFAULT_CURRENCY =
+  CURRENCIES.find((c) => c.code === "MDL") ?? CURRENCIES[0];
 
 /**
  * Resolve the user's currency from the budget doc. `budget.currency` may hold

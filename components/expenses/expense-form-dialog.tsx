@@ -23,29 +23,44 @@ import { createExpense, updateExpense, type ExpenseInput } from "@/lib/firebase/
 import {
   EXPENSE_CATEGORIES,
   EXPENSE_CATEGORY_LABEL,
+  INCOME_CATEGORIES,
+  INCOME_CATEGORY_LABEL,
+  ACCOUNTS,
+  ACCOUNT_LABEL,
 } from "@/lib/expenses";
-import type { Expense, ExpenseCategory } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import type { AccountKey, EntryKind, Expense } from "@/lib/types";
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   userId: string;
   defaultDate: string;
+  /** Which kind to preselect when adding (ignored when editing). */
+  initialKind?: EntryKind;
   expense?: Expense | null;
   onSaved: () => void;
 }
+
+const DEFAULT_CATEGORY: Record<EntryKind, string> = {
+  expense: "food",
+  income: "salary",
+};
 
 export function ExpenseFormDialog({
   open,
   onOpenChange,
   userId,
   defaultDate,
+  initialKind = "expense",
   expense,
   onSaved,
 }: Props) {
   const isEdit = Boolean(expense);
+  const [kind, setKind] = useState<EntryKind>("expense");
   const [amount, setAmount] = useState("");
-  const [category, setCategory] = useState<ExpenseCategory>("food");
+  const [account, setAccount] = useState<AccountKey>("wallet");
+  const [category, setCategory] = useState<string>("food");
   const [note, setNote] = useState("");
   const [date, setDate] = useState(defaultDate);
   const [saving, setSaving] = useState(false);
@@ -53,12 +68,29 @@ export function ExpenseFormDialog({
 
   useEffect(() => {
     if (!open) return;
+    const k = expense?.kind ?? initialKind;
+    setKind(k);
     setAmount(expense ? String(expense.amount) : "");
-    setCategory(expense?.category ?? "food");
+    setAccount(expense?.account ?? "wallet");
+    setCategory(expense?.category ?? DEFAULT_CATEGORY[k]);
     setNote(expense?.note ?? "");
     setDate(expense?.date ?? defaultDate);
     setError(null);
-  }, [open, expense, defaultDate]);
+  }, [open, expense, defaultDate, initialKind]);
+
+  function switchKind(next: EntryKind) {
+    setKind(next);
+    // Reset the category to the new kind's default so an expense category never
+    // lingers on an income entry (or vice-versa).
+    setCategory(DEFAULT_CATEGORY[next]);
+  }
+
+  const isIncome = kind === "income";
+  const categories = isIncome ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+  const categoryLabelFor = (c: string) =>
+    isIncome
+      ? INCOME_CATEGORY_LABEL[c as keyof typeof INCOME_CATEGORY_LABEL]
+      : EXPENSE_CATEGORY_LABEL[c as keyof typeof EXPENSE_CATEGORY_LABEL];
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -74,7 +106,9 @@ export function ExpenseFormDialog({
     setSaving(true);
     setError(null);
     const payload: ExpenseInput = {
+      kind,
       amount: Math.round(amt * 100) / 100,
+      account,
       category,
       note: note.trim() || null,
       date,
@@ -94,14 +128,41 @@ export function ExpenseFormDialog({
     }
   }
 
+  const title = `${isEdit ? "Edit" : "Add"} ${isIncome ? "income" : "expense"}`;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Edit expense" : "Add expense"}</DialogTitle>
-          <DialogDescription>Log what you spent and where.</DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>
+            {isIncome
+              ? "Log money you received and where it went."
+              : "Log what you spent and where."}
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Income / Expense toggle */}
+          <div className="grid grid-cols-2 gap-2 rounded-lg bg-muted p-1">
+            {(["expense", "income"] as EntryKind[]).map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => switchKind(k)}
+                className={cn(
+                  "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                  kind === k
+                    ? k === "income"
+                      ? "bg-emerald-500 text-white shadow-sm"
+                      : "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {k === "income" ? "Income" : "Expense"}
+              </button>
+            ))}
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="amount">Amount</Label>
@@ -126,33 +187,53 @@ export function ExpenseFormDialog({
               />
             </div>
           </div>
-          <div className="space-y-2">
-            <Label>Category</Label>
-            <Select
-              value={category}
-              onValueChange={(v) => setCategory(v as ExpenseCategory)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {EXPENSE_CATEGORIES.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {EXPENSE_CATEGORY_LABEL[c]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Category</Label>
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {categoryLabelFor(c)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Account</Label>
+              <Select
+                value={account}
+                onValueChange={(v) => setAccount(v as AccountKey)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ACCOUNTS.map((a) => (
+                    <SelectItem key={a} value={a}>
+                      {ACCOUNT_LABEL[a]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+
           <div className="space-y-2">
-            <Label htmlFor="note">Note</Label>
+            <Label htmlFor="note">Description</Label>
             <Input
               id="note"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="e.g. Groceries"
+              placeholder={isIncome ? "e.g. June salary" : "e.g. Groceries"}
             />
           </div>
+
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
             <Button
@@ -163,7 +244,7 @@ export function ExpenseFormDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={saving}>
-              {saving ? "Saving…" : isEdit ? "Save changes" : "Add expense"}
+              {saving ? "Saving…" : isEdit ? "Save changes" : title}
             </Button>
           </DialogFooter>
         </form>
