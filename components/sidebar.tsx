@@ -9,6 +9,7 @@ import { NAV_SECTIONS, NAV_FOOTER } from "@/lib/nav";
 import { useAuth } from "@/components/auth-provider";
 import { resolveFirstName } from "@/lib/greeting";
 import { Logo } from "@/components/logo";
+import { CareerNav } from "@/components/career-nav";
 
 function NavLink({
   href,
@@ -103,6 +104,8 @@ export function Sidebar() {
             </div>
           );
         })}
+
+        <CareerNav />
       </nav>
 
       <div className="space-y-1 border-t p-3">

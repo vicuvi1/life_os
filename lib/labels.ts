@@ -54,6 +54,7 @@ export const PROJECT_STATUS_VARIANT: Record<ProjectStatus, BadgeVariant> = {
 export const CATEGORY_LABEL: Record<GoalCategory, string> = {
   education: "Education",
   career: "Career",
+  certification: "Certification",
   health: "Health",
   financial: "Financial",
   personal: "Personal",
@@ -74,6 +75,7 @@ export const PROJECT_STATUSES: ProjectStatus[] = [
 export const CATEGORIES: GoalCategory[] = [
   "education",
   "career",
+  "certification",
   "health",
   "financial",
   "personal",

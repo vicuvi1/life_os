@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { NAV_SECTIONS, NAV_FOOTER } from "@/lib/nav";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/logo";
+import { CareerNav } from "@/components/career-nav";
 
 export function MobileNav() {
   const pathname = usePathname();
@@ -90,6 +91,7 @@ export function MobileNav() {
                   {section.items.map(link)}
                 </div>
               ))}
+              <CareerNav mobile />
               <div className="space-y-1 border-t pt-3">{NAV_FOOTER.map(link)}</div>
             </nav>
           </div>

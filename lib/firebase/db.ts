@@ -149,6 +149,20 @@ export async function getActiveGoals(userId: string, max = 3): Promise<Goal[]> {
   return goals.filter((g) => g.status === "active").slice(0, max);
 }
 
+/**
+ * Goals tagged as certifications that are still being worked on (excludes
+ * completed and archived). Powers the Career section in the sidebar.
+ */
+export async function getCertificationGoals(userId: string): Promise<Goal[]> {
+  const goals = await getGoals(userId);
+  return goals.filter(
+    (g) =>
+      g.category === "certification" &&
+      g.status !== "archived" &&
+      g.status !== "completed"
+  );
+}
+
 export async function getGoal(id: string): Promise<Goal | null> {
   const ref = doc(db, COLLECTIONS.goals, id);
   const snap = await getDoc(ref);

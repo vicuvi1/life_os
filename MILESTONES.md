@@ -867,3 +867,55 @@ which is what Life OS is. It's a self-contained SVG (`components/logo.tsx`, no
 image assets) used in the sidebar, the mobile menu, and the login/signup screen,
 and the same mark is the **browser-tab favicon** (`app/icon.svg`). Colors match
 the existing theme exactly, so nothing else about the look changes.
+
+---
+
+## Career — Certification progress in the sidebar
+
+**Purpose.** Give you a one-glance answer to "how are my certifications going?"
+right in the sidebar — progress, the next exam and how many days away it is, and
+whether you're on pace — without opening the Goals page or doing any mental math.
+
+**What it is.** A new **Career** section at the bottom of the sidebar (and the
+mobile menu) that lists each certification you're working toward, e.g.:
+
+```
+CAREER
+├─ CCNA          72% · 14/50 modules   Oct 15 · 63d   [On track]
+├─ C1 English    54%                    Nov 30 · 104d  [On track]
+└─ Linux         45%                                   [In progress]
+```
+
+**How it works.**
+- A certification is simply a **Goal tagged with the new "Certification"
+  category** — there's no separate certification record and no new form to fill
+  in. Tag a goal once (Goals → New/Edit goal → *Category: Certification*) and it
+  appears here automatically.
+- Everything shown is **derived from the goal**, in keeping with the app's
+  auto-calc philosophy:
+  - **Progress %** is the goal's existing progress (auto from completed tasks for
+    percent goals, from current/target for count goals, or your manual value).
+  - **"14/50 modules"** shows only for *count* goals, using the goal's
+    current/target values and its unit label.
+  - **Exam date + countdown** ("Oct 15 · 63d") come from the goal's **deadline**.
+  - **Status** is computed by comparing your actual progress against the pace
+    implied by the timeline (goal created → exam date): **On track** when you're
+    within ~10 points of the expected pace, **Behind** when you've slipped
+    further, **Overdue** once the exam date has passed, **Done** at 100% or when
+    the goal is completed, and **In progress** when there's no exam date to pace
+    against.
+- The section **only appears when you have at least one certification**, so it
+  never clutters the nav for users who don't track any. It's collapsible on
+  desktop (state remembered), and refreshes as you navigate so edits show up
+  without a full reload. Each row links to that goal's detail page.
+
+**How to use it.**
+1. Create (or edit) a goal and set its **Category** to **Certification**.
+2. For a "14/50 modules" style readout, set the goal's progress type to **Count**
+   and give it a target, current value, and unit (e.g. `modules`).
+3. Add a **Deadline** to get the exam date, day countdown, and on-track status.
+4. Watch the **Career** section in the sidebar — it stays current on its own.
+
+> **Note.** *Mock exam score* from the original sketch isn't included yet: the
+> Goal model has no field for it, and adding one would mean extra manual entry.
+> It's a natural follow-up if scored practice tracking becomes worth the input.

@@ -8,6 +8,7 @@ export type Priority = "high" | "medium" | "low";
 export type GoalCategory =
   | "education"
   | "career"
+  | "certification"
   | "health"
   | "financial"
   | "personal";

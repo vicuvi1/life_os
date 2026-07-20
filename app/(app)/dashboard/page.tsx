@@ -31,6 +31,7 @@ import {
   TrendingUp,
   GraduationCap,
   Briefcase,
+  Award,
   Dumbbell,
   Wallet,
   Sprout,
@@ -118,6 +119,7 @@ import type {
 const GOAL_CATEGORY_ICON: Record<GoalCategory, LucideIcon> = {
   education: GraduationCap,
   career: Briefcase,
+  certification: Award,
   health: Dumbbell,
   financial: Wallet,
   personal: Sprout,
@@ -135,6 +137,7 @@ type FocusGroupKey = GoalCategory | "other";
 const FOCUS_GROUP_ORDER: FocusGroupKey[] = [
   "education",
   "career",
+  "certification",
   "health",
   "financial",
   "personal",
