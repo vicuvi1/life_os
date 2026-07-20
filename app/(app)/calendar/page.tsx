@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Loader2, CalendarDays } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
-import { getTasks } from "@/lib/firebase/db";
+import { getSessions, getTasks } from "@/lib/firebase/db";
 import { toDateKey } from "@/lib/greeting";
+import { sessionColor, rangeLabel } from "@/lib/sessions";
 import {
   monthGrid,
   isInMonth,
@@ -18,7 +19,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { PRIORITY_VARIANT, PRIORITY_LABEL } from "@/lib/labels";
-import type { Task } from "@/lib/types";
+import type { Session, Task } from "@/lib/types";
 
 export default function CalendarPage() {
   const { user } = useAuth();
@@ -28,6 +29,7 @@ export default function CalendarPage() {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string>(today);
 
@@ -35,7 +37,12 @@ export default function CalendarPage() {
     if (!user) return;
     setLoading(true);
     try {
-      setTasks(await getTasks(user.uid));
+      const [t, s] = await Promise.all([
+        getTasks(user.uid),
+        getSessions(user.uid),
+      ]);
+      setTasks(t);
+      setSessions(s);
     } finally {
       setLoading(false);
     }
@@ -57,8 +64,19 @@ export default function CalendarPage() {
     return map;
   }, [tasks]);
 
+  const sessionsByDate = useMemo(() => {
+    const map = new Map<string, Session[]>();
+    for (const s of sessions) {
+      const arr = map.get(s.date) ?? [];
+      arr.push(s);
+      map.set(s.date, arr);
+    }
+    return map;
+  }, [sessions]);
+
   const grid = useMemo(() => monthGrid(year, month), [year, month]);
   const selectedTasks = tasksByDate.get(selected) ?? [];
+  const selectedSessions = sessionsByDate.get(selected) ?? [];
 
   function prevMonth() {
     setMonth((m) => (m === 0 ? 11 : m - 1));
@@ -164,6 +182,19 @@ export default function CalendarPage() {
                           {openCount > 0 ? openCount : "✓"}
                         </span>
                       )}
+                      {(sessionsByDate.get(key) ?? []).length > 0 && (
+                        <span className="mt-1 flex items-center gap-0.5">
+                          {(sessionsByDate.get(key) ?? [])
+                            .slice(0, 4)
+                            .map((s) => (
+                              <span
+                                key={s.id}
+                                className="h-1.5 w-1.5 rounded-full"
+                                style={{ backgroundColor: sessionColor(s) }}
+                              />
+                            ))}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -171,12 +202,46 @@ export default function CalendarPage() {
             </CardContent>
           </Card>
 
-          {/* Selected day's tasks */}
+          {/* Selected day's schedule + tasks */}
           <section className="space-y-2">
             <h2 className="text-sm font-semibold text-muted-foreground">
               {formatLongDate(selected)}
             </h2>
-            {selectedTasks.length === 0 ? (
+            {selectedSessions.length > 0 && (
+              <Card>
+                <CardContent className="divide-y p-0">
+                  {selectedSessions.map((s) => (
+                    <div key={s.id} className="flex items-center gap-3 px-4 py-3">
+                      <span
+                        className="h-8 w-1.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: sessionColor(s) }}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className={cn(
+                            "text-sm",
+                            s.status === "skipped" &&
+                              "text-muted-foreground line-through"
+                          )}
+                        >
+                          {s.title}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {rangeLabel(s.startMin, s.endMin)}
+                        </p>
+                      </div>
+                      {s.status === "done" && s.quality != null && (
+                        <Badge variant="outline">{s.quality}/10</Badge>
+                      )}
+                      {s.status === "done" && s.quality == null && (
+                        <Badge variant="success">Done</Badge>
+                      )}
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+            {selectedTasks.length === 0 && selectedSessions.length > 0 ? null : selectedTasks.length === 0 ? (
               <Card>
                 <CardContent className="flex flex-col items-center gap-2 p-8 text-center">
                   <CalendarDays className="h-7 w-7 text-muted-foreground" />

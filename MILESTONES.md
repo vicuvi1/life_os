@@ -167,3 +167,53 @@ is actually working and adjust.
 2. Open **Calendar** to see what's due and when; click a day for its task list.
 3. Open **Insights** to see trends — is your completion rate climbing? Are your
    habits consistent? Adjust your focus accordingly.
+
+---
+
+## Milestone 5 — Sessions (timed blocks + quality ratings)
+
+**Purpose.** Turn the day into a real schedule. Tasks say *what* to do; sessions
+say *when*. This is the first building block of the Smart Calendar (Milestone
+21): timed study/workout/deep-work blocks with a quality score, so the app can
+later learn which hours of your day produce your best work.
+
+**How it works.**
+- A new Firestore collection, **sessions**, stores each block: title, category
+  (study, workout, deep work, admin, personal, other), an optional **link to a
+  goal**, the date, start/end times (stored as minutes since midnight), a
+  status (planned / done / skipped), an optional **quality rating 1–10** given
+  after completion, and notes.
+- **Conflict detection** runs on the client: any two sessions on the same day
+  whose time ranges intersect are flagged with a red "Overlaps" badge, and the
+  day header shows how many blocks collide.
+- Each category has a signature color (study = blue, workout = red, deep work =
+  green, admin = orange, personal = purple), used consistently on the Sessions
+  page, the Calendar, and the Dashboard.
+- Security rules: sessions are owner-scoped like every other collection —
+  publish the updated `firestore.rules` for this milestone to work.
+
+**Features.**
+- Sessions page (`/sessions`): plan any day with ← / → day navigation, add /
+  edit / delete blocks, and per-day totals (hours planned, hours done).
+- **Mark done → rate quality**: completing a session immediately offers a 1–10
+  quality rating (how good was the study block?), which is saved for future
+  analytics.
+- Mark skipped for honesty (skipped blocks show struck-through and dimmed).
+- Overlap warnings whenever two blocks collide.
+- **Calendar integration**: month cells show a colored dot per session, and the
+  selected-day panel lists that day's schedule with time ranges and quality.
+- **Dashboard integration**: a "Today's Schedule" section shows today's blocks
+  in time order with their status.
+
+**How to use.**
+1. Open **Sessions** and click **New session** — e.g. "Spanish study", Study,
+   7:00–9:00, linked to your C1 English goal.
+2. Repeat for the rest of your day (Linux 9–11am, gym 4pm…). Overlaps get
+   flagged instantly.
+3. After finishing a block, open its menu → **Mark done**, then enter a
+   quality score (1–10) in the dialog that opens.
+4. Check the **Dashboard** each morning for today's schedule, and the
+   **Calendar** to see your blocks across the month.
+
+> **Note:** requires publishing the updated `firestore.rules` (adds the
+> `sessions` collection) in the Firebase Console.

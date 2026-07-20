@@ -16,17 +16,20 @@ import {
   getActiveGoals,
   getDailyHabits,
   getHabitLogs,
+  getSessionsInRange,
   getTasks,
   toggleHabitLog,
 } from "@/lib/firebase/db";
 import { greetingFor, nameFromEmail, toDateKey } from "@/lib/greeting";
 import { habitStateFromDates } from "@/lib/habits";
+import { sessionColor, rangeLabel } from "@/lib/sessions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { TaskRow } from "@/components/tasks/task-row";
 import { HabitRow } from "@/components/habits/habit-row";
-import type { Goal, Habit, Task } from "@/lib/types";
+import { Badge } from "@/components/ui/badge";
+import type { Goal, Habit, Session, Task } from "@/lib/types";
 
 function StatCard({
   icon: Icon,
@@ -60,6 +63,7 @@ export default function DashboardPage() {
     Record<string, string[]>
   >({});
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
 
   const today = toDateKey(new Date());
@@ -68,11 +72,12 @@ export default function DashboardPage() {
     if (!user) return;
     setLoading(true);
     try {
-      const [g, h, t, logs] = await Promise.all([
+      const [g, h, t, logs, sess] = await Promise.all([
         getActiveGoals(user.uid),
         getDailyHabits(user.uid),
         getTasks(user.uid),
         getHabitLogs(user.uid),
+        getSessionsInRange(user.uid, today, today),
       ]);
       const byHabit: Record<string, string[]> = {};
       for (const log of logs) {
@@ -82,10 +87,11 @@ export default function DashboardPage() {
       setHabits(h);
       setTasks(t);
       setLogDatesByHabit(byHabit);
+      setSessions(sess);
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, today]);
 
   useEffect(() => {
     load();
@@ -202,6 +208,51 @@ export default function DashboardPage() {
           </div>
         )}
       </section>
+
+      {/* Today's Schedule (sessions) */}
+      {sessions.length > 0 && (
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="flex items-center gap-2 text-lg font-semibold">
+              🕖 Today&apos;s Schedule
+            </h2>
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/sessions">Plan sessions</Link>
+            </Button>
+          </div>
+          <Card>
+            <CardContent className="divide-y p-0">
+              {sessions.map((s) => (
+                <div key={s.id} className="flex items-center gap-3 px-4 py-3">
+                  <span
+                    className="h-8 w-1.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: sessionColor(s) }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className={
+                        s.status === "skipped"
+                          ? "text-sm text-muted-foreground line-through"
+                          : "text-sm"
+                      }
+                    >
+                      {s.title}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {rangeLabel(s.startMin, s.endMin)}
+                    </p>
+                  </div>
+                  {s.status === "done" && (
+                    <Badge variant="success">
+                      {s.quality != null ? `${s.quality}/10` : "Done"}
+                    </Badge>
+                  )}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </section>
+      )}
 
       {/* Today's Focus */}
       <section className="space-y-4">

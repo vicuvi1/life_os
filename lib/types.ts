@@ -23,6 +23,15 @@ export type HabitCategory =
   | "learning"
   | "health";
 
+export type SessionCategory =
+  | "study"
+  | "workout"
+  | "deep_work"
+  | "admin"
+  | "personal"
+  | "other";
+export type SessionStatus = "planned" | "done" | "skipped";
+
 export interface Goal {
   id: string;
   userId: string;
@@ -96,6 +105,25 @@ export interface WeeklyReview {
   createdAt: number;
 }
 
+export interface Session {
+  id: string;
+  userId: string;
+  title: string;
+  category: SessionCategory;
+  /** Optional link to a goal (e.g. "Spanish study" → C1 English goal). */
+  goalId: string | null;
+  date: string; // YYYY-MM-DD
+  startMin: number; // minutes since midnight (e.g. 7:00 = 420)
+  endMin: number; // minutes since midnight, > startMin
+  status: SessionStatus;
+  /** Post-session quality rating 1-10 (null until rated). */
+  quality: number | null;
+  notes: string | null;
+  color: string | null;
+  /** Repeat this block on the same weekday going forward (UI convenience). */
+  createdAt: number;
+}
+
 /** Firestore collection names, centralized to avoid typos. */
 export const COLLECTIONS = {
   goals: "goals",
@@ -104,4 +132,5 @@ export const COLLECTIONS = {
   habits: "habits",
   habitLogs: "habitLogs",
   weeklyReviews: "weeklyReviews",
+  sessions: "sessions",
 } as const;

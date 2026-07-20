@@ -22,6 +22,7 @@ import {
   type Habit,
   type HabitLog,
   type Project,
+  type Session,
   type Task,
   type WeeklyReview,
 } from "@/lib/types";
@@ -504,4 +505,87 @@ export async function deleteWeeklyReview(
   weekStart: string
 ): Promise<void> {
   await deleteDoc(doc(db, COLLECTIONS.weeklyReviews, `${userId}_${weekStart}`));
+}
+
+// ---------------------------------------------------------------------------
+// Sessions (timed study/workout/etc. blocks)
+// ---------------------------------------------------------------------------
+function mapSession(snap: QueryDocumentSnapshot<DocumentData>): Session {
+  const d = snap.data();
+  return {
+    id: snap.id,
+    userId: d.userId,
+    title: d.title,
+    category: d.category ?? "other",
+    goalId: d.goalId ?? null,
+    date: d.date,
+    startMin: d.startMin ?? 0,
+    endMin: d.endMin ?? 0,
+    status: d.status ?? "planned",
+    quality: d.quality ?? null,
+    notes: d.notes ?? null,
+    color: d.color ?? null,
+    createdAt: toMillis(d.createdAt),
+  };
+}
+
+/** All sessions for a user (sorted by date then start time). */
+export async function getSessions(userId: string): Promise<Session[]> {
+  const q = query(
+    collection(db, COLLECTIONS.sessions),
+    where("userId", "==", userId)
+  );
+  const snap = await getDocs(q);
+  return snap.docs
+    .map(mapSession)
+    .sort((a, b) =>
+      a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.startMin - b.startMin
+    );
+}
+
+/** Sessions within an inclusive date-key range (client-side filter). */
+export async function getSessionsInRange(
+  userId: string,
+  fromDate: string,
+  toDate: string
+): Promise<Session[]> {
+  const all = await getSessions(userId);
+  return all.filter((s) => s.date >= fromDate && s.date <= toDate);
+}
+
+export type SessionInput = Pick<
+  Session,
+  | "title"
+  | "category"
+  | "goalId"
+  | "date"
+  | "startMin"
+  | "endMin"
+  | "status"
+  | "quality"
+  | "notes"
+  | "color"
+>;
+
+export async function createSession(
+  userId: string,
+  input: SessionInput
+): Promise<string> {
+  const ref = await addDoc(collection(db, COLLECTIONS.sessions), {
+    userId,
+    ...input,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export async function updateSession(
+  id: string,
+  input: Partial<SessionInput>
+): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.sessions, id), { ...input });
+}
+
+export async function deleteSession(id: string): Promise<void> {
+  await deleteDoc(doc(db, COLLECTIONS.sessions, id));
 }
