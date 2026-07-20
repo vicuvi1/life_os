@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Target,
@@ -17,15 +17,19 @@ import {
   getActiveGoals,
   getDailyHabits,
   getHabitLogs,
+  getNutritionLog,
   getSessionsInRange,
   getSleepLogs,
   getTasks,
   toggleHabitLog,
+  upsertNutritionLog,
 } from "@/lib/firebase/db";
 import { greetingFor, nameFromEmail, toDateKey } from "@/lib/greeting";
 import { habitStateFromDates } from "@/lib/habits";
 import { sessionColor, rangeLabel } from "@/lib/sessions";
 import { formatHours } from "@/lib/sleep";
+import { DEFAULT_WATER_TARGET, hydrationRating } from "@/lib/nutrition";
+import { GlassWater, Minus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -68,7 +72,10 @@ export default function DashboardPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [sleepLogs, setSleepLogs] = useState<SleepLog[]>([]);
+  const [water, setWater] = useState(0);
+  const [waterTarget, setWaterTarget] = useState(DEFAULT_WATER_TARGET);
   const [loading, setLoading] = useState(true);
+  const waterRef = useRef(0);
 
   const today = toDateKey(new Date());
 
@@ -76,13 +83,14 @@ export default function DashboardPage() {
     if (!user) return;
     setLoading(true);
     try {
-      const [g, h, t, logs, sess, sleep] = await Promise.all([
+      const [g, h, t, logs, sess, sleep, nutrition] = await Promise.all([
         getActiveGoals(user.uid),
         getDailyHabits(user.uid),
         getTasks(user.uid),
         getHabitLogs(user.uid),
         getSessionsInRange(user.uid, today, today),
         getSleepLogs(user.uid),
+        getNutritionLog(user.uid, today),
       ]);
       const byHabit: Record<string, string[]> = {};
       for (const log of logs) {
@@ -94,10 +102,28 @@ export default function DashboardPage() {
       setLogDatesByHabit(byHabit);
       setSessions(sess);
       setSleepLogs(sleep);
+      setWater(nutrition?.water ?? 0);
+      waterRef.current = nutrition?.water ?? 0;
+      setWaterTarget(nutrition?.waterTarget ?? DEFAULT_WATER_TARGET);
     } finally {
       setLoading(false);
     }
   }, [user, today]);
+
+  async function adjustWater(delta: number) {
+    if (!user) return;
+    const prev = waterRef.current;
+    const next = Math.max(0, prev + delta);
+    waterRef.current = next;
+    setWater(next);
+    try {
+      await upsertNutritionLog(user.uid, today, { water: next });
+    } catch {
+      // Roll back the optimistic bump if the write failed.
+      waterRef.current = prev;
+      setWater(prev);
+    }
+  }
 
   useEffect(() => {
     load();
@@ -171,6 +197,47 @@ export default function DashboardPage() {
           value={lastNight ? formatHours(lastNight.hours) : "—"}
         />
       </div>
+
+      {/* Water quick-add */}
+      <Card>
+        <CardContent className="flex items-center justify-between gap-4 p-5">
+          <div className="flex items-center gap-4">
+            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <GlassWater className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-2xl font-semibold leading-tight">
+                {water}
+                <span className="text-base text-muted-foreground">
+                  {" "}
+                  / {waterTarget}
+                </span>
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {hydrationRating(water, waterTarget).label} · glasses today
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Remove a glass"
+              onClick={() => adjustWater(-1)}
+              disabled={water <= 0}
+            >
+              <Minus className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              aria-label="Add a glass"
+              onClick={() => adjustWater(1)}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Active goals */}
       <section className="space-y-4">

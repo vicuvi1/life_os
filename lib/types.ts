@@ -134,6 +134,20 @@ export interface SleepLog {
   createdAt: number;
 }
 
+export interface NutritionLog {
+  id: string;
+  userId: string;
+  date: string; // YYYY-MM-DD
+  water: number; // glasses consumed
+  waterTarget: number; // daily goal (default 8)
+  breakfast: boolean;
+  lunch: boolean;
+  dinner: boolean;
+  calories: number | null; // optional total for the day
+  notes: string | null;
+  createdAt: number;
+}
+
 /** Firestore collection names, centralized to avoid typos. */
 export const COLLECTIONS = {
   goals: "goals",
@@ -144,4 +158,5 @@ export const COLLECTIONS = {
   weeklyReviews: "weeklyReviews",
   sessions: "sessions",
   sleepLogs: "sleepLogs",
+  nutritionLogs: "nutritionLogs",
 } as const;

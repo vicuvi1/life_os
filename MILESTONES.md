@@ -257,3 +257,43 @@ and the "⚠️ low sleep" alerts the Smart Calendar will show.
 
 > **Note:** requires publishing the updated `firestore.rules` (adds the
 > `sleepLogs` collection) in the Firebase Console.
+
+---
+
+## Milestone 7 — Nutrition & Water
+
+**Purpose.** Two of the biggest daily energy levers from the Dependency Tracker
+spec are **hydration** and **eating breakfast** ("skip breakfast → −15% study
+quality; <6 glasses water → headaches, −10%"). This milestone makes both a
+one-tap daily log so the app can later correlate them with focus and study
+quality.
+
+**How it works.**
+- A new **nutritionLogs** collection stores one entry per day
+  (`userId_date`): glasses of water, a water goal (default 8), whether
+  breakfast / lunch / dinner were eaten, optional total calories, and notes.
+- Everything **auto-saves** — tapping a glass or checking a meal writes
+  immediately (no Save button); calories and notes save when you click away.
+- A hydration rating (Hydrated / Almost / Low) is derived from glasses vs your
+  goal.
+- Security rules: nutrition logs are owner-scoped — publish the updated
+  `firestore.rules`.
+
+**Features.**
+- Nutrition page (`/nutrition`): a water counter with +/− and a tappable row of
+  glass icons, an adjustable daily goal, breakfast/lunch/dinner check-offs,
+  optional calories, and notes — all per day with ← / → navigation and a
+  recent-days history.
+- **Dashboard**: a water quick-add card — log a glass in one tap without
+  leaving the morning view.
+- **Insights**: an "Avg water (7d)" stat card.
+
+**How to use.**
+1. Through the day, tap **+** on the dashboard water card (or a glass on the
+   Nutrition page) each time you drink.
+2. Check off meals as you eat them; breakfast especially matters for focus.
+3. Review your weekly water average on **Insights**; aim to hit your goal most
+   days.
+
+> **Note:** requires publishing the updated `firestore.rules` (adds the
+> `nutritionLogs` collection) in the Firebase Console.

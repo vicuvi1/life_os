@@ -21,6 +21,7 @@ import {
   type Goal,
   type Habit,
   type HabitLog,
+  type NutritionLog,
   type Project,
   type Session,
   type SleepLog,
@@ -636,11 +637,10 @@ export async function upsertSleepLog(
   input: SleepLogInput
 ): Promise<void> {
   const ref = doc(db, COLLECTIONS.sleepLogs, `${userId}_${date}`);
-  await setDoc(
-    ref,
-    { userId, date, ...input, createdAt: serverTimestamp() },
-    { merge: true }
-  );
+  const existing = await getDoc(ref);
+  // Only stamp createdAt on first creation so merge-writes don't reset it.
+  const created = existing.exists() ? {} : { createdAt: serverTimestamp() };
+  await setDoc(ref, { userId, date, ...input, ...created }, { merge: true });
 }
 
 export async function deleteSleepLog(
@@ -648,4 +648,79 @@ export async function deleteSleepLog(
   date: string
 ): Promise<void> {
   await deleteDoc(doc(db, COLLECTIONS.sleepLogs, `${userId}_${date}`));
+}
+
+// ---------------------------------------------------------------------------
+// Nutrition & water logs (one per day)
+// ---------------------------------------------------------------------------
+function mapNutritionLog(
+  snap: QueryDocumentSnapshot<DocumentData>
+): NutritionLog {
+  const d = snap.data();
+  return {
+    id: snap.id,
+    userId: d.userId,
+    date: d.date,
+    water: d.water ?? 0,
+    waterTarget: d.waterTarget ?? 8,
+    breakfast: d.breakfast ?? false,
+    lunch: d.lunch ?? false,
+    dinner: d.dinner ?? false,
+    calories: d.calories ?? null,
+    notes: d.notes ?? null,
+    createdAt: toMillis(d.createdAt),
+  };
+}
+
+export async function getNutritionLogs(
+  userId: string
+): Promise<NutritionLog[]> {
+  const q = query(
+    collection(db, COLLECTIONS.nutritionLogs),
+    where("userId", "==", userId)
+  );
+  const snap = await getDocs(q);
+  return snap.docs
+    .map(mapNutritionLog)
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+}
+
+export async function getNutritionLog(
+  userId: string,
+  date: string
+): Promise<NutritionLog | null> {
+  const ref = doc(db, COLLECTIONS.nutritionLogs, `${userId}_${date}`);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return null;
+  return mapNutritionLog(snap as QueryDocumentSnapshot<DocumentData>);
+}
+
+export type NutritionLogInput = Pick<
+  NutritionLog,
+  | "water"
+  | "waterTarget"
+  | "breakfast"
+  | "lunch"
+  | "dinner"
+  | "calories"
+  | "notes"
+>;
+
+export async function upsertNutritionLog(
+  userId: string,
+  date: string,
+  input: Partial<NutritionLogInput>
+): Promise<void> {
+  const ref = doc(db, COLLECTIONS.nutritionLogs, `${userId}_${date}`);
+  const existing = await getDoc(ref);
+  // Only stamp createdAt on first creation so merge-writes don't reset it.
+  const created = existing.exists() ? {} : { createdAt: serverTimestamp() };
+  await setDoc(ref, { userId, date, ...input, ...created }, { merge: true });
+}
+
+export async function deleteNutritionLog(
+  userId: string,
+  date: string
+): Promise<void> {
+  await deleteDoc(doc(db, COLLECTIONS.nutritionLogs, `${userId}_${date}`));
 }

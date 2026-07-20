@@ -7,6 +7,7 @@ import {
   Flame,
   TrendingUp,
   Moon,
+  GlassWater,
   Loader2,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
@@ -16,6 +17,7 @@ import {
   getHabits,
   getHabitLogs,
   getSleepLogs,
+  getNutritionLogs,
 } from "@/lib/firebase/db";
 import { toDateKey } from "@/lib/greeting";
 import { addDays } from "@/lib/habits";
@@ -24,7 +26,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { HabitHeatmap } from "@/components/insights/habit-heatmap";
 import { cn } from "@/lib/utils";
-import type { Goal, Habit, HabitLog, SleepLog, Task } from "@/lib/types";
+import type {
+  Goal,
+  Habit,
+  HabitLog,
+  NutritionLog,
+  SleepLog,
+  Task,
+} from "@/lib/types";
 
 function StatCard({
   icon: Icon,
@@ -62,24 +71,27 @@ export default function InsightsPage() {
   const [habits, setHabits] = useState<Habit[]>([]);
   const [logs, setLogs] = useState<HabitLog[]>([]);
   const [sleepLogs, setSleepLogs] = useState<SleepLog[]>([]);
+  const [nutritionLogs, setNutritionLogs] = useState<NutritionLog[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     try {
-      const [g, t, h, l, s] = await Promise.all([
+      const [g, t, h, l, s, n] = await Promise.all([
         getGoals(user.uid),
         getTasks(user.uid),
         getHabits(user.uid),
         getHabitLogs(user.uid),
         getSleepLogs(user.uid),
+        getNutritionLogs(user.uid),
       ]);
       setGoals(g);
       setTasks(t);
       setHabits(h);
       setLogs(l);
       setSleepLogs(s);
+      setNutritionLogs(n);
     } finally {
       setLoading(false);
     }
@@ -120,6 +132,13 @@ export default function InsightsPage() {
     const recentSleep = sleepLogs.filter((s) => s.date >= weekCutoff);
     const avgSleep = averageHours(recentSleep);
 
+    const recentNutrition = nutritionLogs.filter((n) => n.date >= weekCutoff);
+    const avgWater =
+      recentNutrition.length > 0
+        ? recentNutrition.reduce((s, n) => s + n.water, 0) /
+          recentNutrition.length
+        : 0;
+
     return {
       activeGoals: activeGoals.length,
       avgProgress,
@@ -129,8 +148,9 @@ export default function InsightsPage() {
       habitRate,
       bestStreak,
       avgSleep,
+      avgWater,
     };
-  }, [goals, tasks, habits, logs, sleepLogs, today]);
+  }, [goals, tasks, habits, logs, sleepLogs, nutritionLogs, today]);
 
   // Sleep hours per night, last 14 days.
   const sleepBars = useMemo(() => {
@@ -219,6 +239,13 @@ export default function InsightsPage() {
           icon={Moon}
           label="Avg sleep (7d)"
           value={stats.avgSleep > 0 ? formatHours(stats.avgSleep) : "—"}
+        />
+        <StatCard
+          icon={GlassWater}
+          label="Avg water (7d)"
+          value={
+            stats.avgWater > 0 ? `${stats.avgWater.toFixed(1)} glasses` : "—"
+          }
         />
       </div>
 

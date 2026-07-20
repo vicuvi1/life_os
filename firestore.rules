@@ -67,6 +67,12 @@ service cloud.firestore {
       allow update: if ownsExisting() && ownsIncoming();
     }
 
+    match /nutritionLogs/{id} {
+      allow read, delete: if ownsExisting();
+      allow create: if ownsIncoming();
+      allow update: if ownsExisting() && ownsIncoming();
+    }
+
     // Deny everything else by default.
     match /{document=**} {
       allow read, write: if false;
