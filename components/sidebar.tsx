@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Rocket, ChevronDown } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_SECTIONS, NAV_FOOTER } from "@/lib/nav";
 import { useAuth } from "@/components/auth-provider";
 import { resolveFirstName } from "@/lib/greeting";
+import { Logo } from "@/components/logo";
 
 function NavLink({
   href,
@@ -71,9 +72,7 @@ export function Sidebar() {
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r bg-card/30 md:flex">
       <div className="flex h-16 items-center gap-2.5 border-b px-6">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-fuchsia-500 text-white shadow-sm">
-          <Rocket className="h-5 w-5" />
-        </div>
+        <Logo size={36} className="shadow-sm" />
         <div className="leading-tight">
           <p className="text-[15px] font-semibold">Life OS</p>
           <p className="text-[11px] text-muted-foreground">Run your day</p>

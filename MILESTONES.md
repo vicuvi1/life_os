@@ -769,3 +769,17 @@ today** button handles the whole day's quick logging in one modal.
   the rest of the app's "no separate Save step" pattern) rather than having one
   global Submit button — functionally equivalent ("update your day in one
   place, under 15 seconds") but worth knowing if you expected a single button.
+
+---
+
+## Brand — custom logo
+
+**Purpose.** Replace the generic rocket icon with a distinctive, on-brand mark.
+
+**What it is.** A gradient (violet → fuchsia) rounded-square badge containing an
+**orbit ring** with an upward **growth line** whose endpoint lands exactly on
+the ring, tipped with a node dot — reads as *system + momentum + progress*,
+which is what Life OS is. It's a self-contained SVG (`components/logo.tsx`, no
+image assets) used in the sidebar, the mobile menu, and the login/signup screen,
+and the same mark is the **browser-tab favicon** (`app/icon.svg`). Colors match
+the existing theme exactly, so nothing else about the look changes.

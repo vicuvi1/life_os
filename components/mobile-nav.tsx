@@ -3,10 +3,11 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X, Rocket } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_SECTIONS, NAV_FOOTER } from "@/lib/nav";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/logo";
 
 export function MobileNav() {
   const pathname = usePathname();
@@ -68,9 +69,7 @@ export function MobileNav() {
           <div className="absolute left-0 top-0 flex h-full w-72 flex-col border-r bg-card shadow-xl">
             <div className="flex h-16 items-center justify-between border-b px-4">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-fuchsia-500 text-white">
-                  <Rocket className="h-5 w-5" />
-                </div>
+                <Logo size={36} />
                 <span className="text-[15px] font-semibold">Life OS</span>
               </div>
               <Button

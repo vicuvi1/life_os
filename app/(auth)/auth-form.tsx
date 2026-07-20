@@ -3,8 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Rocket } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
+import { Logo } from "@/components/logo";
 import { authErrorMessage } from "@/lib/firebase/errors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,9 +60,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
   return (
     <Card>
       <CardHeader className="space-y-2 text-center">
-        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
-          <Rocket className="h-6 w-6" />
-        </div>
+        <Logo size={48} className="mx-auto" />
         <CardTitle className="text-2xl">
           {isLogin ? "Welcome back" : "Create your Life OS"}
         </CardTitle>
