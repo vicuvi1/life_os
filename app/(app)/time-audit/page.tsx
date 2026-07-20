@@ -188,7 +188,7 @@ export default function TimeAuditPage() {
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  Rate a few more completed sessions (2+ in a time block) to see
+                  Rate a few more completed sessions (3+ in a time block) to see
                   your peak focus hours.
                 </p>
               )}
@@ -241,7 +241,8 @@ export default function TimeAuditPage() {
                   {fmtHours(trend.thisWeek)}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  this week · {fmtHours(trend.lastWeek)} last week
+                  so far this week · {fmtHours(trend.lastWeekToDate)} by this
+                  point last week
                 </p>
               </div>
               {trend.deltaPct != null && (

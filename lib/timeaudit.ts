@@ -96,12 +96,16 @@ export function focusByTimeOfDay(
   for (const b of TIME_BUCKETS) acc.set(b.key, { qualitySum: 0, count: 0, minutes: 0 });
 
   for (const s of sessions) {
-    if (!isDone(s) || s.quality == null || !inRange(s, fromDate, toDate)) continue;
+    if (!isDone(s) || !inRange(s, fromDate, toDate)) continue;
     const b = bucketFor(s.startMin);
     const cur = acc.get(b.key)!;
-    cur.qualitySum += s.quality;
-    cur.count += 1;
+    // Minutes reflect all completed time in the block; quality averages only
+    // the sessions that were actually rated.
     cur.minutes += minutes(s);
+    if (s.quality != null) {
+      cur.qualitySum += s.quality;
+      cur.count += 1;
+    }
   }
 
   return TIME_BUCKETS.map((b) => {
@@ -110,16 +114,16 @@ export function focusByTimeOfDay(
       key: b.key,
       label: b.label,
       avgQuality: cur.count > 0 ? cur.qualitySum / cur.count : null,
-      count: cur.count,
-      minutes: cur.minutes,
+      count: cur.count, // number of RATED sessions
+      minutes: cur.minutes, // all completed minutes in the block
     };
   });
 }
 
-/** The bucket with the highest average quality that has enough sessions. */
+/** The bucket with the highest average quality that has enough rated sessions. */
 export function bestFocusBucket(
   buckets: FocusBucket[],
-  minCount = 2
+  minCount = 3
 ): FocusBucket | null {
   const eligible = buckets.filter(
     (b) => b.avgQuality != null && b.count >= minCount
@@ -131,25 +135,41 @@ export function bestFocusBucket(
 }
 
 export interface WeeklyTrend {
-  thisWeek: number; // minutes
-  lastWeek: number; // minutes
-  deltaPct: number | null; // % change vs last week, null if last week was 0
+  thisWeek: number; // minutes this ISO week, up to today
+  lastWeekToDate: number; // minutes last week, up to the SAME weekday
+  deltaPct: number | null; // % change vs same point last week, null if it was 0
 }
 
-/** Done-minutes this ISO week vs last week (relative to `todayKey`). */
+/**
+ * Done-minutes this ISO week (to date) vs the same elapsed portion of last
+ * week — a fair like-for-like comparison instead of partial-vs-full.
+ */
 export function weeklyStudyTrend(
   sessions: Session[],
   todayKey: string
 ): WeeklyTrend {
   const thisStart = startOfWeekKey(todayKey);
-  const thisEnd = addDays(thisStart, 6);
+
+  // How far into the week is today (0 = Monday … 6 = Sunday)?
+  let offset = 0;
+  for (let i = 0; i <= 6; i++) {
+    if (addDays(thisStart, i) === todayKey) {
+      offset = i;
+      break;
+    }
+  }
+
   const lastStart = addDays(thisStart, -7);
-  const lastEnd = addDays(thisStart, -1);
-
-  const thisWeek = totalDoneMinutes(sessions, thisStart, thisEnd);
-  const lastWeek = totalDoneMinutes(sessions, lastStart, lastEnd);
+  const thisWeek = totalDoneMinutes(sessions, thisStart, todayKey);
+  const lastWeekToDate = totalDoneMinutes(
+    sessions,
+    lastStart,
+    addDays(lastStart, offset)
+  );
   const deltaPct =
-    lastWeek > 0 ? Math.round(((thisWeek - lastWeek) / lastWeek) * 100) : null;
+    lastWeekToDate > 0
+      ? Math.round(((thisWeek - lastWeekToDate) / lastWeekToDate) * 100)
+      : null;
 
-  return { thisWeek, lastWeek, deltaPct };
+  return { thisWeek, lastWeekToDate, deltaPct };
 }
