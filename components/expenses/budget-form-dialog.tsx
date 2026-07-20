@@ -34,14 +34,16 @@ export function BudgetFormDialog({
   budget,
   onSaved,
 }: Props) {
-  const [currency, setCurrency] = useState("$");
+  // Currency is managed in Settings → Currency; kept here only so saving the
+  // budget preserves the user's existing selection.
+  const [currency, setCurrency] = useState("USD");
   const [monthlyTotal, setMonthlyTotal] = useState("");
   const [byCategory, setByCategory] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    setCurrency(budget?.currency ?? "$");
+    setCurrency(budget?.currency ?? "USD");
     setMonthlyTotal(budget?.monthlyTotal != null ? String(budget.monthlyTotal) : "");
     const initial: Record<string, string> = {};
     for (const c of EXPENSE_CATEGORIES) {
@@ -66,7 +68,8 @@ export function BudgetFormDialog({
       if (n != null && n > 0) cats[c] = n;
     }
     const payload: BudgetInput = {
-      currency: currency.trim() || "$",
+      // Currency is chosen in Settings → Currency; preserve it here.
+      currency: currency.trim() || "USD",
       monthlyTotal: num(monthlyTotal),
       byCategory: cats,
     };
@@ -90,28 +93,19 @@ export function BudgetFormDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="currency">Currency symbol</Label>
-              <Input
-                id="currency"
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value)}
-                placeholder="$"
-                maxLength={3}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="monthly">Monthly total</Label>
-              <Input
-                id="monthly"
-                type="number"
-                min={0}
-                value={monthlyTotal}
-                onChange={(e) => setMonthlyTotal(e.target.value)}
-                placeholder="e.g. 400"
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="monthly">Monthly total</Label>
+            <Input
+              id="monthly"
+              type="number"
+              min={0}
+              value={monthlyTotal}
+              onChange={(e) => setMonthlyTotal(e.target.value)}
+              placeholder="e.g. 400"
+            />
+            <p className="text-xs text-muted-foreground">
+              Display currency is set in Settings → Currency.
+            </p>
           </div>
 
           <div className="space-y-2">

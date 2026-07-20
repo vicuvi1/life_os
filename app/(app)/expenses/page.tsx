@@ -23,13 +23,13 @@ import { toDateKey } from "@/lib/greeting";
 import {
   EXPENSE_CATEGORY_LABEL,
   EXPENSE_CATEGORY_COLOR,
-  formatMoney,
   monthKey,
   inMonth,
   monthLabel,
   spendByCategory,
   monthStatus,
 } from "@/lib/expenses";
+import { resolveCurrency, formatAmount } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -82,7 +82,7 @@ export default function ExpensesPage() {
     load();
   }, [load]);
 
-  const currency = budget?.currency ?? "$";
+  const currency = resolveCurrency(budget);
   const mKey = monthKey(year, month);
 
   const monthExpenses = useMemo(
@@ -180,20 +180,20 @@ export default function ExpensesPage() {
               <div className="flex items-end justify-between">
                 <div>
                   <p className="text-3xl font-semibold">
-                    {formatMoney(status.spent, currency)}
+                    {formatAmount(status.spent, currency)}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     spent{" "}
                     {status.budget != null && (
-                      <>of {formatMoney(status.budget, currency)}</>
+                      <>of {formatAmount(status.budget, currency)}</>
                     )}
                   </p>
                 </div>
                 {status.budget != null && (
                   <Badge variant={status.overBudget ? "destructive" : "success"}>
                     {status.overBudget
-                      ? `${formatMoney(-(status.remaining ?? 0), currency)} over`
-                      : `${formatMoney(status.remaining ?? 0, currency)} left`}
+                      ? `${formatAmount(-(status.remaining ?? 0), currency)} over`
+                      : `${formatAmount(status.remaining ?? 0, currency)} left`}
                   </Badge>
                 )}
               </div>
@@ -217,7 +217,7 @@ export default function ExpensesPage() {
                 )}
                 {isCurrentMonth && status.daysElapsed > 0 && (
                   <span>
-                    Projected: {formatMoney(status.projected, currency)}
+                    Projected: {formatAmount(status.projected, currency)}
                     {status.budget != null &&
                       status.projected > status.budget &&
                       " ⚠️"}
@@ -229,7 +229,7 @@ export default function ExpensesPage() {
                 <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
                   <AlertTriangle className="h-4 w-4 shrink-0" />
                   You&apos;re over budget this month by{" "}
-                  {formatMoney(-(status.remaining ?? 0), currency)}.
+                  {formatAmount(-(status.remaining ?? 0), currency)}.
                 </div>
               )}
               {!status.overBudget &&
@@ -239,8 +239,8 @@ export default function ExpensesPage() {
                   <div className="flex items-center gap-2 rounded-md bg-amber-500/10 p-3 text-sm text-amber-600 dark:text-amber-400">
                     <AlertTriangle className="h-4 w-4 shrink-0" />
                     At this pace you&apos;ll finish around{" "}
-                    {formatMoney(status.projected, currency)} — over your{" "}
-                    {formatMoney(status.budget, currency)} budget.
+                    {formatAmount(status.projected, currency)} — over your{" "}
+                    {formatAmount(status.budget, currency)} budget.
                   </div>
                 )}
             </CardContent>
@@ -266,8 +266,8 @@ export default function ExpensesPage() {
                       <div className="flex items-center justify-between text-sm">
                         <span>{EXPENSE_CATEGORY_LABEL[c.category]}</span>
                         <span className={cn("text-muted-foreground", over && "text-destructive")}>
-                          {formatMoney(c.amount, currency)}
-                          {cap != null && ` / ${formatMoney(cap, currency)}`}
+                          {formatAmount(c.amount, currency)}
+                          {cap != null && ` / ${formatAmount(cap, currency)}`}
                         </span>
                       </div>
                       <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
@@ -328,7 +328,7 @@ export default function ExpensesPage() {
                         </p>
                       </div>
                       <span className="text-sm font-semibold">
-                        {formatMoney(e.amount, currency)}
+                        {formatAmount(e.amount, currency)}
                       </span>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>

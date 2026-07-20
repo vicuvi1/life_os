@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { ChevronDown, GripVertical } from "lucide-react";
+import { ChevronDown, GripVertical, type LucideIcon } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 interface Props {
   /** Stable id used to remember the open/closed state. */
   id: string;
-  emoji: string;
+  icon: LucideIcon;
   title: string;
   /** Small count/summary shown next to the title (e.g. "3" or "2/8"). */
   count?: string | number;
@@ -21,7 +21,7 @@ interface Props {
 
 export function CollapsibleSection({
   id,
-  emoji,
+  icon: Icon,
   title,
   count,
   action,
@@ -61,7 +61,7 @@ export function CollapsibleSection({
           className="flex flex-1 items-center gap-2 text-left"
           aria-expanded={open}
         >
-          <span className="text-base leading-none">{emoji}</span>
+          <Icon className="h-4 w-4 shrink-0 text-primary" />
           <span className="text-sm font-semibold">{title}</span>
           {count != null && count !== "" && (
             <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">

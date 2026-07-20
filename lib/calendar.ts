@@ -8,6 +8,7 @@ import type {
   SleepLog,
   Task,
 } from "@/lib/types";
+import { isLogDone } from "@/lib/habits";
 
 export type CalElement = "sessions" | "tasks" | "habits" | "sleep" | "goals";
 
@@ -67,10 +68,13 @@ export function buildCalData(src: CalSources): CalData {
   const sleepByDate = new Map<string, SleepLog>();
   for (const s of src.sleep) sleepByDate.set(s.date, s);
 
-  const dailyHabitIds = new Set(src.dailyHabits.map((h) => h.id));
+  const habitById = new Map(src.dailyHabits.map((h) => [h.id, h]));
   const habitDoneByDate = new Map<string, number>();
   for (const log of src.habitLogs) {
-    if (!dailyHabitIds.has(log.habitId)) continue;
+    const habit = habitById.get(log.habitId);
+    // Only daily habits, and only logs that actually count as done
+    // (count/duration habits need value >= target).
+    if (!habit || !isLogDone(habit, log)) continue;
     habitDoneByDate.set(
       log.completedDate,
       (habitDoneByDate.get(log.completedDate) ?? 0) + 1

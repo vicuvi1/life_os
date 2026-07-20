@@ -15,6 +15,7 @@ import {
   Activity,
   Timer,
   Wallet,
+  SlidersHorizontal,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -51,6 +52,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: "/nutrition", label: "Nutrition", icon: GlassWater },
       { href: "/meals", label: "Meals", icon: UtensilsCrossed },
       { href: "/expenses", label: "Expenses", icon: Wallet },
+      { href: "/trackers", label: "Trackers", icon: SlidersHorizontal },
     ],
   },
   {

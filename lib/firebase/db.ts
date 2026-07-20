@@ -19,6 +19,7 @@ import { db } from "@/lib/firebase/config";
 import {
   COLLECTIONS,
   type Budget,
+  type ClothingItem,
   type DecisionConfig,
   type Expense,
   type Goal,
@@ -33,9 +34,12 @@ import {
   type ShoppingCheck,
   type SleepLog,
   type Task,
+  type Tracker,
+  type TrackerLog,
+  type UserPrefs,
   type WeeklyReview,
 } from "@/lib/types";
-import { currentStreak, longestStreak } from "@/lib/habits";
+import { currentStreak, longestStreak, isLogDone } from "@/lib/habits";
 import { toDateKey } from "@/lib/greeting";
 
 /** Convert a Firestore Timestamp (or null during pending writes) to epoch ms. */
@@ -60,6 +64,10 @@ function mapGoal(snap: QueryDocumentSnapshot<DocumentData>): Goal {
     status: d.status ?? "active",
     priority: d.priority ?? "medium",
     progress: d.progress ?? 0,
+    progressType: d.progressType ?? "percent",
+    targetValue: d.targetValue ?? null,
+    currentValue: d.currentValue ?? null,
+    unit: d.unit ?? null,
     deadline: d.deadline ?? null,
     quarter: d.quarter ?? null,
     category: d.category ?? null,
@@ -109,6 +117,8 @@ function mapHabit(snap: QueryDocumentSnapshot<DocumentData>): Habit {
     frequency: d.frequency ?? "daily",
     category: d.category ?? null,
     color: d.color ?? null,
+    targetType: d.targetType ?? "check",
+    targetValue: d.targetValue ?? null,
     streak: d.streak ?? 0,
     bestStreak: d.bestStreak ?? 0,
     lastCompleted: d.lastCompleted ?? null,
@@ -148,8 +158,18 @@ export async function getGoal(id: string): Promise<Goal | null> {
 
 export type GoalInput = Pick<
   Goal,
-  "title" | "description" | "status" | "priority" | "deadline" | "quarter" | "category"
->;
+  | "title"
+  | "description"
+  | "status"
+  | "priority"
+  | "deadline"
+  | "quarter"
+  | "category"
+  | "progressType"
+  | "targetValue"
+  | "currentValue"
+  | "unit"
+> & { progress?: number };
 
 export async function createGoal(
   userId: string,
@@ -157,8 +177,8 @@ export async function createGoal(
 ): Promise<string> {
   const ref = await addDoc(collection(db, COLLECTIONS.goals), {
     userId,
+    progress: 0, // default; count/manual goals may pass their own via input
     ...input,
-    progress: 0,
     createdAt: serverTimestamp(),
   });
   return ref.id;
@@ -317,9 +337,17 @@ export async function deleteTask(
 
 /**
  * Recompute a goal's progress as the % of its tasks marked done, and persist
- * it on the goal document. Called after any task mutation.
+ * it on the goal document. Called after any task mutation. Only applies to
+ * goals whose progressType is "percent" — count and manual goals own their
+ * progress and must never be clobbered by task changes.
  */
 export async function recalcGoalProgress(goalId: string): Promise<number> {
+  const goalRef = doc(db, COLLECTIONS.goals, goalId);
+  const goalSnap = await getDoc(goalRef);
+  if (!goalSnap.exists()) return 0;
+  const progressType = goalSnap.data().progressType ?? "percent";
+  if (progressType !== "percent") return goalSnap.data().progress ?? 0;
+
   const snap = await getDocs(
     query(collection(db, COLLECTIONS.tasks), where("goalId", "==", goalId))
   );
@@ -327,8 +355,19 @@ export async function recalcGoalProgress(goalId: string): Promise<number> {
   const total = tasks.length;
   const done = tasks.filter((t) => t.status === "done").length;
   const progress = total === 0 ? 0 : Math.round((done / total) * 100);
-  await updateDoc(doc(db, COLLECTIONS.goals, goalId), { progress });
+  await updateDoc(goalRef, { progress });
   return progress;
+}
+
+/** Update a count-type goal's current value and derive its progress %. */
+export async function setGoalCurrentValue(
+  goal: Pick<Goal, "id" | "targetValue">,
+  currentValue: number
+): Promise<void> {
+  const target = goal.targetValue ?? 0;
+  const progress =
+    target > 0 ? Math.max(0, Math.min(100, Math.round((currentValue / target) * 100))) : 0;
+  await updateDoc(doc(db, COLLECTIONS.goals, goal.id), { currentValue, progress });
 }
 
 // ---------------------------------------------------------------------------
@@ -341,6 +380,7 @@ function mapHabitLog(snap: QueryDocumentSnapshot<DocumentData>): HabitLog {
     habitId: d.habitId,
     userId: d.userId,
     completedDate: d.completedDate,
+    value: d.value ?? null,
     createdAt: toMillis(d.createdAt),
   };
 }
@@ -371,7 +411,13 @@ export async function getHabitLogs(userId: string): Promise<HabitLog[]> {
 
 export type HabitInput = Pick<
   Habit,
-  "title" | "description" | "frequency" | "category" | "color"
+  | "title"
+  | "description"
+  | "frequency"
+  | "category"
+  | "color"
+  | "targetType"
+  | "targetValue"
 >;
 
 export async function createHabit(
@@ -407,15 +453,46 @@ export async function deleteHabit(id: string): Promise<void> {
 }
 
 /**
- * Mark (or unmark) a habit as done for a given date, then recompute and persist
- * its current streak, best streak, and last-completed date.
+ * Recompute a habit's streaks from its full log history, honoring completion
+ * semantics: count/duration habits only count a day once the logged value
+ * reaches the target.
+ */
+async function recomputeHabitStreaks(habitId: string): Promise<void> {
+  const habitRef = doc(db, COLLECTIONS.habits, habitId);
+  const habitSnap = await getDoc(habitRef);
+  if (!habitSnap.exists()) return;
+  const habit = {
+    targetType: habitSnap.data().targetType ?? "check",
+    targetValue: habitSnap.data().targetValue ?? null,
+  };
+
+  const snap = await getDocs(
+    query(collection(db, COLLECTIONS.habitLogs), where("habitId", "==", habitId))
+  );
+  const dates = snap.docs
+    .filter((d) => isLogDone(habit, { value: d.data().value ?? null }))
+    .map((d) => d.data().completedDate as string);
+  const today = toDateKey(new Date());
+  const streak = currentStreak(new Set(dates), today);
+  const best = longestStreak(dates);
+  const lastCompleted =
+    dates.length > 0 ? dates.reduce((a, b) => (a > b ? a : b)) : null;
+
+  await updateDoc(habitRef, { streak, bestStreak: best, lastCompleted });
+}
+
+/**
+ * Mark (or unmark) a check-type habit as done for a given date.
  * Log docs use a deterministic id (`habitId_date`) so completion is idempotent.
+ * For count/duration habits this writes the full target value (a checkbox tap
+ * means "hit the target") — use setHabitLogValue for partial amounts.
  */
 export async function toggleHabitLog(
   userId: string,
   habitId: string,
   date: string,
-  done: boolean
+  done: boolean,
+  fullValue: number | null = null
 ): Promise<void> {
   const logRef = doc(db, COLLECTIONS.habitLogs, `${habitId}_${date}`);
   if (done) {
@@ -423,28 +500,35 @@ export async function toggleHabitLog(
       userId,
       habitId,
       completedDate: date,
+      value: fullValue,
       createdAt: serverTimestamp(),
     });
   } else {
     await deleteDoc(logRef);
   }
+  await recomputeHabitStreaks(habitId);
+}
 
-  // Recompute streaks from the habit's full log history.
-  const snap = await getDocs(
-    query(collection(db, COLLECTIONS.habitLogs), where("habitId", "==", habitId))
-  );
-  const dates = snap.docs.map((d) => d.data().completedDate as string);
-  const today = toDateKey(new Date());
-  const streak = currentStreak(new Set(dates), today);
-  const best = longestStreak(dates);
-  const lastCompleted =
-    dates.length > 0 ? dates.reduce((a, b) => (a > b ? a : b)) : null;
-
-  await updateDoc(doc(db, COLLECTIONS.habits, habitId), {
-    streak,
-    bestStreak: best,
-    lastCompleted,
-  });
+/** Log a partial/exact value for a count or duration habit on a given date. */
+export async function setHabitLogValue(
+  userId: string,
+  habitId: string,
+  date: string,
+  value: number
+): Promise<void> {
+  const logRef = doc(db, COLLECTIONS.habitLogs, `${habitId}_${date}`);
+  if (value <= 0) {
+    await deleteDoc(logRef);
+  } else {
+    await setDoc(logRef, {
+      userId,
+      habitId,
+      completedDate: date,
+      value,
+      createdAt: serverTimestamp(),
+    });
+  }
+  await recomputeHabitStreaks(habitId);
 }
 
 // ---------------------------------------------------------------------------
@@ -958,4 +1042,193 @@ export async function upsertDecisions(
   const ref = doc(db, COLLECTIONS.decisions, userId);
   // Full replace so cleared outfits/defaults don't linger via deep merge.
   await setDoc(ref, { userId, ...input });
+}
+
+// ---------------------------------------------------------------------------
+// Custom trackers & their daily logs
+// ---------------------------------------------------------------------------
+function mapTracker(snap: QueryDocumentSnapshot<DocumentData>): Tracker {
+  const d = snap.data();
+  return {
+    id: snap.id,
+    userId: d.userId,
+    name: d.name,
+    type: d.type ?? "number",
+    unit: d.unit ?? null,
+    target: d.target ?? null,
+    icon: d.icon ?? "activity",
+    sortOrder: d.sortOrder ?? 0,
+    archived: d.archived ?? false,
+    createdAt: toMillis(d.createdAt),
+  };
+}
+
+export async function getTrackers(userId: string): Promise<Tracker[]> {
+  const q = query(
+    collection(db, COLLECTIONS.trackers),
+    where("userId", "==", userId)
+  );
+  const snap = await getDocs(q);
+  return snap.docs
+    .map(mapTracker)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt);
+}
+
+export type TrackerInput = Pick<
+  Tracker,
+  "name" | "type" | "unit" | "target" | "icon"
+>;
+
+export async function createTracker(
+  userId: string,
+  input: TrackerInput,
+  sortOrder: number
+): Promise<string> {
+  const ref = await addDoc(collection(db, COLLECTIONS.trackers), {
+    userId,
+    ...input,
+    sortOrder,
+    archived: false,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export async function updateTracker(
+  id: string,
+  input: Partial<TrackerInput & Pick<Tracker, "sortOrder" | "archived">>
+): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.trackers, id), { ...input });
+}
+
+export async function deleteTracker(id: string): Promise<void> {
+  // Cascade-delete the tracker's logs.
+  const batch = writeBatch(db);
+  const logSnap = await getDocs(
+    query(collection(db, COLLECTIONS.trackerLogs), where("trackerId", "==", id))
+  );
+  logSnap.forEach((l) => batch.delete(l.ref));
+  batch.delete(doc(db, COLLECTIONS.trackers, id));
+  await batch.commit();
+}
+
+function mapTrackerLog(snap: QueryDocumentSnapshot<DocumentData>): TrackerLog {
+  const d = snap.data();
+  return {
+    id: snap.id,
+    userId: d.userId,
+    trackerId: d.trackerId,
+    date: d.date,
+    value: d.value ?? 0,
+  };
+}
+
+export async function getTrackerLogs(userId: string): Promise<TrackerLog[]> {
+  const q = query(
+    collection(db, COLLECTIONS.trackerLogs),
+    where("userId", "==", userId)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(mapTrackerLog);
+}
+
+/** Set (or clear, with null) a tracker's value for a day. Idempotent per day. */
+export async function setTrackerLog(
+  userId: string,
+  trackerId: string,
+  date: string,
+  value: number | null
+): Promise<void> {
+  const ref = doc(db, COLLECTIONS.trackerLogs, `${userId}_${trackerId}_${date}`);
+  if (value == null) {
+    await deleteDoc(ref);
+  } else {
+    await setDoc(ref, { userId, trackerId, date, value });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Wardrobe (clothing items with inline compressed thumbnails)
+// ---------------------------------------------------------------------------
+function mapClothing(snap: QueryDocumentSnapshot<DocumentData>): ClothingItem {
+  const d = snap.data();
+  return {
+    id: snap.id,
+    userId: d.userId,
+    name: d.name,
+    tags: Array.isArray(d.tags) ? d.tags : [],
+    imageData: d.imageData ?? null,
+    cost: d.cost ?? null,
+    timesWorn: d.timesWorn ?? 0,
+    createdAt: toMillis(d.createdAt),
+  };
+}
+
+export async function getClothing(userId: string): Promise<ClothingItem[]> {
+  const q = query(
+    collection(db, COLLECTIONS.clothing),
+    where("userId", "==", userId)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(mapClothing).sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export type ClothingInput = Pick<
+  ClothingItem,
+  "name" | "tags" | "imageData" | "cost" | "timesWorn"
+>;
+
+export async function createClothing(
+  userId: string,
+  input: ClothingInput
+): Promise<string> {
+  const ref = await addDoc(collection(db, COLLECTIONS.clothing), {
+    userId,
+    ...input,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export async function updateClothing(
+  id: string,
+  input: Partial<ClothingInput>
+): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.clothing, id), { ...input });
+}
+
+export async function deleteClothing(id: string): Promise<void> {
+  await deleteDoc(doc(db, COLLECTIONS.clothing, id));
+}
+
+// ---------------------------------------------------------------------------
+// User preferences (one doc per user)
+// ---------------------------------------------------------------------------
+export async function getPrefs(userId: string): Promise<UserPrefs> {
+  const ref = doc(db, COLLECTIONS.prefs, userId);
+  const snap = await getDoc(ref);
+  const d = snap.exists() ? snap.data() : {};
+  return {
+    userId,
+    waterUnit: d.waterUnit ?? "glasses",
+    hiddenTrackers: Array.isArray(d.hiddenTrackers) ? d.hiddenTrackers : [],
+  };
+}
+
+export async function upsertPrefs(
+  userId: string,
+  input: Partial<Pick<UserPrefs, "waterUnit" | "hiddenTrackers">>
+): Promise<void> {
+  const ref = doc(db, COLLECTIONS.prefs, userId);
+  await setDoc(ref, { userId, ...input }, { merge: true });
+}
+
+/** Update just the display currency (stored on the budget doc as a code). */
+export async function setCurrency(userId: string, code: string): Promise<void> {
+  const existing = await getBudget(userId);
+  await upsertBudget(userId, {
+    currency: code,
+    monthlyTotal: existing?.monthlyTotal ?? null,
+    byCategory: existing?.byCategory ?? {},
+  });
 }

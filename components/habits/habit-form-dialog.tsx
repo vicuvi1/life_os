@@ -28,8 +28,20 @@ import {
   HABIT_COLORS,
   DEFAULT_HABIT_COLOR,
 } from "@/lib/habits";
+import { NumberField } from "@/components/ui/number-field";
 import { cn } from "@/lib/utils";
-import type { Habit, HabitCategory, HabitFrequency } from "@/lib/types";
+import type {
+  Habit,
+  HabitCategory,
+  HabitFrequency,
+  HabitTargetType,
+} from "@/lib/types";
+
+const TARGET_TYPES: { key: HabitTargetType; label: string; hint: string }[] = [
+  { key: "check", label: "Yes / No", hint: "A simple daily checkbox" },
+  { key: "count", label: "Count with target", hint: "e.g. 8 glasses of water" },
+  { key: "duration", label: "Duration (minutes)", hint: "e.g. 30 min meditation" },
+];
 
 interface Props {
   open: boolean;
@@ -52,6 +64,8 @@ export function HabitFormDialog({
   const [frequency, setFrequency] = useState<HabitFrequency>("daily");
   const [category, setCategory] = useState<HabitCategory>("morning");
   const [color, setColor] = useState(DEFAULT_HABIT_COLOR);
+  const [targetType, setTargetType] = useState<HabitTargetType>("check");
+  const [targetValue, setTargetValue] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,6 +76,8 @@ export function HabitFormDialog({
     setFrequency(habit?.frequency ?? "daily");
     setCategory(habit?.category ?? "morning");
     setColor(habit?.color ?? DEFAULT_HABIT_COLOR);
+    setTargetType(habit?.targetType ?? "check");
+    setTargetValue(habit?.targetValue ?? null);
     setError(null);
   }, [open, habit]);
 
@@ -69,6 +85,10 @@ export function HabitFormDialog({
     e.preventDefault();
     if (!title.trim()) {
       setError("Give your habit a name.");
+      return;
+    }
+    if (targetType !== "check" && (targetValue == null || targetValue <= 0)) {
+      setError("Set a daily target for this habit type.");
       return;
     }
     setSaving(true);
@@ -79,6 +99,8 @@ export function HabitFormDialog({
       frequency,
       category,
       color,
+      targetType,
+      targetValue: targetType === "check" ? null : targetValue,
     };
     try {
       if (isEdit && habit) {
@@ -159,6 +181,42 @@ export function HabitFormDialog({
               </Select>
             </div>
           </div>
+          {/* How completion is measured */}
+          <div className="space-y-2 rounded-lg border p-3">
+            <Label>Completion is measured by</Label>
+            <Select
+              value={targetType}
+              onValueChange={(v) => setTargetType(v as HabitTargetType)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TARGET_TYPES.map((t) => (
+                  <SelectItem key={t.key} value={t.key}>
+                    {t.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {TARGET_TYPES.find((t) => t.key === targetType)?.hint}
+            </p>
+            {targetType !== "check" && (
+              <div className="flex items-center gap-2 pt-1">
+                <Label className="text-xs">Daily target</Label>
+                <NumberField
+                  value={targetValue}
+                  onCommit={setTargetValue}
+                  min={0.5}
+                  suffix={targetType === "duration" ? "min" : undefined}
+                  placeholder={targetType === "duration" ? "30" : "8"}
+                  aria-label="Daily target"
+                />
+              </div>
+            )}
+          </div>
+
           <div className="space-y-2">
             <Label>Color</Label>
             <div className="flex flex-wrap gap-2">

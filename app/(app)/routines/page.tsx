@@ -8,6 +8,7 @@ import { WEEKDAYS, weekdayKey, weekdayLabel } from "@/lib/decisions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DecisionsFormDialog } from "@/components/decisions/decisions-form-dialog";
+import { WardrobeSection } from "@/components/wardrobe/wardrobe-section";
 import { cn } from "@/lib/utils";
 import type { DecisionConfig } from "@/lib/types";
 
@@ -161,6 +162,9 @@ export default function RoutinesPage() {
           </Card>
         </>
       )}
+
+      {/* Wardrobe — outfit choice is a daily decision, so it lives here */}
+      {user && !loading && <WardrobeSection userId={user.uid} />}
 
       {user && (
         <DecisionsFormDialog

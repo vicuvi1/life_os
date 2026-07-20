@@ -29,7 +29,21 @@ import {
   PRIORITIES,
   PRIORITY_LABEL,
 } from "@/lib/labels";
-import type { Goal, GoalCategory, GoalStatus, Priority } from "@/lib/types";
+import { NumberField } from "@/components/ui/number-field";
+import { Slider } from "@/components/ui/slider";
+import type {
+  Goal,
+  GoalCategory,
+  GoalProgressType,
+  GoalStatus,
+  Priority,
+} from "@/lib/types";
+
+const PROGRESS_TYPES: { key: GoalProgressType; label: string; hint: string }[] = [
+  { key: "percent", label: "Percent (auto)", hint: "Calculated from completed tasks" },
+  { key: "count", label: "Count toward a target", hint: "e.g. 500 of 2000 saved" },
+  { key: "manual", label: "Manual", hint: "You set the % yourself" },
+];
 
 interface Props {
   open: boolean;
@@ -57,6 +71,11 @@ export function GoalFormDialog({
   const [category, setCategory] = useState<string>(NO_CATEGORY);
   const [deadline, setDeadline] = useState("");
   const [quarter, setQuarter] = useState("");
+  const [progressType, setProgressType] = useState<GoalProgressType>("percent");
+  const [targetValue, setTargetValue] = useState<number | null>(null);
+  const [currentValue, setCurrentValue] = useState<number | null>(null);
+  const [unit, setUnit] = useState("");
+  const [manualProgress, setManualProgress] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,6 +89,11 @@ export function GoalFormDialog({
     setCategory(goal?.category ?? NO_CATEGORY);
     setDeadline(goal?.deadline ?? "");
     setQuarter(goal?.quarter ?? "");
+    setProgressType(goal?.progressType ?? "percent");
+    setTargetValue(goal?.targetValue ?? null);
+    setCurrentValue(goal?.currentValue ?? null);
+    setUnit(goal?.unit ?? "");
+    setManualProgress(goal?.progress ?? 0);
     setError(null);
   }, [open, goal]);
 
@@ -77,6 +101,10 @@ export function GoalFormDialog({
     e.preventDefault();
     if (!title.trim()) {
       setError("Give your goal a title.");
+      return;
+    }
+    if (progressType === "count" && (targetValue == null || targetValue <= 0)) {
+      setError("Set a target number for a count goal.");
       return;
     }
     setSaving(true);
@@ -90,7 +118,21 @@ export function GoalFormDialog({
       category: category === NO_CATEGORY ? null : (category as GoalCategory),
       deadline: deadline || null,
       quarter: quarter.trim() || null,
+      progressType,
+      targetValue: progressType === "count" ? targetValue : null,
+      currentValue: progressType === "count" ? currentValue ?? 0 : null,
+      unit: progressType === "count" ? unit.trim() || null : null,
     };
+    // Count goals derive progress from current/target; manual goals take the
+    // slider value; percent goals leave progress to task auto-calc.
+    if (progressType === "count" && targetValue != null && targetValue > 0) {
+      payload.progress = Math.max(
+        0,
+        Math.min(100, Math.round(((currentValue ?? 0) / targetValue) * 100))
+      );
+    } else if (progressType === "manual") {
+      payload.progress = Math.round(manualProgress);
+    }
 
     try {
       if (isEdit && goal) {
@@ -216,6 +258,91 @@ export function GoalFormDialog({
               value={deadline}
               onChange={(e) => setDeadline(e.target.value)}
             />
+          </div>
+
+          {/* How progress is measured */}
+          <div className="space-y-2 rounded-lg border p-3">
+            <Label>Progress is measured by</Label>
+            <Select
+              value={progressType}
+              onValueChange={(v) => setProgressType(v as GoalProgressType)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PROGRESS_TYPES.map((p) => (
+                  <SelectItem key={p.key} value={p.key}>
+                    {p.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {PROGRESS_TYPES.find((p) => p.key === progressType)?.hint}
+            </p>
+
+            {progressType === "count" && (
+              <div className="flex flex-wrap items-end gap-4 pt-1">
+                <div className="space-y-1">
+                  <Label className="text-xs">Current</Label>
+                  <NumberField
+                    value={currentValue}
+                    onCommit={setCurrentValue}
+                    min={0}
+                    placeholder="0"
+                    aria-label="Current value"
+                    inputClassName="w-20"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Target</Label>
+                  <NumberField
+                    value={targetValue}
+                    onCommit={setTargetValue}
+                    min={0.01}
+                    placeholder="e.g. 2000"
+                    aria-label="Target value"
+                    inputClassName="w-20"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="g-unit" className="text-xs">
+                    Unit
+                  </Label>
+                  <Input
+                    id="g-unit"
+                    value={unit}
+                    onChange={(e) => setUnit(e.target.value)}
+                    placeholder="e.g. $, pages"
+                    className="h-8 w-24"
+                  />
+                </div>
+              </div>
+            )}
+
+            {progressType === "manual" && (
+              <div className="flex items-center gap-3 pt-1">
+                <Slider
+                  value={manualProgress}
+                  onValueChange={setManualProgress}
+                  min={0}
+                  max={100}
+                  step={1}
+                  className="flex-1"
+                  aria-label="Progress percent"
+                />
+                <NumberField
+                  value={manualProgress}
+                  onCommit={setManualProgress}
+                  min={0}
+                  max={100}
+                  decimals={false}
+                  suffix="%"
+                  aria-label="Progress percent"
+                />
+              </div>
+            )}
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}

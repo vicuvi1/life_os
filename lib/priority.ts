@@ -1,4 +1,4 @@
-import type { Habit, Session, Task } from "@/lib/types";
+import type { Habit, Session, Task, Tracker } from "@/lib/types";
 
 /**
  * A single row in the dashboard's Priority Stack. Each variant carries exactly
@@ -10,6 +10,7 @@ export type PriorityItem =
   | { kind: "sleep" }
   | { kind: "habits"; remaining: Habit[]; total: number }
   | { kind: "water" }
+  | { kind: "tracker"; tracker: Tracker }
   | { kind: "tasks"; due: Task[] }
   | { kind: "session"; session: Session };
 
@@ -21,9 +22,13 @@ export interface PriorityInput {
   habitsTotal: number;
   water: number;
   waterTarget: number;
+  /** Active, visible custom trackers not yet logged today. */
+  trackersDue: Tracker[];
   tasksDueToday: Task[];
   /** Next planned, not-yet-started session today (or null). */
   nextSession: Session | null;
+  /** Tracker keys the user hid (built-ins: "sleep", "water", "habits"). */
+  hiddenTrackers: string[];
 }
 
 /**
@@ -33,6 +38,7 @@ export interface PriorityInput {
  */
 export function buildPriorityStack(input: PriorityInput): PriorityItem[] {
   const items: PriorityItem[] = [];
+  const hidden = new Set(input.hiddenTrackers);
 
   // 1. Time-sensitive nudges.
   if (input.isMonday && !input.reviewDoneThisWeek) {
@@ -40,20 +46,23 @@ export function buildPriorityStack(input: PriorityInput): PriorityItem[] {
   }
 
   // 2. The single highest-impact unlogged metric.
-  if (!input.sleepLoggedToday) {
+  if (!input.sleepLoggedToday && !hidden.has("sleep")) {
     items.push({ kind: "sleep" });
   }
 
-  // 3. Remaining daily trackers not yet logged.
-  if (input.habitsRemaining.length > 0) {
+  // 3. Remaining daily trackers not yet logged (built-in, then custom).
+  if (input.habitsRemaining.length > 0 && !hidden.has("habits")) {
     items.push({
       kind: "habits",
       remaining: input.habitsRemaining,
       total: input.habitsTotal,
     });
   }
-  if (input.water < input.waterTarget) {
+  if (input.water < input.waterTarget && !hidden.has("water")) {
     items.push({ kind: "water" });
+  }
+  for (const tracker of input.trackersDue) {
+    if (!hidden.has(tracker.id)) items.push({ kind: "tracker", tracker });
   }
 
   // 4. Open tasks due today.

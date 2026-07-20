@@ -23,6 +23,15 @@ export type HabitCategory =
   | "learning"
   | "health";
 
+/** How completing a habit is measured. */
+export type HabitTargetType = "check" | "count" | "duration";
+
+/** How a goal's progress is measured. */
+export type GoalProgressType = "percent" | "count" | "manual";
+
+/** Value shape of a custom tracker. */
+export type TrackerType = "number" | "count" | "duration" | "yesno";
+
 export type SessionCategory =
   | "study"
   | "workout"
@@ -50,7 +59,14 @@ export interface Goal {
   description: string | null;
   status: GoalStatus;
   priority: Priority;
-  progress: number; // 0-100
+  progress: number; // 0-100 (auto for "percent", user-set for "manual")
+  /** How progress is measured. Defaults to "percent" (auto from tasks). */
+  progressType: GoalProgressType;
+  /** For "count" goals: the target to reach and the current value. */
+  targetValue: number | null;
+  currentValue: number | null;
+  /** Optional unit label for count goals, e.g. "$", "pages". */
+  unit: string | null;
   deadline: string | null; // YYYY-MM-DD
   quarter: string | null;
   category: GoalCategory | null;
@@ -91,6 +107,10 @@ export interface Habit {
   frequency: HabitFrequency;
   category: HabitCategory | null;
   color: string | null;
+  /** How completion is measured. Defaults to "check" (yes/no). */
+  targetType: HabitTargetType;
+  /** For count/duration habits: the daily target (glasses, minutes, …). */
+  targetValue: number | null;
   streak: number;
   bestStreak: number;
   lastCompleted: string | null; // YYYY-MM-DD
@@ -102,6 +122,8 @@ export interface HabitLog {
   habitId: string;
   userId: string;
   completedDate: string; // YYYY-MM-DD
+  /** For count/duration habits: the amount logged that day. */
+  value: number | null;
   createdAt: number;
 }
 
@@ -221,6 +243,53 @@ export interface DecisionConfig {
   defaults: { label: string; value: string }[]; // fixed decisions (bedtime, etc.)
 }
 
+/** A user-defined metric tracked alongside the built-in trackers. */
+export interface Tracker {
+  id: string;
+  userId: string;
+  name: string;
+  type: TrackerType;
+  /** Unit label shown next to values, e.g. "min", "apps", "kg". */
+  unit: string | null;
+  /** Optional daily target. For yesno trackers this is ignored. */
+  target: number | null;
+  /** Lucide icon key (see TRACKER_ICONS in lib/trackers.ts). */
+  icon: string;
+  sortOrder: number;
+  archived: boolean;
+  createdAt: number;
+}
+
+/** One logged value per tracker per day (doc id = userId_trackerId_date). */
+export interface TrackerLog {
+  id: string;
+  userId: string;
+  trackerId: string;
+  date: string; // YYYY-MM-DD
+  value: number; // yesno: 1 = yes
+}
+
+/** A wardrobe item; image stored inline as a compressed data URL. */
+export interface ClothingItem {
+  id: string;
+  userId: string;
+  name: string;
+  tags: string[];
+  /** Small square thumbnail as a data URL (client-compressed), or null. */
+  imageData: string | null;
+  cost: number | null;
+  timesWorn: number;
+  createdAt: number;
+}
+
+/** Lightweight per-user preferences (doc id = userId). */
+export interface UserPrefs {
+  userId: string;
+  waterUnit: "glasses" | "liters" | "oz";
+  /** Tracker ids (built-in keys or custom ids) the user has hidden. */
+  hiddenTrackers: string[];
+}
+
 /** Firestore collection names, centralized to avoid typos. */
 export const COLLECTIONS = {
   goals: "goals",
@@ -238,4 +307,8 @@ export const COLLECTIONS = {
   mealPlan: "mealPlan",
   shoppingChecks: "shoppingChecks",
   decisions: "decisions",
+  trackers: "trackers",
+  trackerLogs: "trackerLogs",
+  clothing: "clothing",
+  prefs: "prefs",
 } as const;

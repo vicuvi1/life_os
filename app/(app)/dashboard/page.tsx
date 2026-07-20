@@ -10,7 +10,6 @@ import {
 } from "react";
 import Link from "next/link";
 import {
-  Loader2,
   Plus,
   Minus,
   Bell,
@@ -18,13 +17,30 @@ import {
   ChevronDown,
   CalendarCheck,
   CalendarClock,
-  Moon,
-  GlassWater,
-  Flame,
-  CheckSquare,
-  HelpCircle,
   ClipboardList,
   CheckCircle2,
+  CheckSquare,
+  HelpCircle,
+  Moon,
+  Sun,
+  Sunrise,
+  Sunset,
+  GlassWater,
+  Flame,
+  Target,
+  TrendingUp,
+  GraduationCap,
+  Briefcase,
+  Dumbbell,
+  Wallet,
+  Sprout,
+  Pin,
+  BookOpen,
+  Pill,
+  Check,
+  X,
+  Sparkles,
+  type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -33,35 +49,43 @@ import {
   getGoals,
   getHabitLogs,
   getNutritionLog,
+  getPrefs,
   getSessionsInRange,
   getSleepLogs,
   getTasks,
+  getTrackerLogs,
+  getTrackers,
   getWeeklyReview,
+  setHabitLogValue,
   setTaskDone,
+  setTrackerLog,
   toggleHabitLog,
   upsertNutritionLog,
   upsertSleepLog,
 } from "@/lib/firebase/db";
 import { greetingFor, resolveFirstName, toDateKey } from "@/lib/greeting";
-import { habitStateFromDates, lastNDays, addDays } from "@/lib/habits";
+import {
+  habitStateFromDates,
+  lastNDays,
+  addDays,
+  doneDates,
+} from "@/lib/habits";
 import { sessionColor, rangeLabel, minToLabel } from "@/lib/sessions";
 import { formatHours, smartDefaultSleep } from "@/lib/sleep";
 import { DEFAULT_WATER_TARGET } from "@/lib/nutrition";
 import { startOfWeekKey } from "@/lib/dates";
 import { buildPriorityStack, type PriorityItem } from "@/lib/priority";
+import { trackerIcon, formatTrackerValue, trackerValueMeetsTarget } from "@/lib/trackers";
 import { currentPermission, showNotification } from "@/lib/notify";
 import { CATEGORY_LABEL } from "@/lib/labels";
-import {
-  EMOJI,
-  greetingEmoji,
-  GOAL_CATEGORY_EMOJI,
-  HABIT_CATEGORY_EMOJI,
-} from "@/lib/emoji";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
+import { NumberField } from "@/components/ui/number-field";
+import { AnimatedNumber } from "@/components/ui/animated-number";
+import { Skeleton, SkeletonCard } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -73,6 +97,8 @@ import { NameSetup } from "@/components/name-setup";
 import { LogTodayDialog } from "@/components/log-today-dialog";
 import { TaskFormDialog } from "@/components/tasks/task-form-dialog";
 import { GoalFormDialog } from "@/components/goals/goal-form-dialog";
+import { HabitFormDialog } from "@/components/habits/habit-form-dialog";
+import { TrackerFormDialog } from "@/components/trackers/tracker-form-dialog";
 import { TaskRow } from "@/components/tasks/task-row";
 import { HabitRow } from "@/components/habits/habit-row";
 import { cn } from "@/lib/utils";
@@ -80,10 +106,30 @@ import type {
   Goal,
   GoalCategory,
   Habit,
+  HabitCategory,
+  HabitLog,
   Session,
   SleepLog,
   Task,
+  Tracker,
+  TrackerLog,
 } from "@/lib/types";
+
+const GOAL_CATEGORY_ICON: Record<GoalCategory, LucideIcon> = {
+  education: GraduationCap,
+  career: Briefcase,
+  health: Dumbbell,
+  financial: Wallet,
+  personal: Sprout,
+};
+
+const HABIT_CATEGORY_ICON: Record<HabitCategory, LucideIcon> = {
+  morning: Sunrise,
+  evening: Moon,
+  exercise: Dumbbell,
+  learning: BookOpen,
+  health: Pill,
+};
 
 type FocusGroupKey = GoalCategory | "other";
 const FOCUS_GROUP_ORDER: FocusGroupKey[] = [
@@ -98,22 +144,30 @@ const FOCUS_GROUP_LABEL: Record<FocusGroupKey, string> = {
   ...CATEGORY_LABEL,
   other: "Other",
 };
-const FOCUS_GROUP_EMOJI: Record<FocusGroupKey, string> = {
-  ...GOAL_CATEGORY_EMOJI,
-  other: "📌",
+const FOCUS_GROUP_ICON: Record<FocusGroupKey, LucideIcon> = {
+  ...GOAL_CATEGORY_ICON,
+  other: Pin,
 };
 
 const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
+function greetingIconFor(hour: number): LucideIcon {
+  if (hour < 5) return Moon;
+  if (hour < 12) return Sunrise;
+  if (hour < 17) return Sun;
+  if (hour < 22) return Sunset;
+  return Moon;
+}
+
 function StatTile({
-  emoji,
+  icon: Icon,
   label,
   value,
   children,
 }: {
-  emoji: string;
+  icon: LucideIcon;
   label: string;
-  value: string;
+  value: ReactNode;
   children?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -127,10 +181,12 @@ function StatTile({
         className="w-full text-left"
       >
         <div className="flex items-center gap-3 p-4">
-          <span className="text-xl leading-none">{emoji}</span>
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Icon className="h-4 w-4" />
+          </span>
           <div className="min-w-0 flex-1">
             <p className="text-xl font-semibold leading-tight">{value}</p>
-            <p className="text-xs text-muted-foreground">{label}</p>
+            <p className="truncate text-xs text-muted-foreground">{label}</p>
           </div>
           {expandable && (
             <ChevronDown
@@ -156,7 +212,7 @@ function LinkPriorityRow({
   detail,
   href,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: LucideIcon;
   title: string;
   detail?: string;
   href: string;
@@ -184,6 +240,7 @@ function SleepPriorityRow({
   onLog: (hours: number) => Promise<void>;
 }) {
   const [hours, setHours] = useState(defaultHours);
+  const [touched, setTouched] = useState(false);
   const [saving, setSaving] = useState(false);
 
   return (
@@ -198,16 +255,28 @@ function SleepPriorityRow({
       <div className="flex items-center gap-2">
         <Slider
           value={hours}
-          onValueChange={setHours}
+          onValueChange={(v) => {
+            setHours(v);
+            setTouched(true);
+          }}
           min={0}
           max={12}
           step={0.5}
-          className="w-28"
+          className="w-24"
           aria-label="Hours slept"
         />
-        <span className="w-12 shrink-0 text-xs text-muted-foreground">
-          {formatHours(hours)}
-        </span>
+        <NumberField
+          value={hours}
+          onCommit={(v) => {
+            setHours(v);
+            setTouched(true);
+          }}
+          min={0}
+          max={24}
+          suffix="h"
+          suggested={!touched}
+          aria-label="Hours slept (type exact value)"
+        />
         <Button
           size="sm"
           disabled={saving}
@@ -234,7 +303,7 @@ function HabitsPriorityRow({
 }: {
   remaining: Habit[];
   total: number;
-  onComplete: (habitId: string) => void;
+  onComplete: (habit: Habit) => void;
 }) {
   return (
     <div className="px-4 py-3">
@@ -254,7 +323,7 @@ function HabitsPriorityRow({
         {remaining.map((h) => (
           <button
             key={h.id}
-            onClick={() => onComplete(h.id)}
+            onClick={() => onComplete(h)}
             className="rounded-full border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
           >
             {h.title}
@@ -268,37 +337,133 @@ function HabitsPriorityRow({
 function WaterPriorityRow({
   water,
   waterTarget,
+  waterUnit,
   onAdjust,
+  onSet,
+  onSetTarget,
 }: {
   water: number;
   waterTarget: number;
+  waterUnit: string;
   onAdjust: (delta: number) => void;
+  onSet: (value: number) => void;
+  onSetTarget: (value: number) => void;
 }) {
+  const step = waterUnit === "liters" ? 0.25 : 1;
   return (
     <div className="flex items-center gap-3 px-4 py-3">
       <GlassWater className="h-5 w-5 shrink-0 text-primary" />
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium">
-          Water: {water}/{waterTarget} glasses
+        <p className="flex items-center gap-1 text-sm font-medium">
+          Water:
+          <NumberField
+            value={water}
+            onCommit={onSet}
+            min={0}
+            decimals={waterUnit === "liters"}
+            aria-label="Water logged (type exact value)"
+            inputClassName="w-12"
+          />
+          <span className="text-muted-foreground">/</span>
+          <NumberField
+            value={waterTarget}
+            onCommit={onSetTarget}
+            min={step}
+            decimals={waterUnit === "liters"}
+            suffix={waterUnit}
+            aria-label="Water target (click to edit)"
+            inputClassName="w-12"
+          />
         </p>
         <p className="text-xs text-muted-foreground">
-          {waterTarget - water} more to hit your goal
+          Target is editable — click the second number
         </p>
       </div>
       <div className="flex items-center gap-2">
         <Button
           variant="outline"
           size="icon"
-          aria-label="Remove a glass"
-          onClick={() => onAdjust(-1)}
+          aria-label="Remove"
+          onClick={() => onAdjust(-step)}
           disabled={water <= 0}
         >
           <Minus className="h-4 w-4" />
         </Button>
-        <Button size="icon" aria-label="Add a glass" onClick={() => onAdjust(1)}>
+        <Button size="icon" aria-label="Add" onClick={() => onAdjust(step)}>
           <Plus className="h-4 w-4" />
         </Button>
       </div>
+    </div>
+  );
+}
+
+function TrackerPriorityRow({
+  tracker,
+  onLog,
+}: {
+  tracker: Tracker;
+  onLog: (value: number) => Promise<void>;
+}) {
+  const [value, setValue] = useState<number>(tracker.target ?? 0);
+  const [touched, setTouched] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const Icon = trackerIcon(tracker.icon);
+
+  async function save(v: number) {
+    setSaving(true);
+    try {
+      await onLog(v);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-3">
+      <Icon className="h-5 w-5 shrink-0 text-primary" />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium">{tracker.name}</p>
+        <p className="text-xs text-muted-foreground">
+          {tracker.type === "yesno"
+            ? "Did it happen today?"
+            : tracker.target != null
+              ? `Target: ${formatTrackerValue(tracker, tracker.target)}`
+              : "Log today's value"}
+        </p>
+      </div>
+      {tracker.type === "yesno" ? (
+        <div className="flex items-center gap-1.5">
+          <Button size="sm" onClick={() => save(1)} disabled={saving}>
+            <Check className="h-4 w-4" /> Yes
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => save(0)}
+            disabled={saving}
+          >
+            <X className="h-4 w-4" /> No
+          </Button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <NumberField
+            value={value}
+            onCommit={(v) => {
+              setValue(v);
+              setTouched(true);
+            }}
+            min={0}
+            decimals={tracker.type !== "count"}
+            suffix={tracker.unit ?? undefined}
+            suggested={!touched}
+            aria-label={`${tracker.name} value`}
+          />
+          <Button size="sm" disabled={saving} onClick={() => save(value)}>
+            {saving ? "…" : "Log"}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -354,6 +519,7 @@ function FocusGroupBlock({
 }) {
   const storageKey = `lifeos:collapse:focus-${groupKey}`;
   const [open, setOpen] = useState(true);
+  const Icon = FOCUS_GROUP_ICON[groupKey];
 
   useEffect(() => {
     try {
@@ -386,9 +552,7 @@ function FocusGroupBlock({
         className="flex w-full items-center gap-2 px-3 py-2 text-left"
         aria-expanded={open}
       >
-        <span className="text-sm leading-none">
-          {FOCUS_GROUP_EMOJI[groupKey]}
-        </span>
+        <Icon className="h-4 w-4 shrink-0 text-primary" />
         <span className="text-sm font-medium">
           {FOCUS_GROUP_LABEL[groupKey]}
         </span>
@@ -418,12 +582,16 @@ export default function DashboardPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [allGoals, setAllGoals] = useState<Goal[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
-  const [logDatesByHabit, setLogDatesByHabit] = useState<
-    Record<string, string[]>
+  const [habitLogsByHabit, setHabitLogsByHabit] = useState<
+    Record<string, HabitLog[]>
   >({});
   const [tasks, setTasks] = useState<Task[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [sleepLogs, setSleepLogs] = useState<SleepLog[]>([]);
+  const [trackers, setTrackers] = useState<Tracker[]>([]);
+  const [trackerLogs, setTrackerLogs] = useState<TrackerLog[]>([]);
+  const [hiddenTrackers, setHiddenTrackers] = useState<string[]>([]);
+  const [waterUnit, setWaterUnit] = useState<string>("glasses");
   const [water, setWater] = useState(0);
   const [waterTarget, setWaterTarget] = useState(DEFAULT_WATER_TARGET);
   const [reviewDoneThisWeek, setReviewDoneThisWeek] = useState(false);
@@ -431,19 +599,33 @@ export default function DashboardPage() {
   const waterRef = useRef(0);
 
   const [stackExpanded, setStackExpanded] = useState(false);
+  const [exitingRows, setExitingRows] = useState<Set<string>>(new Set());
   const [logTodayOpen, setLogTodayOpen] = useState(false);
   const [taskFormOpen, setTaskFormOpen] = useState(false);
   const [goalFormOpen, setGoalFormOpen] = useState(false);
+  const [habitFormOpen, setHabitFormOpen] = useState(false);
+  const [trackerFormOpen, setTrackerFormOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
 
   const today = toDateKey(new Date());
   const thisWeekStart = startOfWeekKey(today);
 
+  useEffect(() => {
+    try {
+      setOnboardingDismissed(
+        localStorage.getItem("lifeos:onboardingDismissed") === "1"
+      );
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // All dashboard data loads in one parallel batch — no request waterfall.
   const load = useCallback(async () => {
     if (!user) return;
-    setLoading(true);
     try {
-      const [g, ag, h, t, logs, sess, sleep, nutrition, review] =
+      const [g, ag, h, t, logs, sess, sleep, nutrition, review, trk, trkLogs, prefs] =
         await Promise.all([
           getActiveGoals(user.uid),
           getGoals(user.uid),
@@ -454,22 +636,29 @@ export default function DashboardPage() {
           getSleepLogs(user.uid),
           getNutritionLog(user.uid, today),
           getWeeklyReview(user.uid, thisWeekStart),
+          getTrackers(user.uid),
+          getTrackerLogs(user.uid),
+          getPrefs(user.uid),
         ]);
-      const byHabit: Record<string, string[]> = {};
+      const byHabit: Record<string, HabitLog[]> = {};
       for (const log of logs) {
-        (byHabit[log.habitId] ??= []).push(log.completedDate);
+        (byHabit[log.habitId] ??= []).push(log);
       }
       setGoals(g);
       setAllGoals(ag);
       setHabits(h);
       setTasks(t);
-      setLogDatesByHabit(byHabit);
+      setHabitLogsByHabit(byHabit);
       setSessions(sess);
       setSleepLogs(sleep);
       setWater(nutrition?.water ?? 0);
       waterRef.current = nutrition?.water ?? 0;
       setWaterTarget(nutrition?.waterTarget ?? DEFAULT_WATER_TARGET);
       setReviewDoneThisWeek(review != null);
+      setTrackers(trk);
+      setTrackerLogs(trkLogs);
+      setHiddenTrackers(prefs.hiddenTrackers);
+      setWaterUnit(prefs.waterUnit);
     } finally {
       setLoading(false);
     }
@@ -479,34 +668,93 @@ export default function DashboardPage() {
     load();
   }, [load]);
 
-  async function adjustWater(delta: number) {
+  /** Play a collapse animation on a priority row while its action commits. */
+  function exitRow(key: string) {
+    setExitingRows((prev) => new Set(prev).add(key));
+    setTimeout(() => {
+      setExitingRows((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }, 1200);
+  }
+
+  async function setWaterValue(next: number) {
     if (!user) return;
     const prev = waterRef.current;
-    const next = Math.max(0, prev + delta);
-    waterRef.current = next;
-    setWater(next);
+    const clamped = Math.max(0, Math.round(next * 100) / 100);
+    waterRef.current = clamped;
+    setWater(clamped);
+    if (clamped >= waterTarget) exitRow("water");
     try {
-      await upsertNutritionLog(user.uid, today, { water: next });
+      await upsertNutritionLog(user.uid, today, { water: clamped });
     } catch {
       waterRef.current = prev;
       setWater(prev);
     }
   }
 
-  async function handleHabitToggle(habitId: string, done: boolean) {
+  async function setWaterTargetValue(next: number) {
     if (!user) return;
-    setLogDatesByHabit((prev) => {
-      const dates = new Set(prev[habitId] ?? []);
-      if (done) dates.add(today);
-      else dates.delete(today);
-      return { ...prev, [habitId]: Array.from(dates) };
+    setWaterTarget(next);
+    await upsertNutritionLog(user.uid, today, { waterTarget: next });
+  }
+
+  async function handleHabitComplete(habit: Habit, done: boolean) {
+    if (!user) return;
+    // Optimistic local update.
+    setHabitLogsByHabit((prev) => {
+      const logs = (prev[habit.id] ?? []).filter(
+        (l) => l.completedDate !== today
+      );
+      if (done) {
+        logs.push({
+          id: `${habit.id}_${today}`,
+          habitId: habit.id,
+          userId: user.uid,
+          completedDate: today,
+          value: habit.targetType !== "check" ? habit.targetValue : null,
+          createdAt: Date.now(),
+        });
+      }
+      return { ...prev, [habit.id]: logs };
     });
-    await toggleHabitLog(user.uid, habitId, today, done);
+    await toggleHabitLog(
+      user.uid,
+      habit.id,
+      today,
+      done,
+      habit.targetType !== "check" ? habit.targetValue : null
+    );
+    setHabits(await getDailyHabits(user.uid));
+  }
+
+  async function handleHabitValue(habit: Habit, value: number) {
+    if (!user) return;
+    setHabitLogsByHabit((prev) => {
+      const logs = (prev[habit.id] ?? []).filter(
+        (l) => l.completedDate !== today
+      );
+      if (value > 0) {
+        logs.push({
+          id: `${habit.id}_${today}`,
+          habitId: habit.id,
+          userId: user.uid,
+          completedDate: today,
+          value,
+          createdAt: Date.now(),
+        });
+      }
+      return { ...prev, [habit.id]: logs };
+    });
+    await setHabitLogValue(user.uid, habit.id, today, value);
     setHabits(await getDailyHabits(user.uid));
   }
 
   async function handleQuickLogSleep(hours: number) {
     if (!user) return;
+    exitRow("sleep");
     await upsertSleepLog(user.uid, today, {
       hours,
       quality: sleepDefault.quality,
@@ -515,12 +763,30 @@ export default function DashboardPage() {
     await load();
   }
 
+  async function handleTrackerLog(tracker: Tracker, value: number) {
+    if (!user) return;
+    if (trackerValueMeetsTarget(tracker, value)) exitRow(`tracker-${tracker.id}`);
+    // Optimistic local update.
+    setTrackerLogs((prev) => [
+      ...prev.filter((l) => !(l.trackerId === tracker.id && l.date === today)),
+      {
+        id: `${user.uid}_${tracker.id}_${today}`,
+        userId: user.uid,
+        trackerId: tracker.id,
+        date: today,
+        value,
+      },
+    ]);
+    await setTrackerLog(user.uid, tracker.id, today, value);
+  }
+
   async function handleQuickCompleteTask(task: Task) {
     await setTaskDone({ id: task.id, goalId: task.goalId }, true);
     await load();
   }
 
   const greeting = greetingFor(new Date().getHours());
+  const GreetingIcon = greetingIconFor(new Date().getHours());
   const name = resolveFirstName(displayName, user?.email);
   const isMonday = new Date().getDay() === 1;
 
@@ -530,14 +796,33 @@ export default function DashboardPage() {
       : 0;
   const bestStreak = habits.reduce((m, h) => Math.max(m, h.bestStreak ?? 0), 0);
   const lastNight = sleepLogs[0];
+
+  // Done-semantics per habit (count habits are done once value >= target).
+  const habitDoneDates = useMemo(() => {
+    const m: Record<string, string[]> = {};
+    for (const h of habits) m[h.id] = doneDates(h, habitLogsByHabit[h.id] ?? []);
+    return m;
+  }, [habits, habitLogsByHabit]);
+
+  const habitTodayValue = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const h of habits) {
+      const log = (habitLogsByHabit[h.id] ?? []).find(
+        (l) => l.completedDate === today
+      );
+      m[h.id] = log?.value ?? 0;
+    }
+    return m;
+  }, [habits, habitLogsByHabit, today]);
+
   const habitsDoneToday = habits.filter((h) =>
-    (logDatesByHabit[h.id] ?? []).includes(today)
+    (habitDoneDates[h.id] ?? []).includes(today)
   ).length;
   const habitsRemaining = habits.filter(
-    (h) => !(logDatesByHabit[h.id] ?? []).includes(today)
+    (h) => !(habitDoneDates[h.id] ?? []).includes(today)
   );
 
-  // Sleep trend: last night vs the 7-day average — only shown with 2+ data points.
+  // Sleep trend: last night vs the 7-day average — only shown with 2+ points.
   const sleep7 = useMemo(() => {
     const cutoff = lastNDays(today, 7)[0];
     const recent = sleepLogs.filter((s) => s.date >= cutoff);
@@ -554,16 +839,30 @@ export default function DashboardPage() {
     [sleepLogs, today]
   );
 
-  // Last-7-days daily-habit completion ratio per day (oldest → newest).
   const habitStrip = useMemo(() => {
     if (habits.length === 0) return [];
     return lastNDays(today, 7).map((d) => {
       const done = habits.filter((h) =>
-        (logDatesByHabit[h.id] ?? []).includes(d)
+        (habitDoneDates[h.id] ?? []).includes(d)
       ).length;
       return { date: d, ratio: done / habits.length, done };
     });
-  }, [habits, logDatesByHabit, today]);
+  }, [habits, habitDoneDates, today]);
+
+  const visibleTrackers = useMemo(
+    () => trackers.filter((t) => !t.archived && !hiddenTrackers.includes(t.id)),
+    [trackers, hiddenTrackers]
+  );
+  const trackerLoggedToday = useMemo(() => {
+    const s = new Set(
+      trackerLogs.filter((l) => l.date === today).map((l) => l.trackerId)
+    );
+    return s;
+  }, [trackerLogs, today]);
+  const trackersDue = useMemo(
+    () => visibleTrackers.filter((t) => !trackerLoggedToday.has(t.id)),
+    [visibleTrackers, trackerLoggedToday]
+  );
 
   const tasksDueToday = tasks.filter(
     (t) => t.dueDate === today && t.status !== "done"
@@ -589,8 +888,10 @@ export default function DashboardPage() {
         habitsTotal: habits.length,
         water,
         waterTarget,
+        trackersDue,
         tasksDueToday,
         nextSession,
+        hiddenTrackers,
       }),
     [
       isMonday,
@@ -600,60 +901,79 @@ export default function DashboardPage() {
       habits.length,
       water,
       waterTarget,
+      trackersDue,
       tasksDueToday,
       nextSession,
+      hiddenTrackers,
       today,
     ]
   );
   const visibleStack = priorityStack.slice(0, 4);
   const overflowStack = priorityStack.slice(4);
 
-  function renderPriorityItem(item: PriorityItem, key: number) {
+  function rowKey(item: PriorityItem): string {
+    return item.kind === "tracker" ? `tracker-${item.tracker.id}` : item.kind;
+  }
+
+  function renderPriorityItem(item: PriorityItem) {
+    const key = rowKey(item);
+    let content: ReactNode = null;
     switch (item.kind) {
       case "monday":
-        return (
+        content = (
           <LinkPriorityRow
-            key={key}
             icon={CalendarCheck}
             title="It's Monday — review last week"
             detail="Reflect on wins, blockers, and set this week's focus."
             href="/review"
           />
         );
+        break;
       case "sleep":
-        return (
+        content = (
           <SleepPriorityRow
-            key={key}
             defaultHours={sleepDefault.hours}
             onLog={handleQuickLogSleep}
           />
         );
+        break;
       case "habits":
-        return (
+        content = (
           <HabitsPriorityRow
-            key={key}
             remaining={item.remaining}
             total={item.total}
-            onComplete={(id) => handleHabitToggle(id, true)}
+            onComplete={(h) => handleHabitComplete(h, true)}
           />
         );
+        break;
       case "water":
-        return (
+        content = (
           <WaterPriorityRow
-            key={key}
             water={water}
             waterTarget={waterTarget}
-            onAdjust={adjustWater}
+            waterUnit={waterUnit}
+            onAdjust={(d) => setWaterValue(waterRef.current + d)}
+            onSet={setWaterValue}
+            onSetTarget={setWaterTargetValue}
           />
         );
+        break;
+      case "tracker":
+        content = (
+          <TrackerPriorityRow
+            tracker={item.tracker}
+            onLog={(v) => handleTrackerLog(item.tracker, v)}
+          />
+        );
+        break;
       case "tasks":
-        return (
+        content = (
           <TasksDuePriorityRow
-            key={key}
             due={item.due}
             onToggle={handleQuickCompleteTask}
           />
         );
+        break;
       case "session": {
         const now = new Date();
         const nowMinutes = now.getHours() * 60 + now.getMinutes();
@@ -662,19 +982,22 @@ export default function DashboardPage() {
           mins <= 60
             ? `starts in ${Math.max(0, mins)} min`
             : `at ${minToLabel(item.session.startMin)}`;
-        return (
+        content = (
           <LinkPriorityRow
-            key={key}
             icon={CalendarClock}
             title={`Up next: ${item.session.title}`}
             detail={detail}
             href="/sessions"
           />
         );
+        break;
       }
-      default:
-        return null;
     }
+    return (
+      <div key={key} className={cn(exitingRows.has(key) && "animate-collapse-out")}>
+        {content}
+      </div>
+    );
   }
 
   // Today's Focus: open tasks + tasks completed today, grouped by the
@@ -725,9 +1048,10 @@ export default function DashboardPage() {
   }, [openTasksSorted, todayCompletedTasks, categoryById]);
 
   const hasAnythingToLog =
-    !sleepLogs.some((s) => s.date === today) ||
-    water < waterTarget ||
-    habitsRemaining.length > 0;
+    (!sleepLogs.some((s) => s.date === today) && !hiddenTrackers.includes("sleep")) ||
+    (water < waterTarget && !hiddenTrackers.includes("water")) ||
+    (habitsRemaining.length > 0 && !hiddenTrackers.includes("habits")) ||
+    trackersDue.length > 0;
 
   useEffect(() => {
     if (loading || priorityStack.length === 0) return;
@@ -749,10 +1073,12 @@ export default function DashboardPage() {
           : top.kind === "habits"
             ? `${top.remaining.length} habits left today`
             : top.kind === "water"
-              ? `Water: ${water}/${waterTarget} glasses`
-              : top.kind === "tasks"
-                ? `${top.due.length} tasks due today`
-                : `Up next: ${top.session.title}`;
+              ? `Water: ${water}/${waterTarget}`
+              : top.kind === "tracker"
+                ? `Log ${top.tracker.name}`
+                : top.kind === "tasks"
+                  ? `${top.due.length} tasks due today`
+                  : `Up next: ${top.session.title}`;
     showNotification("Life OS — today", title);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, today]);
@@ -767,7 +1093,7 @@ export default function DashboardPage() {
     function onKeyDown(e: KeyboardEvent) {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (isTypingTarget(e.target)) return;
-      if (taskFormOpen || goalFormOpen || logTodayOpen) return;
+      if (taskFormOpen || goalFormOpen || logTodayOpen || habitFormOpen || trackerFormOpen) return;
       if (e.key === "n") {
         e.preventDefault();
         setTaskFormOpen(true);
@@ -781,24 +1107,40 @@ export default function DashboardPage() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [taskFormOpen, goalFormOpen, logTodayOpen, hasAnythingToLog]);
+  }, [taskFormOpen, goalFormOpen, logTodayOpen, habitFormOpen, trackerFormOpen, hasAnythingToLog]);
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="mx-auto max-w-5xl space-y-5">
+        <Skeleton className="h-28 w-full rounded-2xl" />
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-16" />
+          ))}
+        </div>
+        <SkeletonCard lines={4} />
+        <div className="grid gap-4 lg:grid-cols-3">
+          <SkeletonCard lines={5} className="lg:col-span-2" />
+          <SkeletonCard lines={5} />
+        </div>
       </div>
     );
   }
 
   const statsAreEmpty = goals.length === 0 && bestStreak === 0;
+  const showOnboarding =
+    !onboardingDismissed &&
+    allGoals.length === 0 &&
+    habits.length === 0 &&
+    tasks.length === 0;
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       {/* Greeting */}
       <div className="overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/12 via-card to-card p-6 md:p-8">
-        <h1 className="text-2xl font-bold md:text-3xl">
-          {greetingEmoji(new Date().getHours())} {greeting}, {name}!
+        <h1 className="flex items-center gap-3 text-2xl font-bold md:text-3xl">
+          <GreetingIcon className="h-7 w-7 text-primary" />
+          {greeting}, {name}!
         </h1>
         <p className="mt-1 text-muted-foreground">
           Here&apos;s what matters today. Let&apos;s make it count.
@@ -819,6 +1161,12 @@ export default function DashboardPage() {
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setGoalFormOpen(true)}>
               New goal
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setHabitFormOpen(true)}>
+              New habit
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setTrackerFormOpen(true)}>
+              New tracker
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -845,6 +1193,49 @@ export default function DashboardPage() {
       {/* One-time name prompt */}
       {!displayName && <NameSetup />}
 
+      {/* Consolidated first-run onboarding (replaces four separate nudges) */}
+      {showOnboarding && (
+        <Card className="animate-fade-slide-in border-primary/40 bg-gradient-to-br from-primary/10 via-card to-card">
+          <CardContent className="p-5">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-primary" />
+                <p className="font-medium">Let&apos;s set up your Life OS</p>
+              </div>
+              <button
+                aria-label="Dismiss"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  setOnboardingDismissed(true);
+                  try {
+                    localStorage.setItem("lifeos:onboardingDismissed", "1");
+                  } catch {
+                    /* ignore */
+                  }
+                }}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Start with one goal, one task, or one habit — the dashboard fills
+              in as you go.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button size="sm" onClick={() => setGoalFormOpen(true)}>
+                <Target className="h-4 w-4" /> Add a goal
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setTaskFormOpen(true)}>
+                <CheckSquare className="h-4 w-4" /> Add a task
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setHabitFormOpen(true)}>
+                <Flame className="h-4 w-4" /> Add a habit
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Priority stack */}
       {priorityStack.length > 0 && (
         <Card>
@@ -853,9 +1244,7 @@ export default function DashboardPage() {
               <Bell className="h-4 w-4 text-primary" />
               <span className="text-sm font-semibold">Priority stack</span>
             </div>
-            <div className="divide-y">
-              {visibleStack.map((item, i) => renderPriorityItem(item, i))}
-            </div>
+            <div className="divide-y">{visibleStack.map(renderPriorityItem)}</div>
             {overflowStack.length > 0 && (
               <div className="border-t">
                 {!stackExpanded ? (
@@ -868,9 +1257,7 @@ export default function DashboardPage() {
                   </button>
                 ) : (
                   <div className="divide-y">
-                    {overflowStack.map((item, i) =>
-                      renderPriorityItem(item, i + 100)
-                    )}
+                    {overflowStack.map(renderPriorityItem)}
                   </div>
                 )}
               </div>
@@ -879,14 +1266,22 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {/* Stat tiles (auto-hidden when there's no meaningful data yet) */}
+      {/* Stat tiles (hidden when there's no meaningful data yet) */}
       {statsAreEmpty ? (
-        <p className="px-1 text-sm text-muted-foreground">
-          Your stats will show up here once you&apos;ve logged a few days.
-        </p>
+        !showOnboarding && (
+          <Card>
+            <CardContent className="p-4 text-sm text-muted-foreground">
+              Your stats will show up here once you&apos;ve logged a few days.
+            </CardContent>
+          </Card>
+        )
       ) : (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatTile emoji={EMOJI.goals} label="Active goals" value={String(goals.length)}>
+          <StatTile
+            icon={Target}
+            label="Active goals"
+            value={<AnimatedNumber value={goals.length} />}
+          >
             {goals.length === 0 ? (
               <p className="text-muted-foreground">
                 No active goals.{" "}
@@ -896,23 +1291,28 @@ export default function DashboardPage() {
               </p>
             ) : (
               <div className="space-y-2">
-                {goals.map((g) => (
-                  <div key={g.id} className="flex items-center gap-2">
-                    <span>
-                      {g.category ? GOAL_CATEGORY_EMOJI[g.category] : "🎯"}
-                    </span>
-                    <span className="flex-1 truncate">{g.title}</span>
-                    <span className="text-muted-foreground">{g.progress}%</span>
-                  </div>
-                ))}
+                {goals.map((g) => {
+                  const Icon = g.category ? GOAL_CATEGORY_ICON[g.category] : Target;
+                  return (
+                    <div key={g.id} className="flex items-center gap-2">
+                      <Icon className="h-3.5 w-3.5 shrink-0 text-primary" />
+                      <span className="flex-1 truncate">{g.title}</span>
+                      <span className="text-muted-foreground">
+                        {g.progressType === "count" && g.targetValue
+                          ? `${g.currentValue ?? 0}/${g.targetValue}${g.unit ? ` ${g.unit}` : ""}`
+                          : `${g.progress}%`}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </StatTile>
 
           <StatTile
-            emoji={EMOJI.progress}
+            icon={TrendingUp}
             label="Avg progress"
-            value={`${avgProgress}%`}
+            value={<AnimatedNumber value={avgProgress} format={(n) => `${n}%`} />}
           >
             {goals.length === 0 ? (
               <p className="text-muted-foreground">No goals yet.</p>
@@ -931,7 +1331,11 @@ export default function DashboardPage() {
             )}
           </StatTile>
 
-          <StatTile emoji={EMOJI.streak} label="Best streak" value={`${bestStreak}d`}>
+          <StatTile
+            icon={Flame}
+            label="Best streak"
+            value={<AnimatedNumber value={bestStreak} format={(n) => `${n}d`} />}
+          >
             {habits.length === 0 ? (
               <p className="text-muted-foreground">No habits yet.</p>
             ) : (
@@ -939,23 +1343,24 @@ export default function DashboardPage() {
                 {[...habits]
                   .sort((a, b) => (b.bestStreak ?? 0) - (a.bestStreak ?? 0))
                   .slice(0, 6)
-                  .map((h) => (
-                    <div key={h.id} className="flex items-center gap-2">
-                      <span>
-                        {h.category ? HABIT_CATEGORY_EMOJI[h.category] : "🔥"}
-                      </span>
-                      <span className="flex-1 truncate">{h.title}</span>
-                      <span className="text-muted-foreground">
-                        {h.bestStreak}d
-                      </span>
-                    </div>
-                  ))}
+                  .map((h) => {
+                    const Icon = h.category ? HABIT_CATEGORY_ICON[h.category] : Flame;
+                    return (
+                      <div key={h.id} className="flex items-center gap-2">
+                        <Icon className="h-3.5 w-3.5 shrink-0 text-primary" />
+                        <span className="flex-1 truncate">{h.title}</span>
+                        <span className="text-muted-foreground">
+                          {h.bestStreak}d
+                        </span>
+                      </div>
+                    );
+                  })}
               </div>
             )}
           </StatTile>
 
           <StatTile
-            emoji={EMOJI.sleep}
+            icon={Moon}
             label={
               sleepTrend != null && sleepTrend !== 0
                 ? `Last night · ${sleepTrend > 0 ? "↑" : "↓"} ${Math.abs(
@@ -986,175 +1391,221 @@ export default function DashboardPage() {
               </div>
             )}
           </StatTile>
+
+          {/* Custom trackers as equal-citizen stat tiles */}
+          {visibleTrackers.map((t) => {
+            const Icon = trackerIcon(t.icon);
+            const logs = trackerLogs
+              .filter((l) => l.trackerId === t.id)
+              .sort((a, b) => (a.date < b.date ? 1 : -1));
+            const todayLog = logs.find((l) => l.date === today);
+            return (
+              <StatTile
+                key={t.id}
+                icon={Icon}
+                label={t.name}
+                value={
+                  todayLog ? formatTrackerValue(t, todayLog.value) : "—"
+                }
+              >
+                {logs.length === 0 ? (
+                  <p className="text-muted-foreground">Nothing logged yet.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {logs.slice(0, 5).map((l) => (
+                      <div key={l.id} className="flex items-center gap-2">
+                        <span className="flex-1 truncate text-muted-foreground">
+                          {l.date}
+                        </span>
+                        <span>{formatTrackerValue(t, l.value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </StatTile>
+            );
+          })}
         </div>
       )}
 
       {/* Bento grid */}
       <div className="grid items-start gap-4 lg:grid-cols-3">
         {/* Today's Focus — grouped by category, collapsible per group */}
-        <CollapsibleSection
-          id="focus"
-          emoji={EMOJI.focus}
-          title="Today's Focus"
-          count={openTasksSorted.length || undefined}
-          className="lg:col-span-3"
-          action={
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/tasks">View tasks</Link>
-            </Button>
-          }
-        >
-          {focusGroups.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-6 text-center">
-              <p className="text-sm font-medium">You&apos;re all caught up</p>
-              <p className="max-w-sm text-sm text-muted-foreground">
-                No open tasks. Add one to keep momentum.
-              </p>
-              <Button asChild size="sm">
-                <Link href="/tasks">
-                  <Plus className="h-4 w-4" /> Add a task
-                </Link>
+        {!(showOnboarding && focusGroups.length === 0) && (
+          <CollapsibleSection
+            id="focus"
+            icon={ClipboardList}
+            title="Today's Focus"
+            count={openTasksSorted.length || undefined}
+            className="lg:col-span-3"
+            action={
+              <Button asChild variant="ghost" size="sm">
+                <Link href="/tasks">View tasks</Link>
               </Button>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {focusGroups.map((group) => (
-                <FocusGroupBlock
-                  key={group.key}
-                  groupKey={group.key}
-                  tasks={group.tasks}
-                  onChanged={load}
-                />
-              ))}
-            </div>
-          )}
-        </CollapsibleSection>
+            }
+          >
+            {focusGroups.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-6 text-center">
+                <p className="text-sm font-medium">You&apos;re all caught up</p>
+                <p className="max-w-sm text-sm text-muted-foreground">
+                  No open tasks. Add one to keep momentum.
+                </p>
+                <Button asChild size="sm">
+                  <Link href="/tasks">
+                    <Plus className="h-4 w-4" /> Add a task
+                  </Link>
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {focusGroups.map((group) => (
+                  <FocusGroupBlock
+                    key={group.key}
+                    groupKey={group.key}
+                    tasks={group.tasks}
+                    onChanged={load}
+                  />
+                ))}
+              </div>
+            )}
+          </CollapsibleSection>
+        )}
 
         {/* Active Goals */}
-        <CollapsibleSection
-          id="goals"
-          emoji={EMOJI.goals}
-          title="Active Goals"
-          count={goals.length || undefined}
-          className="lg:col-span-2"
-          action={
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/goals">View all</Link>
-            </Button>
-          }
-        >
-          {goals.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-6 text-center">
-              <p className="text-sm font-medium">No active goals yet</p>
-              <p className="max-w-sm text-sm text-muted-foreground">
-                Focus on just 3 goals at a time.
-              </p>
-              <Button asChild size="sm">
-                <Link href="/goals">
-                  <Plus className="h-4 w-4" /> Add a goal
-                </Link>
+        {!(showOnboarding && goals.length === 0) && (
+          <CollapsibleSection
+            id="goals"
+            icon={Target}
+            title="Active Goals"
+            count={goals.length || undefined}
+            className="lg:col-span-2"
+            action={
+              <Button asChild variant="ghost" size="sm">
+                <Link href="/goals">View all</Link>
               </Button>
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {goals.map((goal) => (
-                <Link
-                  key={goal.id}
-                  href={`/goals/${goal.id}`}
-                  className="card-interactive rounded-xl border p-3"
-                >
-                  <div className="flex items-center gap-2">
-                    <span>
-                      {goal.category ? GOAL_CATEGORY_EMOJI[goal.category] : "🎯"}
-                    </span>
-                    <span className="flex-1 truncate text-sm font-medium">
-                      {goal.title}
-                    </span>
-                  </div>
-                  <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Progress</span>
-                    <span className="font-medium text-foreground">
-                      {goal.progress}%
-                    </span>
-                  </div>
-                  <Progress value={goal.progress} className="mt-1" />
-                </Link>
-              ))}
-            </div>
-          )}
-        </CollapsibleSection>
+            }
+          >
+            {goals.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-6 text-center">
+                <p className="text-sm font-medium">No active goals yet</p>
+                <p className="max-w-sm text-sm text-muted-foreground">
+                  Focus on just 3 goals at a time.
+                </p>
+                <Button asChild size="sm">
+                  <Link href="/goals">
+                    <Plus className="h-4 w-4" /> Add a goal
+                  </Link>
+                </Button>
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {goals.map((goal) => {
+                  const Icon = goal.category
+                    ? GOAL_CATEGORY_ICON[goal.category]
+                    : Target;
+                  return (
+                    <Link
+                      key={goal.id}
+                      href={`/goals/${goal.id}`}
+                      className="card-interactive animate-fade-slide-in rounded-xl border p-3"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Icon className="h-4 w-4 shrink-0 text-primary" />
+                        <span className="flex-1 truncate text-sm font-medium">
+                          {goal.title}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                        <span>
+                          {goal.progressType === "count" && goal.targetValue
+                            ? `${goal.currentValue ?? 0}/${goal.targetValue}${goal.unit ? ` ${goal.unit}` : ""}`
+                            : "Progress"}
+                        </span>
+                        <span className="font-medium text-foreground">
+                          {goal.progress}%
+                        </span>
+                      </div>
+                      <Progress value={goal.progress} className="mt-1" />
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </CollapsibleSection>
+        )}
 
         {/* Habits */}
-        <CollapsibleSection
-          id="habits"
-          emoji={EMOJI.habits}
-          title="Habits"
-          count={habits.length ? `${habitsDoneToday}/${habits.length}` : undefined}
-          className="lg:col-span-1"
-          action={
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/habits">Manage</Link>
-            </Button>
-          }
-        >
-          {habits.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-6 text-center">
-              <p className="text-sm font-medium">No habits yet</p>
-              <Button asChild size="sm">
-                <Link href="/habits">
-                  <Plus className="h-4 w-4" /> Add a habit
-                </Link>
+        {!(showOnboarding && habits.length === 0) && (
+          <CollapsibleSection
+            id="habits"
+            icon={Flame}
+            title="Habits"
+            count={habits.length ? `${habitsDoneToday}/${habits.length}` : undefined}
+            className="lg:col-span-1"
+            action={
+              <Button asChild variant="ghost" size="sm">
+                <Link href="/habits">Manage</Link>
               </Button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {/* Last 7 days at a glance */}
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Last 7 days</span>
-                <div className="flex gap-1">
-                  {habitStrip.map((d) => (
-                    <span
-                      key={d.date}
-                      title={`${d.date}: ${d.done}/${habits.length}`}
-                      className={cn(
-                        "h-5 w-5 rounded",
-                        d.ratio === 0 && "bg-muted"
-                      )}
-                      style={
-                        d.ratio > 0
-                          ? {
-                              backgroundColor: "hsl(var(--primary))",
-                              opacity: 0.25 + d.ratio * 0.75,
-                            }
-                          : undefined
-                      }
+            }
+          >
+            {habits.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-6 text-center">
+                <p className="text-sm font-medium">No habits yet</p>
+                <Button asChild size="sm">
+                  <Link href="/habits">
+                    <Plus className="h-4 w-4" /> Add a habit
+                  </Link>
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {/* Last 7 days at a glance */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Last 7 days</span>
+                  <div className="flex gap-1">
+                    {habitStrip.map((d) => (
+                      <span
+                        key={d.date}
+                        title={`${d.date}: ${d.done}/${habits.length}`}
+                        className={cn(
+                          "h-5 w-5 rounded",
+                          d.ratio === 0 && "bg-muted"
+                        )}
+                        style={
+                          d.ratio > 0
+                            ? {
+                                backgroundColor: "hsl(var(--primary))",
+                                opacity: 0.25 + d.ratio * 0.75,
+                              }
+                            : undefined
+                        }
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div className="divide-y rounded-lg border">
+                  {habits.map((h) => (
+                    <HabitRow
+                      key={h.id}
+                      habit={h}
+                      state={habitStateFromDates(habitDoneDates[h.id] ?? [], today)}
+                      todayValue={habitTodayValue[h.id] ?? 0}
+                      onToggle={(done) => handleHabitComplete(h, done)}
+                      onSetValue={(v) => handleHabitValue(h, v)}
+                      showWeek={false}
                     />
                   ))}
                 </div>
               </div>
-              <div className="divide-y rounded-lg border">
-                {habits.map((h) => (
-                  <HabitRow
-                    key={h.id}
-                    habit={h}
-                    state={habitStateFromDates(
-                      logDatesByHabit[h.id] ?? [],
-                      today
-                    )}
-                    onToggle={(done) => handleHabitToggle(h.id, done)}
-                    showWeek={false}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-        </CollapsibleSection>
+            )}
+          </CollapsibleSection>
+        )}
 
         {/* Today's Schedule */}
         {sessions.length > 0 && (
           <CollapsibleSection
             id="schedule"
-            emoji={EMOJI.schedule}
+            icon={CalendarClock}
             title="Today's Schedule"
             count={sessions.length}
             className="lg:col-span-3"
@@ -1209,7 +1660,10 @@ export default function DashboardPage() {
             sleepDefault={sleepDefault}
             water={water}
             waterTarget={waterTarget}
+            waterUnit={waterUnit}
             habitsRemaining={habitsRemaining}
+            trackersDue={trackersDue}
+            hiddenTrackers={hiddenTrackers}
             onSaved={load}
           />
           <TaskFormDialog
@@ -1224,6 +1678,19 @@ export default function DashboardPage() {
             open={goalFormOpen}
             onOpenChange={setGoalFormOpen}
             userId={user.uid}
+            onSaved={load}
+          />
+          <HabitFormDialog
+            open={habitFormOpen}
+            onOpenChange={setHabitFormOpen}
+            userId={user.uid}
+            onSaved={load}
+          />
+          <TrackerFormDialog
+            open={trackerFormOpen}
+            onOpenChange={setTrackerFormOpen}
+            userId={user.uid}
+            nextSortOrder={trackers.reduce((m, t) => Math.max(m, t.sortOrder), 0) + 1}
             onSaved={load}
           />
         </>

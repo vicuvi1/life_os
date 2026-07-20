@@ -1,5 +1,5 @@
 import { toDateKey } from "@/lib/greeting";
-import type { HabitCategory } from "@/lib/types";
+import type { Habit, HabitCategory, HabitLog } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Categories & colors
@@ -33,6 +33,30 @@ export const HABIT_COLORS: { name: string; value: string }[] = [
 ];
 
 export const DEFAULT_HABIT_COLOR = HABIT_COLORS[0].value;
+
+// ---------------------------------------------------------------------------
+// Completion semantics
+// ---------------------------------------------------------------------------
+/**
+ * Whether a log entry counts the day as DONE for this habit. Check habits are
+ * done by existing; count/duration habits are done once the logged value
+ * reaches the habit's target.
+ */
+export function isLogDone(
+  habit: Pick<Habit, "targetType" | "targetValue">,
+  log: Pick<HabitLog, "value">
+): boolean {
+  if ((habit.targetType ?? "check") === "check") return true;
+  return (log.value ?? 0) >= (habit.targetValue ?? 1);
+}
+
+/** The dates on which this habit counted as done, given its logs. */
+export function doneDates(
+  habit: Pick<Habit, "targetType" | "targetValue">,
+  logs: Pick<HabitLog, "completedDate" | "value">[]
+): string[] {
+  return logs.filter((l) => isLogDone(habit, l)).map((l) => l.completedDate);
+}
 
 // ---------------------------------------------------------------------------
 // Date helpers

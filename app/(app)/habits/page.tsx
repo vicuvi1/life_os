@@ -7,23 +7,26 @@ import {
   getHabits,
   getHabitLogs,
   toggleHabitLog,
+  setHabitLogValue,
   deleteHabit,
 } from "@/lib/firebase/db";
-import { habitStateFromDates, type HabitState } from "@/lib/habits";
+import {
+  habitStateFromDates,
+  doneDates,
+  type HabitState,
+} from "@/lib/habits";
 import { toDateKey } from "@/lib/greeting";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { HabitRow } from "@/components/habits/habit-row";
 import { HabitFormDialog } from "@/components/habits/habit-form-dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import type { Habit } from "@/lib/types";
+import type { Habit, HabitLog } from "@/lib/types";
 
 export default function HabitsPage() {
   const { user } = useAuth();
   const [habits, setHabits] = useState<Habit[]>([]);
-  const [logDatesByHabit, setLogDatesByHabit] = useState<
-    Record<string, string[]>
-  >({});
+  const [logsByHabit, setLogsByHabit] = useState<Record<string, HabitLog[]>>({});
   const [loading, setLoading] = useState(true);
 
   const [formOpen, setFormOpen] = useState(false);
@@ -40,12 +43,12 @@ export default function HabitsPage() {
         getHabits(user.uid),
         getHabitLogs(user.uid),
       ]);
-      const byHabit: Record<string, string[]> = {};
+      const byHabit: Record<string, HabitLog[]> = {};
       for (const log of logs) {
-        (byHabit[log.habitId] ??= []).push(log.completedDate);
+        (byHabit[log.habitId] ??= []).push(log);
       }
       setHabits(h);
-      setLogDatesByHabit(byHabit);
+      setLogsByHabit(byHabit);
     } finally {
       setLoading(false);
     }
@@ -55,29 +58,67 @@ export default function HabitsPage() {
     load();
   }, [load]);
 
+  // Done-semantics: count/duration habits are done once value >= target.
   const states = useMemo(() => {
     const map = new Map<string, HabitState>();
     for (const h of habits) {
-      map.set(h.id, habitStateFromDates(logDatesByHabit[h.id] ?? [], today));
+      map.set(
+        h.id,
+        habitStateFromDates(doneDates(h, logsByHabit[h.id] ?? []), today)
+      );
     }
     return map;
-  }, [habits, logDatesByHabit, today]);
+  }, [habits, logsByHabit, today]);
+
+  const todayValues = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const h of habits) {
+      const log = (logsByHabit[h.id] ?? []).find(
+        (l) => l.completedDate === today
+      );
+      m[h.id] = log?.value ?? 0;
+    }
+    return m;
+  }, [habits, logsByHabit, today]);
 
   const doneToday = habits.filter(
     (h) => states.get(h.id)?.completedToday
   ).length;
 
+  function patchTodayLog(habit: Habit, value: number | null, present: boolean) {
+    setLogsByHabit((prev) => {
+      if (!user) return prev;
+      const logs = (prev[habit.id] ?? []).filter(
+        (l) => l.completedDate !== today
+      );
+      if (present) {
+        logs.push({
+          id: `${habit.id}_${today}`,
+          habitId: habit.id,
+          userId: user.uid,
+          completedDate: today,
+          value,
+          createdAt: Date.now(),
+        });
+      }
+      return { ...prev, [habit.id]: logs };
+    });
+  }
+
   async function handleToggle(habit: Habit, done: boolean) {
     if (!user) return;
-    // Optimistic local update so the checkbox feels instant.
-    setLogDatesByHabit((prev) => {
-      const dates = new Set(prev[habit.id] ?? []);
-      if (done) dates.add(today);
-      else dates.delete(today);
-      return { ...prev, [habit.id]: Array.from(dates) };
-    });
-    await toggleHabitLog(user.uid, habit.id, today, done);
+    const fullValue =
+      (habit.targetType ?? "check") !== "check" ? habit.targetValue : null;
+    patchTodayLog(habit, fullValue, done);
+    await toggleHabitLog(user.uid, habit.id, today, done, fullValue);
     // Refresh streak fields stored on the habit doc.
+    setHabits(await getHabits(user.uid));
+  }
+
+  async function handleSetValue(habit: Habit, value: number) {
+    if (!user) return;
+    patchTodayLog(habit, value, value > 0);
+    await setHabitLogValue(user.uid, habit.id, today, value);
     setHabits(await getHabits(user.uid));
   }
 
@@ -133,7 +174,9 @@ export default function HabitsPage() {
                   key={habit.id}
                   habit={habit}
                   state={state}
+                  todayValue={todayValues[habit.id] ?? 0}
                   onToggle={(done) => handleToggle(habit, done)}
+                  onSetValue={(v) => handleSetValue(habit, v)}
                   onEdit={(h) => {
                     setEditing(h);
                     setFormOpen(true);

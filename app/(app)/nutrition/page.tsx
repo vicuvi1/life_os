@@ -15,8 +15,19 @@ import {
   getNutritionLog,
   getNutritionLogs,
   upsertNutritionLog,
+  getPrefs,
+  upsertPrefs,
   type NutritionLogInput,
 } from "@/lib/firebase/db";
+import { NumberField } from "@/components/ui/number-field";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type { UserPrefs } from "@/lib/types";
 import { toDateKey } from "@/lib/greeting";
 import { addDays } from "@/lib/habits";
 import { formatLongDate } from "@/lib/dates";
@@ -66,6 +77,7 @@ export default function NutritionPage() {
     notes: "",
   });
   const [targetInput, setTargetInput] = useState(String(DEFAULT_WATER_TARGET));
+  const [waterUnit, setWaterUnit] = useState<UserPrefs["waterUnit"]>("glasses");
   const [history, setHistory] = useState<NutritionLog[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -108,8 +120,19 @@ export default function NutritionPage() {
 
   const loadHistory = useCallback(async () => {
     if (!user) return;
-    setHistory(await getNutritionLogs(user.uid));
+    const [logs, prefs] = await Promise.all([
+      getNutritionLogs(user.uid),
+      getPrefs(user.uid),
+    ]);
+    setHistory(logs);
+    setWaterUnit(prefs.waterUnit);
   }, [user]);
+
+  async function changeWaterUnit(unit: UserPrefs["waterUnit"]) {
+    if (!user) return;
+    setWaterUnit(unit);
+    await upsertPrefs(user.uid, { waterUnit: unit });
+  }
 
   useEffect(() => {
     loadDay(date);
@@ -160,8 +183,10 @@ export default function NutritionPage() {
     [user, date, mergeHistory]
   );
 
+  const waterStep = waterUnit === "liters" ? 0.25 : 1;
+
   function setWaterAbsolute(next: number) {
-    const water = Math.max(0, next);
+    const water = Math.max(0, Math.round(next * 100) / 100);
     waterRef.current = water;
     setState((s) => ({ ...s, water }));
     void persist({ water });
@@ -172,12 +197,15 @@ export default function NutritionPage() {
   }
 
   function commitTarget() {
-    const n = Number(targetInput);
+    const n = Number(targetInput.replace(",", "."));
     if (targetInput.trim() === "" || Number.isNaN(n)) {
       setTargetInput(String(state.waterTarget)); // revert invalid input
       return;
     }
-    const waterTarget = Math.max(1, Math.min(20, Math.round(n)));
+    // Liters can be fractional; glass/oz targets stay whole numbers.
+    const clamped = Math.max(waterStep, Math.min(40, n));
+    const waterTarget =
+      waterUnit === "liters" ? Math.round(clamped * 100) / 100 : Math.round(clamped);
     setTargetInput(String(waterTarget));
     if (waterTarget !== state.waterTarget) {
       setState((s) => ({ ...s, waterTarget }));
@@ -281,69 +309,96 @@ export default function NutritionPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-3xl font-semibold">
-                    {state.water}
-                    <span className="text-lg text-muted-foreground">
-                      {" "}
-                      / {state.waterTarget}
-                    </span>
-                  </p>
-                  <p className="text-sm text-muted-foreground">glasses</p>
+                <div className="flex items-baseline gap-2">
+                  {/* Directly typeable value — the stepper is a shortcut. */}
+                  <NumberField
+                    value={state.water}
+                    onCommit={setWaterAbsolute}
+                    min={0}
+                    decimals={waterUnit === "liters"}
+                    aria-label="Water logged (type exact value)"
+                    inputClassName="w-16 text-2xl font-semibold h-10"
+                  />
+                  <span className="text-lg text-muted-foreground">
+                    / {state.waterTarget} {waterUnit}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
                     size="icon"
-                    aria-label="Remove a glass"
-                    onClick={() => incWater(-1)}
+                    aria-label="Remove"
+                    onClick={() => incWater(-waterStep)}
                     disabled={state.water <= 0}
                   >
                     <Minus className="h-4 w-4" />
                   </Button>
                   <Button
                     size="icon"
-                    aria-label="Add a glass"
-                    onClick={() => incWater(1)}
+                    aria-label="Add"
+                    onClick={() => incWater(waterStep)}
                   >
                     <Plus className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
 
-              {/* Glass row */}
-              <div className="flex flex-wrap gap-1.5">
-                {Array.from({ length: state.waterTarget }).map((_, i) => (
-                  <button
-                    key={i}
-                    aria-label={`Set water to ${i + 1}`}
-                    onClick={() => setWaterAbsolute(i + 1)}
-                    className={cn(
-                      "flex h-8 w-8 items-center justify-center rounded-md border transition-colors",
-                      i < state.water
-                        ? "border-primary bg-primary/15 text-primary"
-                        : "text-muted-foreground/40 hover:border-primary/40"
-                    )}
-                  >
-                    <GlassWater className="h-4 w-4" />
-                  </button>
-                ))}
-              </div>
+              {/* Glass row (whole-unit modes only) */}
+              {waterUnit !== "liters" && state.waterTarget <= 20 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {Array.from({ length: Math.round(state.waterTarget) }).map(
+                    (_, i) => (
+                      <button
+                        key={i}
+                        aria-label={`Set water to ${i + 1}`}
+                        onClick={() => setWaterAbsolute(i + 1)}
+                        className={cn(
+                          "flex h-8 w-8 items-center justify-center rounded-md border transition-colors",
+                          i < state.water
+                            ? "border-primary bg-primary/15 text-primary"
+                            : "text-muted-foreground/40 hover:border-primary/40"
+                        )}
+                      >
+                        <GlassWater className="h-4 w-4" />
+                      </button>
+                    )
+                  )}
+                </div>
+              )}
 
-              <div className="flex items-center gap-2">
-                <Label htmlFor="target" className="text-sm text-muted-foreground">
-                  Daily goal
-                </Label>
-                <Input
-                  id="target"
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={targetInput}
-                  onChange={(e) => setTargetInput(e.target.value)}
-                  onBlur={commitTarget}
-                  className="h-8 w-20"
-                />
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="target" className="text-sm text-muted-foreground">
+                    Daily goal
+                  </Label>
+                  <Input
+                    id="target"
+                    type="text"
+                    inputMode="decimal"
+                    value={targetInput}
+                    onChange={(e) => setTargetInput(e.target.value)}
+                    onBlur={commitTarget}
+                    className="h-8 w-20"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm text-muted-foreground">Unit</Label>
+                  <Select
+                    value={waterUnit}
+                    onValueChange={(v) =>
+                      changeWaterUnit(v as UserPrefs["waterUnit"])
+                    }
+                  >
+                    <SelectTrigger className="h-8 w-28">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="glasses">glasses</SelectItem>
+                      <SelectItem value="liters">liters</SelectItem>
+                      <SelectItem value="oz">oz</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardContent>
           </Card>

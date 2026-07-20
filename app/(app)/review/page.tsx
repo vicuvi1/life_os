@@ -24,6 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
+import { NumberField } from "@/components/ui/number-field";
 import { Badge } from "@/components/ui/badge";
 import type { WeeklyReview } from "@/lib/types";
 
@@ -246,7 +247,15 @@ export default function ReviewPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="score">Week score</Label>
-                  <span className="text-sm font-medium">{score}/100</span>
+                  <NumberField
+                    value={score}
+                    onCommit={setScore}
+                    min={0}
+                    max={100}
+                    decimals={false}
+                    suffix="/100"
+                    aria-label="Week score (type exact value)"
+                  />
                 </div>
                 <Slider
                   id="score"

@@ -772,6 +772,74 @@ today** button handles the whole day's quick logging in one modal.
 
 ---
 
+## Flexibility overhaul — type any number, edit any target, track anything
+
+**Purpose.** The biggest redesign pass yet, with one governing rule: **every
+number in the app is directly typeable, nothing is hardcoded, and every tracker
+adapts to how you actually use it.** Sliders and +/- steppers everywhere became
+shortcuts layered on top of real number fields — never a replacement for one.
+
+**Core changes.**
+- **NumberField everywhere** (`components/ui/number-field.tsx`): a compact
+  type-anywhere input — decimals where sensible (6.5h sleep, 1.5 L water),
+  commit on blur/Enter, revert on Escape, never a request per keystroke.
+  Wired into: the sleep row (slider + field), water (stepper + field + editable
+  target), the Log Today modal, the Weekly Review score (slider + field),
+  goal count/manual progress, habit targets, tracker logging, wardrobe cost /
+  times-worn.
+- **Editable targets inline**: the water goal is a clickable number right where
+  it's shown (dashboard row and Nutrition page), habit targets are set per
+  habit, tracker targets per tracker, budget caps in the budget dialog. Water
+  **units are configurable** (glasses / liters / oz) on the Nutrition page.
+- **Custom trackers** (`/trackers`, in the Track nav group): define your own
+  metric — name, type (number / count / duration / yes-no), unit, optional
+  daily target, and an icon. Custom trackers appear as **equal citizens**: in
+  the Priority Stack, the Log Today modal, dashboard stat tiles, and their own
+  14-day Insights charts. Reorder (up/down), hide, or archive any tracker —
+  and hide built-ins (Sleep / Water / Habits) you don't use.
+- **Flexible goal progress**: percentage (auto from tasks — unchanged), **count
+  toward a target** ("500 / 2000 $ saved", shown with its unit everywhere), or
+  **manual** (you set the % with a slider + number field). Task auto-calc never
+  clobbers count/manual goals.
+- **Flexible habits**: yes/no checkbox, **count with target** (8 glasses), or
+  **duration** (30 min) — chosen per habit. Measured habits get an inline
+  today-value field; streaks only count a day once the target is reached.
+
+**Also in this pass.**
+- **Currency selector in Settings** — including **MDL (Moldovan leu)**, plus
+  USD/EUR/GBP/RON/UAH/PLN/CHF, with correct symbol placement ("120 L" vs
+  "$120"). Changes apply everywhere money is shown; existing amounts keep
+  their numbers (symbol switch, no conversion).
+- **Wardrobe** (on Routines): clothing items with **uploaded photos** —
+  client-side center-crop to square + compression (stored inline in Firestore,
+  keeping the free plan), an image-first grid, text tags with filter pills,
+  cost / times-worn fields, and a "Wear today" counter. Images lazy-load.
+- **Insights fixes**: the tasks chart never renders as a blank box (sized
+  empty state with CTA), zero-value stats are dropped from the top row instead
+  of shown at equal weight, every chart header **links through** to its source
+  page, custom-tracker charts render like built-ins, chart data is
+  **session-cached** (60s TTL) so navigating back doesn't refetch, and loading
+  shows **skeletons**, not blank flashes.
+- **One onboarding card** on a fresh account (add a goal / task / habit, or
+  dismiss) instead of four stacked empty-state nudges.
+- **Icons standardized to outline (lucide) everywhere** — the dashboard's emoji
+  section headers, stat tiles, greeting, and category markers are now outline
+  icons; `lib/emoji.ts` was removed.
+- **Motion**: checkmark pop on completing tasks/habits, priority-stack rows
+  collapse out when completed, animated count-up on stat numbers, fade-slide
+  on new cards — all respecting `prefers-reduced-motion`.
+- **Performance**: dashboard loads all data in one parallel batch; logging is
+  optimistic (UI first, sync in background, rollback on failure); number
+  fields commit on blur (no per-keystroke writes).
+- Smart-default prefills (sleep hours, tracker targets) now render **muted
+  and italic** until you touch them, so a suggestion never looks like an
+  already-saved value.
+
+> **Note:** requires publishing the updated `firestore.rules` — this pass adds
+> the `trackers`, `trackerLogs`, `clothing`, and `prefs` collections.
+
+---
+
 ## Brand — custom logo
 
 **Purpose.** Replace the generic rocket icon with a distinctive, on-brand mark.

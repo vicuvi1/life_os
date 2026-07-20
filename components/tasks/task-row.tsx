@@ -27,12 +27,17 @@ interface Props {
 
 export function TaskRow({ task, onChanged, onEdit, onDelete, context }: Props) {
   const [busy, setBusy] = useState(false);
+  const [popping, setPopping] = useState(false);
   const done = task.status === "done";
   const dl = deadlineLabel(task.dueDate);
   const overdue = !done && dl?.includes("overdue");
 
   async function toggle(checked: boolean) {
     setBusy(true);
+    if (checked) {
+      setPopping(true);
+      setTimeout(() => setPopping(false), 260);
+    }
     try {
       await setTaskDone({ id: task.id, goalId: task.goalId }, checked);
       onChanged();
@@ -43,13 +48,14 @@ export function TaskRow({ task, onChanged, onEdit, onDelete, context }: Props) {
 
   return (
     <div className="flex items-start gap-3 px-4 py-3">
-      <Checkbox
-        checked={done}
-        disabled={busy}
-        onCheckedChange={(c) => toggle(Boolean(c))}
-        className="mt-0.5"
-        aria-label={done ? "Mark as not done" : "Mark as done"}
-      />
+      <span className={cn("mt-0.5", popping && "animate-pop")}>
+        <Checkbox
+          checked={done}
+          disabled={busy}
+          onCheckedChange={(c) => toggle(Boolean(c))}
+          aria-label={done ? "Mark as not done" : "Mark as done"}
+        />
+      </span>
       <div className="min-w-0 flex-1">
         <p
           className={cn(

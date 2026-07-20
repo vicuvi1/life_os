@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Flame, MoreVertical, Pencil, Trash2, Trophy } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
+import { NumberField } from "@/components/ui/number-field";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,7 +18,11 @@ import type { Habit } from "@/lib/types";
 interface Props {
   habit: Habit;
   state: HabitState;
+  /** Today's logged value for count/duration habits. */
+  todayValue?: number | null;
   onToggle: (done: boolean) => Promise<void> | void;
+  /** Log an exact value for count/duration habits. */
+  onSetValue?: (value: number) => Promise<void> | void;
   onEdit?: (habit: Habit) => void;
   onDelete?: (habit: Habit) => void;
   showWeek?: boolean;
@@ -26,16 +31,24 @@ interface Props {
 export function HabitRow({
   habit,
   state,
+  todayValue = null,
   onToggle,
+  onSetValue,
   onEdit,
   onDelete,
   showWeek = true,
 }: Props) {
   const [busy, setBusy] = useState(false);
+  const [popping, setPopping] = useState(false);
   const color = habit.color ?? "#8b5cf6";
+  const isMeasured = (habit.targetType ?? "check") !== "check";
 
   async function toggle(checked: boolean) {
     setBusy(true);
+    if (checked) {
+      setPopping(true);
+      setTimeout(() => setPopping(false), 260);
+    }
     try {
       await onToggle(checked);
     } finally {
@@ -45,19 +58,21 @@ export function HabitRow({
 
   return (
     <div className="flex items-center gap-3 px-4 py-3">
-      <Checkbox
-        checked={state.completedToday}
-        disabled={busy}
-        onCheckedChange={(c) => toggle(Boolean(c))}
-        aria-label={
-          state.completedToday ? "Mark not done today" : "Mark done today"
-        }
-        style={
-          state.completedToday
-            ? { backgroundColor: color, borderColor: color }
-            : { borderColor: color }
-        }
-      />
+      <span className={cn(popping && "animate-pop")}>
+        <Checkbox
+          checked={state.completedToday}
+          disabled={busy}
+          onCheckedChange={(c) => toggle(Boolean(c))}
+          aria-label={
+            state.completedToday ? "Mark not done today" : "Mark done today"
+          }
+          style={
+            state.completedToday
+              ? { backgroundColor: color, borderColor: color }
+              : { borderColor: color }
+          }
+        />
+      </span>
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
@@ -84,6 +99,24 @@ export function HabitRow({
           </span>
         </div>
       </div>
+
+      {/* Count/duration habits: today's value is directly typeable. */}
+      {isMeasured && onSetValue && (
+        <span className="flex shrink-0 items-center gap-1">
+          <NumberField
+            value={todayValue ?? 0}
+            onCommit={(v) => onSetValue(v)}
+            min={0}
+            decimals={habit.targetType === "duration"}
+            aria-label={`Today's ${habit.title}`}
+            inputClassName="w-12"
+          />
+          <span className="text-xs text-muted-foreground">
+            / {habit.targetValue ?? 0}
+            {habit.targetType === "duration" ? " min" : ""}
+          </span>
+        </span>
+      )}
 
       {showWeek && (
         <div className="hidden items-center gap-1 sm:flex">
