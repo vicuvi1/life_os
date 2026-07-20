@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { BookText, ChevronRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -49,6 +51,29 @@ export default function SettingsPage() {
             </p>
           </div>
           <ThemeToggle />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">About</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Link
+            href="/settings/milestones"
+            className="flex items-center justify-between px-6 py-4 transition-colors hover:bg-accent"
+          >
+            <div className="flex items-center gap-3">
+              <BookText className="h-5 w-5 text-primary" />
+              <div>
+                <p className="text-sm font-medium">Milestones &amp; release notes</p>
+                <p className="text-sm text-muted-foreground">
+                  What each version does, how it works, and how to use it.
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </Link>
         </CardContent>
       </Card>
     </div>
