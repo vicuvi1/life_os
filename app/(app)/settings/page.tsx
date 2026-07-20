@@ -6,6 +6,7 @@ import { BookText, ChevronRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { NotificationsCard } from "@/components/settings/notifications-card";
 import { useAuth } from "@/components/auth-provider";
 
 export default function SettingsPage() {
@@ -53,6 +54,8 @@ export default function SettingsPage() {
           <ThemeToggle />
         </CardContent>
       </Card>
+
+      <NotificationsCard />
 
       <Card>
         <CardHeader>

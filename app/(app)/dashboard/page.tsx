@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Target,
@@ -29,7 +29,9 @@ import { habitStateFromDates } from "@/lib/habits";
 import { sessionColor, rangeLabel } from "@/lib/sessions";
 import { formatHours } from "@/lib/sleep";
 import { DEFAULT_WATER_TARGET, hydrationRating } from "@/lib/nutrition";
-import { GlassWater, Minus } from "lucide-react";
+import { buildNudges } from "@/lib/nudges";
+import { currentPermission, showNotification } from "@/lib/notify";
+import { GlassWater, Minus, Bell, ChevronRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -163,6 +165,50 @@ export default function DashboardPage() {
   const bestStreak = habits.reduce((m, h) => Math.max(m, h.bestStreak ?? 0), 0);
   const lastNight = sleepLogs[0]; // sorted most-recent first
 
+  // Today's actionable reminders, from data already loaded above.
+  const nudges = useMemo(() => {
+    const now = new Date();
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const habitsDone = habits.filter((h) =>
+      (logDatesByHabit[h.id] ?? []).includes(today)
+    ).length;
+    const next = [...sessions]
+      .filter((s) => s.status === "planned" && s.startMin >= nowMinutes)
+      .sort((a, b) => a.startMin - b.startMin)[0];
+    return buildNudges({
+      nowMinutes,
+      sleepLoggedToday: sleepLogs.some((s) => s.date === today),
+      water,
+      waterTarget,
+      habitsDone,
+      habitsTotal: habits.length,
+      tasksDueTodayOpen: tasks.filter(
+        (t) => t.dueDate === today && t.status !== "done"
+      ).length,
+      nextSession: next ? { title: next.title, startMin: next.startMin } : null,
+    });
+  }, [habits, logDatesByHabit, sessions, sleepLogs, tasks, water, waterTarget, today]);
+
+  // While the app is open and notifications are enabled, surface the top
+  // reminder once per day as a browser notification.
+  useEffect(() => {
+    if (loading || nudges.length === 0) return;
+    if (currentPermission() !== "granted") return;
+    const key = "lifeos:nudgeNotified";
+    try {
+      if (localStorage.getItem(key) === today) return;
+      localStorage.setItem(key, today);
+    } catch {
+      return;
+    }
+    const top = nudges[0];
+    showNotification(
+      "Life OS — today",
+      top.detail ? `${top.title} · ${top.detail}` : top.title
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, today]);
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -181,6 +227,42 @@ export default function DashboardPage() {
           Here&apos;s what matters today. Let&apos;s make it count.
         </p>
       </div>
+
+      {/* Needs your attention */}
+      {nudges.length > 0 && (
+        <Card>
+          <CardContent className="p-0">
+            <div className="flex items-center gap-2 border-b px-5 py-3">
+              <Bell className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold">Needs your attention</span>
+            </div>
+            <div className="divide-y">
+              {nudges.map((n) => (
+                <Link
+                  key={n.id}
+                  href={n.href}
+                  className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-accent"
+                >
+                  <span
+                    className={
+                      n.tone === "warning"
+                        ? "h-2 w-2 shrink-0 rounded-full bg-amber-500"
+                        : "h-2 w-2 shrink-0 rounded-full bg-primary"
+                    }
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">{n.title}</p>
+                    {n.detail && (
+                      <p className="text-xs text-muted-foreground">{n.detail}</p>
+                    )}
+                  </div>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                </Link>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

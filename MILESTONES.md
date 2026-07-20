@@ -559,3 +559,37 @@ just appointments, but everything, customizable.
    all seven days at once.
 3. Watch for ⚠ overlap flags on sessions and the countdown badges on goal
    deadlines to plan around conflicts and due dates.
+
+---
+
+## Milestone 14 — Reminders & Nudges
+
+**Purpose.** A tracker only pays off if you actually keep it up. This adds gentle
+reminders so nothing slips: what you still need to do today, surfaced where
+you'll see it.
+
+**How it works.**
+- A **"Needs your attention"** panel on the dashboard is computed from data
+  already loaded there — no new storage. It lists, in priority order: your next
+  upcoming session, tasks due today, unlogged sleep, habits still to check off,
+  and water left to hit your goal. Each links straight to the right screen.
+- Optional **browser notifications**: enable them in Settings and, while the app
+  is open, your top reminder is shown once per day as a native notification.
+
+**Scope note.** True *scheduled* push (a ping when the app is closed) needs a
+backend scheduler + Firebase's Blaze plan + an Admin service account, so it's
+deliberately out of this milestone. Everything here works on the free plan with
+no extra keys. The pieces (`lib/notify.ts`) are structured so full push can be
+layered on later.
+
+**Features.**
+- Dashboard "Needs your attention" reminder center (only shows when there's
+  something to do).
+- Settings → **Reminders**: one-tap opt-in for browser notifications, with clear
+  status (on / blocked / unsupported).
+
+**How to use.**
+1. Open the dashboard each morning — the reminder panel tells you exactly
+   what's outstanding; tap any item to jump there.
+2. In **Settings → Reminders**, click **Enable** to also get a native
+   notification of your top nudge while the app is open.
