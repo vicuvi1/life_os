@@ -297,3 +297,42 @@ quality.
 
 > **Note:** requires publishing the updated `firestore.rules` (adds the
 > `nutritionLogs` collection) in the Firebase Console.
+
+---
+
+## Milestone 8 — Dependency Tracker
+
+**Purpose.** Reveal the *cause-and-effect* the Dependency Tracker spec is all
+about: "Why was my study quality 5/10 yesterday? → you slept 5h and skipped
+breakfast." It connects the inputs you now log (sleep, water, breakfast) to the
+outcome that matters (how well your study sessions actually went).
+
+**How it works.**
+- No new data or collections — it's **pure analysis** over sleep logs, nutrition
+  logs, and sessions. (So there are **no new Firestore rules** to publish.)
+- The daily **outcome** is your "study quality": the average quality score of
+  that day's completed, rated sessions.
+- For each **factor** (slept 7h+, good sleep quality, ate breakfast, hit water
+  goal) it compares your average study quality on the days the factor was true
+  vs. false, and reports the difference — e.g. "Ate breakfast: 8.2 vs 6.5,
+  **+1.7**". Only days that have both a known factor value and a rated session
+  count, and small samples are labelled as such.
+- Each recent day gets a 0–100 wellbeing score (Great / Good / Mixed / Rough)
+  and a plain-language explanation ("Slept enough, ate breakfast; but
+  under-hydrated").
+
+**Features.**
+- Dependencies page (`/dependencies`): a highlighted **"biggest lever"** insight
+  (the factor with the largest positive effect and enough evidence), a grid of
+  **factor comparison cards** with deltas and sample sizes, and a **recent-days
+  breakdown** with scores, explanations, and the day's raw signals.
+- Honest about data: shows a "keep logging" prompt until there are enough rated
+  days to compare, and never claims a correlation it can't support.
+
+**How to use.**
+1. Keep logging **sleep** and **nutrition**, and mark **sessions** done with a
+   quality score — these three feed the analysis.
+2. Open **Dependencies** to see which factor is currently helping you most, and
+   which days went well or poorly and why.
+3. Act on the "biggest lever" — usually protecting sleep or breakfast — and
+   watch the deltas as more days accumulate.

@@ -10,6 +10,7 @@ import {
   CalendarDays,
   CalendarCheck,
   BarChart3,
+  Activity,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -32,5 +33,6 @@ export const NAV: NavItem[] = [
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/review", label: "Weekly Review", icon: CalendarCheck },
   { href: "/insights", label: "Insights", icon: BarChart3 },
+  { href: "/dependencies", label: "Dependencies", icon: Activity },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
