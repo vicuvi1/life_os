@@ -1212,12 +1212,16 @@ export async function getPrefs(userId: string): Promise<UserPrefs> {
     userId,
     waterUnit: d.waterUnit ?? "glasses",
     hiddenTrackers: Array.isArray(d.hiddenTrackers) ? d.hiddenTrackers : [],
+    sleepTarget: d.sleepTarget ?? 8,
+    reviewScale: d.reviewScale === 10 ? 10 : 100,
   };
 }
 
 export async function upsertPrefs(
   userId: string,
-  input: Partial<Pick<UserPrefs, "waterUnit" | "hiddenTrackers">>
+  input: Partial<
+    Pick<UserPrefs, "waterUnit" | "hiddenTrackers" | "sleepTarget" | "reviewScale">
+  >
 ): Promise<void> {
   const ref = doc(db, COLLECTIONS.prefs, userId);
   await setDoc(ref, { userId, ...input }, { merge: true });

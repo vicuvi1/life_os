@@ -1,5 +1,7 @@
 "use client";
 
+import { SkeletonCard } from "@/components/ui/skeleton";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Wallet,
@@ -169,8 +171,9 @@ export default function ExpensesPage() {
       </div>
 
       {loading ? (
-        <div className="flex h-40 items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div className="space-y-3">
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={3} />
         </div>
       ) : (
         <>
@@ -312,7 +315,10 @@ export default function ExpensesPage() {
               <Card>
                 <CardContent className="divide-y p-0">
                   {monthExpenses.map((e) => (
-                    <div key={e.id} className="flex items-center gap-3 px-4 py-3">
+                    <div
+                      key={e.id}
+                      className="animate-fade-slide-in flex items-center gap-3 px-4 py-3"
+                    >
                       <span
                         className="h-8 w-1.5 shrink-0 rounded-full"
                         style={{

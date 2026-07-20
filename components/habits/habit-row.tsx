@@ -57,7 +57,7 @@ export function HabitRow({
   }
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3">
+    <div className="animate-fade-slide-in flex items-center gap-3 px-4 py-3">
       <span className={cn(popping && "animate-pop")}>
         <Checkbox
           checked={state.completedToday}

@@ -8,14 +8,22 @@ type BadgeVariant =
   | "warning"
   | "destructive";
 
-/** Rating for hours slept, per the Dependency Tracker guidance (7-9h = good). */
-export function hoursRating(hours: number): {
+/**
+ * Rating for hours slept, relative to the user's sleep goal (default 8h,
+ * giving the classic 7–9h "Good" band).
+ */
+export function hoursRating(
+  hours: number,
+  target = 8
+): {
   label: string;
   variant: BadgeVariant;
 } {
-  if (hours >= 7 && hours <= 9) return { label: "Good", variant: "success" };
-  if (hours >= 6 && hours < 7) return { label: "Okay", variant: "warning" };
-  if (hours > 9) return { label: "Long", variant: "warning" };
+  if (hours >= target - 1 && hours <= target + 1)
+    return { label: "Good", variant: "success" };
+  if (hours >= target - 2 && hours < target - 1)
+    return { label: "Okay", variant: "warning" };
+  if (hours > target + 1) return { label: "Long", variant: "warning" };
   return { label: "Low", variant: "destructive" };
 }
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { SkeletonCard } from "@/components/ui/skeleton";
+
 import { useCallback, useEffect, useState } from "react";
 import {
   SlidersHorizontal,
@@ -130,8 +132,9 @@ export default function TrackersPage() {
       </div>
 
       {loading ? (
-        <div className="flex h-40 items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div className="space-y-3">
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={3} />
         </div>
       ) : (
         <>
@@ -199,17 +202,39 @@ export default function TrackersPage() {
                 <CardContent className="divide-y p-0">
                   {active.map((t, i) => {
                     const Icon = trackerIcon(t.icon);
+                    const isHidden = hidden.includes(t.id);
                     return (
                       <div key={t.id} className="flex items-center gap-2 px-4 py-3">
                         <Icon className="h-4 w-4 shrink-0 text-primary" />
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium">{t.name}</p>
+                          <p
+                            className={cn(
+                              "text-sm font-medium",
+                              isHidden && "text-muted-foreground line-through"
+                            )}
+                          >
+                            {t.name}
+                          </p>
                           <p className="text-xs text-muted-foreground">
                             {t.type}
                             {t.target != null &&
                               ` · target ${formatTrackerValue(t, t.target)}`}
+                            {isHidden && " · hidden from daily flow"}
                           </p>
                         </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          aria-label={isHidden ? "Show tracker" : "Hide tracker"}
+                          onClick={() => toggleHidden(t.id)}
+                        >
+                          {isHidden ? (
+                            <Eye className="h-3.5 w-3.5" />
+                          ) : (
+                            <EyeOff className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"

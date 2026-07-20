@@ -1,5 +1,7 @@
 "use client";
 
+import { SkeletonCard } from "@/components/ui/skeleton";
+
 import { useCallback, useEffect, useState } from "react";
 import { Shirt, Loader2, Settings2, Sparkles, Check } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
@@ -55,8 +57,9 @@ export default function RoutinesPage() {
       </div>
 
       {loading ? (
-        <div className="flex h-40 items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div className="space-y-3">
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={3} />
         </div>
       ) : !hasAnything ? (
         <Card>

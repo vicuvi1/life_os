@@ -838,6 +838,22 @@ shortcuts layered on top of real number fields — never a replacement for one.
 > **Note:** requires publishing the updated `firestore.rules` — this pass adds
 > the `trackers`, `trackerLogs`, `clothing`, and `prefs` collections.
 
+**Follow-up — remaining gaps closed.**
+- **Sleep goal**: a configurable nightly target (default 8h) edited inline on
+  the Sleep page; the Good/Okay/Low ratings now grade against *your* goal
+  instead of a fixed 7–9h band.
+- **Week-score scale is configurable**: rate weeks out of **/10 or /100**
+  (selector next to the score). Stored values stay normalized so history
+  remains comparable and past badges re-render in your chosen scale.
+- **Custom trackers can now be hidden** (eye toggle) as well as archived —
+  hidden keeps the tracker and its chart but removes it from the daily flow.
+- **Task checkboxes are optimistic**: they flip instantly and sync in the
+  background, rolling back only if the save fails.
+- **Skeleton loading everywhere**: all 16 remaining pages traded their center
+  spinners for content-shaped skeletons.
+- **List-entry transitions** extended to task, habit, session, and expense
+  rows.
+
 ---
 
 ## Brand — custom logo

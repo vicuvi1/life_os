@@ -1,5 +1,7 @@
 "use client";
 
+import { SkeletonCard } from "@/components/ui/skeleton";
+
 import { useCallback, useEffect, useState } from "react";
 import {
   CalendarCheck,
@@ -15,7 +17,16 @@ import {
   getWeeklyReview,
   getWeeklyReviews,
   upsertWeeklyReview,
+  getPrefs,
+  upsertPrefs,
 } from "@/lib/firebase/db";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toDateKey } from "@/lib/greeting";
 import { addDays } from "@/lib/habits";
 import { startOfWeekKey, formatWeekRange } from "@/lib/dates";
@@ -98,10 +109,31 @@ export default function ReviewPage() {
     [user]
   );
 
+  // Score scale preference: rate weeks out of 10 or out of 100. The stored
+  // value is always normalized to 0-100 so history stays comparable.
+  const [scale, setScale] = useState<10 | 100>(100);
+
   const loadHistory = useCallback(async () => {
     if (!user) return;
-    setHistory(await getWeeklyReviews(user.uid));
+    const [reviews, prefs] = await Promise.all([
+      getWeeklyReviews(user.uid),
+      getPrefs(user.uid),
+    ]);
+    setHistory(reviews);
+    setScale(prefs.reviewScale);
   }, [user]);
+
+  async function changeScale(next: 10 | 100) {
+    if (!user) return;
+    setScale(next);
+    await upsertPrefs(user.uid, { reviewScale: next });
+  }
+
+  /** Display a normalized 0-100 score in the user's chosen scale. */
+  function fmtScore(normalized: number): string {
+    if (scale === 10) return `${Math.round(normalized) / 10}/10`;
+    return `${Math.round(normalized)}/100`;
+  }
 
   useEffect(() => {
     loadWeek(weekStart);
@@ -199,8 +231,9 @@ export default function ReviewPage() {
       </div>
 
       {loading ? (
-        <div className="flex h-40 items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div className="space-y-3">
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={3} />
         </div>
       ) : (
         <Card>
@@ -245,25 +278,40 @@ export default function ReviewPage() {
                 />
               </div>
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="score">Week score</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="score">Week score</Label>
+                    {/* The scale itself is configurable, not hardcoded. */}
+                    <Select
+                      value={String(scale)}
+                      onValueChange={(v) => changeScale(Number(v) as 10 | 100)}
+                    >
+                      <SelectTrigger className="h-7 w-20 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10">/ 10</SelectItem>
+                        <SelectItem value="100">/ 100</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <NumberField
-                    value={score}
-                    onCommit={setScore}
+                    value={scale === 10 ? Math.round(score) / 10 : score}
+                    onCommit={(v) => setScore(scale === 10 ? v * 10 : v)}
                     min={0}
-                    max={100}
-                    decimals={false}
-                    suffix="/100"
+                    max={scale}
+                    decimals={scale === 10}
+                    suffix={`/${scale}`}
                     aria-label="Week score (type exact value)"
                   />
                 </div>
                 <Slider
                   id="score"
-                  value={score}
-                  onValueChange={setScore}
+                  value={scale === 10 ? score / 10 : score}
+                  onValueChange={(v) => setScore(scale === 10 ? v * 10 : v)}
                   min={0}
-                  max={100}
-                  step={1}
+                  max={scale}
+                  step={scale === 10 ? 0.5 : 1}
                   aria-label="Week score"
                 />
               </div>
@@ -323,7 +371,7 @@ export default function ReviewPage() {
                                 : "destructive"
                           }
                         >
-                          {r.score}/100
+                          {fmtScore(r.score)}
                         </Badge>
                       )}
                     </CardHeader>

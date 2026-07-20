@@ -288,6 +288,10 @@ export interface UserPrefs {
   waterUnit: "glasses" | "liters" | "oz";
   /** Tracker ids (built-in keys or custom ids) the user has hidden. */
   hiddenTrackers: string[];
+  /** Nightly sleep goal in hours (used for Good/Low ratings). */
+  sleepTarget: number;
+  /** Week-score scale for the Weekly Review: rate out of 10 or out of 100. */
+  reviewScale: 10 | 100;
 }
 
 /** Firestore collection names, centralized to avoid typos. */

@@ -1,5 +1,7 @@
 "use client";
 
+import { SkeletonCard } from "@/components/ui/skeleton";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Moon, ChevronLeft, ChevronRight, Loader2, Trash2 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
@@ -8,7 +10,10 @@ import {
   getSleepLogs,
   upsertSleepLog,
   deleteSleepLog,
+  getPrefs,
+  upsertPrefs,
 } from "@/lib/firebase/db";
+import { NumberField } from "@/components/ui/number-field";
 import { toDateKey } from "@/lib/greeting";
 import { addDays } from "@/lib/habits";
 import { formatLongDate } from "@/lib/dates";
@@ -56,10 +61,23 @@ export default function SleepPage() {
     [user]
   );
 
+  const [sleepTarget, setSleepTarget] = useState(8);
+
   const loadHistory = useCallback(async () => {
     if (!user) return;
-    setHistory(await getSleepLogs(user.uid));
+    const [logs, prefs] = await Promise.all([
+      getSleepLogs(user.uid),
+      getPrefs(user.uid),
+    ]);
+    setHistory(logs);
+    setSleepTarget(prefs.sleepTarget);
   }, [user]);
+
+  async function changeSleepTarget(next: number) {
+    if (!user) return;
+    setSleepTarget(next);
+    await upsertPrefs(user.uid, { sleepTarget: next });
+  }
 
   useEffect(() => {
     loadDay(date);
@@ -109,13 +127,27 @@ export default function SleepPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold md:text-3xl">Sleep</h1>
-        <p className="text-muted-foreground">
-          {weekAvg > 0
-            ? `You're averaging ${formatHours(weekAvg)} a night this week.`
-            : "Log your sleep — it's the #1 driver of focus and study quality."}
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold md:text-3xl">Sleep</h1>
+          <p className="text-muted-foreground">
+            {weekAvg > 0
+              ? `You're averaging ${formatHours(weekAvg)} a night this week.`
+              : "Log your sleep — it's the #1 driver of focus and study quality."}
+          </p>
+        </div>
+        {/* Nightly goal — editable right where it's shown */}
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Label className="text-sm text-muted-foreground">Nightly goal</Label>
+          <NumberField
+            value={sleepTarget}
+            onCommit={changeSleepTarget}
+            min={4}
+            max={12}
+            suffix="h"
+            aria-label="Nightly sleep goal"
+          />
+        </div>
       </div>
 
       {/* Day nav */}
@@ -158,8 +190,9 @@ export default function SleepPage() {
 
       {/* Log form */}
       {loading ? (
-        <div className="flex h-40 items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div className="space-y-3">
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={3} />
         </div>
       ) : (
         <Card>
@@ -235,7 +268,7 @@ export default function SleepPage() {
           <Card>
             <CardContent className="divide-y p-0">
               {history.slice(0, 30).map((log) => {
-                const hr = hoursRating(log.hours);
+                const hr = hoursRating(log.hours, sleepTarget);
                 const qr = qualityRating(log.quality);
                 return (
                   <div

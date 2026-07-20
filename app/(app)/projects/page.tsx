@@ -1,5 +1,7 @@
 "use client";
 
+import { SkeletonCard } from "@/components/ui/skeleton";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { FolderKanban, Loader2, ArrowRight } from "lucide-react";
@@ -59,8 +61,9 @@ export default function ProjectsPage() {
       </div>
 
       {loading ? (
-        <div className="flex h-40 items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div className="space-y-3">
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={3} />
         </div>
       ) : grouped.length === 0 ? (
         <Card>

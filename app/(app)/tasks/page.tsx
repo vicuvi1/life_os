@@ -1,5 +1,7 @@
 "use client";
 
+import { SkeletonCard } from "@/components/ui/skeleton";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Loader2, ListTodo } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
@@ -169,8 +171,9 @@ export default function TasksPage() {
       </div>
 
       {loading ? (
-        <div className="flex h-40 items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div className="space-y-3">
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={3} />
         </div>
       ) : filtered.length === 0 ? (
         <Card>

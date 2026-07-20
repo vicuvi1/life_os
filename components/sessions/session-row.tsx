@@ -55,7 +55,7 @@ export function SessionRow({
   return (
     <div
       className={cn(
-        "flex items-center gap-3 px-4 py-3",
+        "animate-fade-slide-in flex items-center gap-3 px-4 py-3",
         skipped && "opacity-60"
       )}
     >

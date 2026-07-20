@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MoreVertical, Pencil, Trash2, CalendarDays } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -26,14 +26,20 @@ interface Props {
 }
 
 export function TaskRow({ task, onChanged, onEdit, onDelete, context }: Props) {
-  const [busy, setBusy] = useState(false);
   const [popping, setPopping] = useState(false);
-  const done = task.status === "done";
+  // Optimistic override: the checkbox flips immediately; the server write
+  // happens in the background and rolls back only on failure.
+  const [optimistic, setOptimistic] = useState<boolean | null>(null);
+  // Fresh server data supersedes any local override.
+  useEffect(() => {
+    setOptimistic(null);
+  }, [task.status]);
+  const done = optimistic ?? task.status === "done";
   const dl = deadlineLabel(task.dueDate);
   const overdue = !done && dl?.includes("overdue");
 
   async function toggle(checked: boolean) {
-    setBusy(true);
+    setOptimistic(checked);
     if (checked) {
       setPopping(true);
       setTimeout(() => setPopping(false), 260);
@@ -41,17 +47,16 @@ export function TaskRow({ task, onChanged, onEdit, onDelete, context }: Props) {
     try {
       await setTaskDone({ id: task.id, goalId: task.goalId }, checked);
       onChanged();
-    } finally {
-      setBusy(false);
+    } catch {
+      setOptimistic(null); // rollback on failure
     }
   }
 
   return (
-    <div className="flex items-start gap-3 px-4 py-3">
+    <div className="animate-fade-slide-in flex items-start gap-3 px-4 py-3">
       <span className={cn("mt-0.5", popping && "animate-pop")}>
         <Checkbox
           checked={done}
-          disabled={busy}
           onCheckedChange={(c) => toggle(Boolean(c))}
           aria-label={done ? "Mark as not done" : "Mark as done"}
         />
