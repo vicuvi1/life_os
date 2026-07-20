@@ -336,3 +336,40 @@ outcome that matters (how well your study sessions actually went).
    which days went well or poorly and why.
 3. Act on the "biggest lever" — usually protecting sleep or breakfast — and
    watch the deltas as more days accumulate.
+
+---
+
+## Milestone 9 — Time Audit & Focus Analytics
+
+**Purpose.** The Time Audit spec asks two questions: *where does my time go?*
+and *when am I actually at my best?* This milestone answers both from real data
+— no self-reported energy numbers. (Energy check-ins were intentionally
+skipped; instead, peak-performance time is derived from your actual session
+quality by hour.)
+
+**How it works.**
+- Pure analysis over your **sessions** (no new collection or rules). "Time
+  spent" counts only sessions you marked **done**.
+- **Time by category** sums done-minutes per category (study, workout, deep
+  work, …) over the selected range.
+- **When you focus best** groups completed, rated sessions into time-of-day
+  buckets (Early 5–9am, Late morning, Afternoon, Evening, Night) and computes
+  the average quality in each — surfacing your real peak block (needs 2+
+  sessions in a block before it's called a "best").
+- **This week vs last** compares done-minutes across ISO weeks with a % change.
+
+**Features.**
+- Time Audit page (`/time-audit`) with a 7 / 30 / 90-day range toggle:
+  - total tracked hours,
+  - a color-coded **time-by-category** bar breakdown,
+  - a **best-focus-time** callout plus per-bucket quality bars,
+  - a **week-over-week** study-time trend.
+- Honest empty/low-data states — it won't name a "peak block" without enough
+  rated sessions.
+
+**How to use.**
+1. Plan and complete **Sessions** (with quality ratings) as you work.
+2. Open **Time Audit** to see how your hours split across categories and which
+   part of the day gives you the best focus.
+3. Move your hardest work into your peak block, and watch the weekly trend to
+   see whether your total focused time is climbing.
