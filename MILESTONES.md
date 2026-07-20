@@ -437,3 +437,41 @@ default template, and tame the now-long navigation.
 - A reusable `card-interactive` hover style for clickable cards.
 
 No data or behaviour changed — this is purely visual.
+
+---
+
+## Milestone 11 — Meal Prep + Shopping List
+
+**Purpose.** Kill the daily "what should I eat?" decision and the time wasted at
+the shop. Plan a week of meals from a reusable library, and let the app roll the
+ingredients into one de-duplicated shopping list — the Meal Prep spec's "Sunday
+1 hour = all meals planned + shopping done."
+
+**How it works.**
+- **meals** collection: a reusable library, each meal tagged to a slot
+  (breakfast/lunch/dinner) with an ingredient list and optional estimated cost.
+- **mealPlan** collection: one entry per date + slot (deterministic id
+  `userId_date_slot`), so assigning/clearing a day's meal is a single write.
+- **shoppingChecks** collection: per-week (`userId_weekStart`) state holding
+  which items you've ticked off and any extras you added by hand.
+- The shopping list is **generated**, not stored: it flattens the week's planned
+  meals' ingredients, de-duplicates case-insensitively (showing a ×N when an
+  item is needed for several meals), and merges in your manual extras.
+
+**Features.**
+- Meals page (`/meals`) with week navigation:
+  - A **7-day planner** (one card per day, a dropdown per slot) — pick a meal
+    and it's saved instantly.
+  - An **auto shopping list** with tick-off (persisted per week), an estimated
+    cost total, a checked/total counter, and an "add item" box for one-offs.
+  - A **meal library** to add / edit / delete your go-to meals.
+
+**How to use.**
+1. Add a handful of meals (**New meal**) with their ingredients.
+2. For the week, pick a meal in each day's breakfast/lunch/dinner dropdown.
+3. Shop straight from the generated list, ticking items as you go; add anything
+   extra (olive oil, snacks) with the add box.
+
+> **Note:** requires publishing the updated `firestore.rules` (adds the
+> `meals`, `mealPlan`, and `shoppingChecks` collections) in the Firebase
+> Console.

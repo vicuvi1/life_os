@@ -41,6 +41,8 @@ export type ExpenseCategory =
   | "health"
   | "other";
 
+export type MealSlot = "breakfast" | "lunch" | "dinner";
+
 export interface Goal {
   id: string;
   userId: string;
@@ -175,6 +177,34 @@ export interface Budget {
   byCategory: Partial<Record<ExpenseCategory, number>>; // optional per-category caps
 }
 
+/** A reusable meal in the user's library. */
+export interface Meal {
+  id: string;
+  userId: string;
+  name: string;
+  slot: MealSlot;
+  ingredients: string[];
+  estCost: number | null;
+  createdAt: number;
+}
+
+/** A meal assigned to a specific date + slot (doc id = userId_date_slot). */
+export interface MealPlanEntry {
+  id: string;
+  userId: string;
+  date: string; // YYYY-MM-DD
+  slot: MealSlot;
+  mealId: string;
+}
+
+/** Shopping-list state for a week (doc id = userId_weekStart). */
+export interface ShoppingCheck {
+  userId: string;
+  weekStart: string; // YYYY-MM-DD (Monday)
+  checked: string[]; // normalized item names checked off
+  extra: string[]; // manually added items
+}
+
 /** Firestore collection names, centralized to avoid typos. */
 export const COLLECTIONS = {
   goals: "goals",
@@ -188,4 +218,7 @@ export const COLLECTIONS = {
   nutritionLogs: "nutritionLogs",
   expenses: "expenses",
   budgets: "budgets",
+  meals: "meals",
+  mealPlan: "mealPlan",
+  shoppingChecks: "shoppingChecks",
 } as const;

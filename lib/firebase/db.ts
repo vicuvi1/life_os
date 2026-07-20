@@ -23,9 +23,13 @@ import {
   type Goal,
   type Habit,
   type HabitLog,
+  type Meal,
+  type MealPlanEntry,
+  type MealSlot,
   type NutritionLog,
   type Project,
   type Session,
+  type ShoppingCheck,
   type SleepLog,
   type Task,
   type WeeklyReview,
@@ -805,4 +809,117 @@ export async function upsertBudget(
   // Full replace (no merge): the budget form always submits the complete
   // config, and merge would keep stale per-category caps the user cleared.
   await setDoc(ref, { userId, ...input });
+}
+
+// ---------------------------------------------------------------------------
+// Meals, meal plan & shopping list
+// ---------------------------------------------------------------------------
+function mapMeal(snap: QueryDocumentSnapshot<DocumentData>): Meal {
+  const d = snap.data();
+  return {
+    id: snap.id,
+    userId: d.userId,
+    name: d.name,
+    slot: d.slot ?? "dinner",
+    ingredients: Array.isArray(d.ingredients) ? d.ingredients : [],
+    estCost: d.estCost ?? null,
+    createdAt: toMillis(d.createdAt),
+  };
+}
+
+export async function getMeals(userId: string): Promise<Meal[]> {
+  const q = query(
+    collection(db, COLLECTIONS.meals),
+    where("userId", "==", userId)
+  );
+  const snap = await getDocs(q);
+  return snap.docs
+    .map(mapMeal)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export type MealInput = Pick<Meal, "name" | "slot" | "ingredients" | "estCost">;
+
+export async function createMeal(
+  userId: string,
+  input: MealInput
+): Promise<string> {
+  const ref = await addDoc(collection(db, COLLECTIONS.meals), {
+    userId,
+    ...input,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export async function updateMeal(
+  id: string,
+  input: Partial<MealInput>
+): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.meals, id), { ...input });
+}
+
+export async function deleteMeal(id: string): Promise<void> {
+  await deleteDoc(doc(db, COLLECTIONS.meals, id));
+}
+
+function mapPlanEntry(snap: QueryDocumentSnapshot<DocumentData>): MealPlanEntry {
+  const d = snap.data();
+  return {
+    id: snap.id,
+    userId: d.userId,
+    date: d.date,
+    slot: d.slot,
+    mealId: d.mealId,
+  };
+}
+
+/** All meal-plan entries for a user (filter by week client-side). */
+export async function getMealPlan(userId: string): Promise<MealPlanEntry[]> {
+  const q = query(
+    collection(db, COLLECTIONS.mealPlan),
+    where("userId", "==", userId)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(mapPlanEntry);
+}
+
+/** Assign (or clear, when mealId is null) a meal for a date + slot. */
+export async function setMealPlanEntry(
+  userId: string,
+  date: string,
+  slot: MealSlot,
+  mealId: string | null
+): Promise<void> {
+  const ref = doc(db, COLLECTIONS.mealPlan, `${userId}_${date}_${slot}`);
+  if (mealId) {
+    await setDoc(ref, { userId, date, slot, mealId });
+  } else {
+    await deleteDoc(ref);
+  }
+}
+
+export async function getShoppingCheck(
+  userId: string,
+  weekStart: string
+): Promise<ShoppingCheck | null> {
+  const ref = doc(db, COLLECTIONS.shoppingChecks, `${userId}_${weekStart}`);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return null;
+  const d = snap.data();
+  return {
+    userId: d.userId,
+    weekStart: d.weekStart,
+    checked: Array.isArray(d.checked) ? d.checked : [],
+    extra: Array.isArray(d.extra) ? d.extra : [],
+  };
+}
+
+export async function upsertShoppingCheck(
+  userId: string,
+  weekStart: string,
+  input: { checked: string[]; extra: string[] }
+): Promise<void> {
+  const ref = doc(db, COLLECTIONS.shoppingChecks, `${userId}_${weekStart}`);
+  await setDoc(ref, { userId, weekStart, ...input });
 }
