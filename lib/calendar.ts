@@ -8,7 +8,6 @@ import type {
   SleepLog,
   Task,
 } from "@/lib/types";
-import { findConflicts } from "@/lib/sessions";
 
 export type CalElement = "sessions" | "tasks" | "habits" | "sleep" | "goals";
 
@@ -41,7 +40,6 @@ export interface CalSources {
 
 export interface CalData {
   sessionsByDate: Map<string, Session[]>;
-  conflicts: Set<string>;
   tasksByDate: Map<string, Task[]>;
   sleepByDate: Map<string, SleepLog>;
   habitDoneByDate: Map<string, number>;
@@ -81,12 +79,15 @@ export function buildCalData(src: CalSources): CalData {
 
   const goalsByDeadline = new Map<string, Goal[]>();
   for (const g of src.goals) {
-    if (g.deadline) pushInto(goalsByDeadline, g.deadline, g);
+    // Only live goals should show a deadline countdown — a completed or
+    // archived goal isn't "due" anymore.
+    if (g.deadline && (g.status === "active" || g.status === "paused")) {
+      pushInto(goalsByDeadline, g.deadline, g);
+    }
   }
 
   return {
     sessionsByDate,
-    conflicts: findConflicts(src.sessions),
     tasksByDate,
     sleepByDate,
     habitDoneByDate,
