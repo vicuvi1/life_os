@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Target,
@@ -12,12 +12,13 @@ import {
   Loader2,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
-import { getActiveGoals, getDailyHabits } from "@/lib/firebase/db";
+import { getActiveGoals, getDailyHabits, getTasks } from "@/lib/firebase/db";
 import { greetingFor, nameFromEmail } from "@/lib/greeting";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import type { Goal, Habit } from "@/lib/types";
+import { TaskRow } from "@/components/tasks/task-row";
+import type { Goal, Habit, Task } from "@/lib/types";
 
 function StatCard({
   icon: Icon,
@@ -47,30 +48,41 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!user) return;
-    let active = true;
-    (async () => {
-      setLoading(true);
-      try {
-        const [g, h] = await Promise.all([
-          getActiveGoals(user.uid),
-          getDailyHabits(user.uid),
-        ]);
-        if (active) {
-          setGoals(g);
-          setHabits(h);
-        }
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
+    setLoading(true);
+    try {
+      const [g, h, t] = await Promise.all([
+        getActiveGoals(user.uid),
+        getDailyHabits(user.uid),
+        getTasks(user.uid),
+      ]);
+      setGoals(g);
+      setHabits(h);
+      setTasks(t);
+    } finally {
+      setLoading(false);
+    }
   }, [user]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Top open tasks: due first (soonest, incl. overdue), then by priority.
+  const priorityRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
+  const focusTasks = tasks
+    .filter((t) => t.status !== "done")
+    .sort((a, b) => {
+      const ad = a.dueDate ?? "9999-12-31";
+      const bd = b.dueDate ?? "9999-12-31";
+      if (ad !== bd) return ad < bd ? -1 : 1;
+      return (priorityRank[a.priority] ?? 1) - (priorityRank[b.priority] ?? 1);
+    })
+    .slice(0, 6);
 
   const greeting = greetingFor(new Date().getHours());
   const name = nameFromEmail(user?.email);
@@ -170,21 +182,31 @@ export default function DashboardPage() {
             <Link href="/tasks">View tasks</Link>
           </Button>
         </div>
-        <Card>
-          <CardContent className="flex flex-col items-center gap-3 p-10 text-center">
-            <ListTodo className="h-8 w-8 text-muted-foreground" />
-            <p className="font-medium">No tasks for today yet</p>
-            <p className="max-w-sm text-sm text-muted-foreground">
-              Once you add projects and tasks to your goals, today&apos;s quick
-              wins show up here.
-            </p>
-            <Button asChild>
-              <Link href="/tasks">
-                <Plus className="h-4 w-4" /> Add a task
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
+        {focusTasks.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center gap-3 p-10 text-center">
+              <ListTodo className="h-8 w-8 text-muted-foreground" />
+              <p className="font-medium">You&apos;re all caught up</p>
+              <p className="max-w-sm text-sm text-muted-foreground">
+                No open tasks. Add tasks to your goals or a quick one from the
+                Tasks page.
+              </p>
+              <Button asChild>
+                <Link href="/tasks">
+                  <Plus className="h-4 w-4" /> Add a task
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardContent className="divide-y p-0">
+              {focusTasks.map((t) => (
+                <TaskRow key={t.id} task={t} onChanged={load} />
+              ))}
+            </CardContent>
+          </Card>
+        )}
       </section>
 
       {/* Habits */}
