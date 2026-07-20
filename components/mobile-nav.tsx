@@ -5,25 +5,46 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X, Rocket } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { NAV } from "@/lib/nav";
+import { NAV_SECTIONS, NAV_FOOTER } from "@/lib/nav";
 import { Button } from "@/components/ui/button";
 
 export function MobileNav() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
-  // Close the drawer whenever the route changes.
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
 
-  // Prevent background scroll while the drawer is open.
   useEffect(() => {
     document.body.style.overflow = open ? "hidden" : "";
     return () => {
       document.body.style.overflow = "";
     };
   }, [open]);
+
+  const isActive = (href: string) =>
+    pathname === href || pathname.startsWith(`${href}/`);
+
+  const link = (item: { href: string; label: string; icon: React.ComponentType<{ className?: string }> }) => {
+    const active = isActive(item.href);
+    const Icon = item.icon;
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        className={cn(
+          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+          active
+            ? "bg-primary/10 text-primary"
+            : "text-muted-foreground hover:bg-accent hover:text-foreground"
+        )}
+      >
+        <Icon className="h-4 w-4" />
+        {item.label}
+      </Link>
+    );
+  };
 
   return (
     <div className="md:hidden">
@@ -39,20 +60,18 @@ export function MobileNav() {
 
       {open && (
         <div className="fixed inset-0 z-50">
-          {/* Backdrop */}
           <button
             aria-label="Close menu"
-            className="absolute inset-0 bg-black/50"
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={() => setOpen(false)}
           />
-          {/* Drawer */}
-          <div className="absolute left-0 top-0 flex h-full w-64 flex-col border-r bg-card shadow-xl">
+          <div className="absolute left-0 top-0 flex h-full w-72 flex-col border-r bg-card shadow-xl">
             <div className="flex h-16 items-center justify-between border-b px-4">
-              <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-fuchsia-500 text-white">
                   <Rocket className="h-5 w-5" />
                 </div>
-                <span className="text-lg font-semibold">Life OS</span>
+                <span className="text-[15px] font-semibold">Life OS</span>
               </div>
               <Button
                 variant="ghost"
@@ -63,26 +82,16 @@ export function MobileNav() {
                 <X className="h-5 w-5" />
               </Button>
             </div>
-            <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-              {NAV.map(({ href, label, icon: Icon }) => {
-                const active =
-                  pathname === href || pathname.startsWith(`${href}/`);
-                return (
-                  <Link
-                    key={href}
-                    href={href}
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                      active
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                    )}
-                  >
-                    <Icon className="h-4 w-4" />
-                    {label}
-                  </Link>
-                );
-              })}
+            <nav className="flex-1 space-y-5 overflow-y-auto p-3">
+              {NAV_SECTIONS.map((section) => (
+                <div key={section.label} className="space-y-1">
+                  <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                    {section.label}
+                  </p>
+                  {section.items.map(link)}
+                </div>
+              ))}
+              <div className="space-y-1 border-t pt-3">{NAV_FOOTER.map(link)}</div>
             </nav>
           </div>
         </div>

@@ -65,8 +65,13 @@ export function monthLabel(year: number, month: number): string {
 
 // --- Aggregation -------------------------------------------------------------
 
+/** Round to whole cents to avoid float drift (e.g. 0.1 + 0.2). */
+function toCents(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
 export function totalSpent(expenses: Expense[]): number {
-  return expenses.reduce((s, e) => s + e.amount, 0);
+  return toCents(expenses.reduce((s, e) => s + e.amount, 0));
 }
 
 export interface CategorySpend {
@@ -80,7 +85,7 @@ export function spendByCategory(expenses: Expense[]): CategorySpend[] {
     map.set(e.category, (map.get(e.category) ?? 0) + e.amount);
   }
   return Array.from(map.entries())
-    .map(([category, amount]) => ({ category, amount }))
+    .map(([category, amount]) => ({ category, amount: toCents(amount) }))
     .sort((a, b) => b.amount - a.amount);
 }
 

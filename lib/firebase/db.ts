@@ -802,5 +802,7 @@ export async function upsertBudget(
   input: BudgetInput
 ): Promise<void> {
   const ref = doc(db, COLLECTIONS.budgets, userId);
-  await setDoc(ref, { userId, ...input }, { merge: true });
+  // Full replace (no merge): the budget form always submits the complete
+  // config, and merge would keep stale per-category caps the user cleared.
+  await setDoc(ref, { userId, ...input });
 }

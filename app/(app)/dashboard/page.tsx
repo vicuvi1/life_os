@@ -48,9 +48,9 @@ function StatCard({
   value: string;
 }) {
   return (
-    <Card>
+    <Card className="card-interactive">
       <CardContent className="flex items-center gap-4 p-5">
-        <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-primary/25 to-primary/5 text-primary ring-1 ring-inset ring-primary/10">
           <Icon className="h-5 w-5" />
         </div>
         <div>
@@ -173,11 +173,11 @@ export default function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-8">
-      <div>
+      <div className="overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/12 via-card to-card p-6 md:p-8">
         <h1 className="text-2xl font-bold md:text-3xl">
           🌅 {greeting}, {name}!
         </h1>
-        <p className="text-muted-foreground">
+        <p className="mt-1 text-muted-foreground">
           Here&apos;s what matters today. Let&apos;s make it count.
         </p>
       </div>

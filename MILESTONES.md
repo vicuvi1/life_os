@@ -414,3 +414,26 @@ Built for a student watching every leu/dollar.
 
 > **Note:** requires publishing the updated `firestore.rules` (adds the
 > `expenses` and `budgets` collections) in the Firebase Console.
+
+---
+
+## Design refresh — polished UI
+
+**Purpose.** Make Life OS feel like a premium, cohesive product rather than a
+default template, and tame the now-long navigation.
+
+**What changed.**
+- **Refined theme**: a richer dark palette with slightly elevated cards, a
+  softer violet accent, larger corner radius, a subtle violet depth-glow in the
+  background, custom thin scrollbars, and nicer text selection.
+- **Sectioned sidebar**: navigation is grouped into **Plan**, **Track**, and
+  **Review** with small section labels, so 15 destinations stay scannable. The
+  active item gets a left accent bar and tinted pill; a gradient app logo sits
+  up top and your account (initial + email) sits in the footer.
+- **Matching mobile menu**: the slide-in drawer mirrors the same sections and
+  branding, with a blurred backdrop.
+- **Dashboard**: the greeting is now a gradient hero banner, and the stat cards
+  have gradient icon chips and a gentle hover lift.
+- A reusable `card-interactive` hover style for clickable cards.
+
+No data or behaviour changed — this is purely visual.
