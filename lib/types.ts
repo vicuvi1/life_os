@@ -32,6 +32,15 @@ export type SessionCategory =
   | "other";
 export type SessionStatus = "planned" | "done" | "skipped";
 
+export type ExpenseCategory =
+  | "food"
+  | "transport"
+  | "fitness"
+  | "entertainment"
+  | "education"
+  | "health"
+  | "other";
+
 export interface Goal {
   id: string;
   userId: string;
@@ -148,6 +157,24 @@ export interface NutritionLog {
   createdAt: number;
 }
 
+export interface Expense {
+  id: string;
+  userId: string;
+  amount: number;
+  category: ExpenseCategory;
+  note: string | null;
+  date: string; // YYYY-MM-DD
+  createdAt: number;
+}
+
+/** One budget config per user (doc id = userId). */
+export interface Budget {
+  userId: string;
+  currency: string; // symbol, e.g. "$"
+  monthlyTotal: number | null; // overall monthly cap
+  byCategory: Partial<Record<ExpenseCategory, number>>; // optional per-category caps
+}
+
 /** Firestore collection names, centralized to avoid typos. */
 export const COLLECTIONS = {
   goals: "goals",
@@ -159,4 +186,6 @@ export const COLLECTIONS = {
   sessions: "sessions",
   sleepLogs: "sleepLogs",
   nutritionLogs: "nutritionLogs",
+  expenses: "expenses",
+  budgets: "budgets",
 } as const;

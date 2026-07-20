@@ -12,6 +12,7 @@ import {
   BarChart3,
   Activity,
   Timer,
+  Wallet,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -36,5 +37,6 @@ export const NAV: NavItem[] = [
   { href: "/insights", label: "Insights", icon: BarChart3 },
   { href: "/dependencies", label: "Dependencies", icon: Activity },
   { href: "/time-audit", label: "Time Audit", icon: Timer },
+  { href: "/expenses", label: "Expenses", icon: Wallet },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

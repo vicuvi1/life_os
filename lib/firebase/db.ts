@@ -18,6 +18,8 @@ import {
 import { db } from "@/lib/firebase/config";
 import {
   COLLECTIONS,
+  type Budget,
+  type Expense,
   type Goal,
   type Habit,
   type HabitLog,
@@ -723,4 +725,82 @@ export async function deleteNutritionLog(
   date: string
 ): Promise<void> {
   await deleteDoc(doc(db, COLLECTIONS.nutritionLogs, `${userId}_${date}`));
+}
+
+// ---------------------------------------------------------------------------
+// Expenses & budget
+// ---------------------------------------------------------------------------
+function mapExpense(snap: QueryDocumentSnapshot<DocumentData>): Expense {
+  const d = snap.data();
+  return {
+    id: snap.id,
+    userId: d.userId,
+    amount: d.amount ?? 0,
+    category: d.category ?? "other",
+    note: d.note ?? null,
+    date: d.date,
+    createdAt: toMillis(d.createdAt),
+  };
+}
+
+export async function getExpenses(userId: string): Promise<Expense[]> {
+  const q = query(
+    collection(db, COLLECTIONS.expenses),
+    where("userId", "==", userId)
+  );
+  const snap = await getDocs(q);
+  return snap.docs
+    .map(mapExpense)
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.createdAt - a.createdAt));
+}
+
+export type ExpenseInput = Pick<Expense, "amount" | "category" | "note" | "date">;
+
+export async function createExpense(
+  userId: string,
+  input: ExpenseInput
+): Promise<string> {
+  const ref = await addDoc(collection(db, COLLECTIONS.expenses), {
+    userId,
+    ...input,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export async function updateExpense(
+  id: string,
+  input: Partial<ExpenseInput>
+): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.expenses, id), { ...input });
+}
+
+export async function deleteExpense(id: string): Promise<void> {
+  await deleteDoc(doc(db, COLLECTIONS.expenses, id));
+}
+
+export async function getBudget(userId: string): Promise<Budget | null> {
+  const ref = doc(db, COLLECTIONS.budgets, userId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return null;
+  const d = snap.data();
+  return {
+    userId: d.userId,
+    currency: d.currency ?? "$",
+    monthlyTotal: d.monthlyTotal ?? null,
+    byCategory: d.byCategory ?? {},
+  };
+}
+
+export type BudgetInput = Pick<
+  Budget,
+  "currency" | "monthlyTotal" | "byCategory"
+>;
+
+export async function upsertBudget(
+  userId: string,
+  input: BudgetInput
+): Promise<void> {
+  const ref = doc(db, COLLECTIONS.budgets, userId);
+  await setDoc(ref, { userId, ...input }, { merge: true });
 }

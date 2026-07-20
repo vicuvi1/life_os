@@ -373,3 +373,44 @@ quality by hour.)
    part of the day gives you the best focus.
 3. Move your hardest work into your peak block, and watch the weekly trend to
    see whether your total focused time is climbing.
+
+---
+
+## Milestone 10 — Expense Tracker + Budget
+
+**Purpose.** Know exactly where money goes and stay on budget — the Expense
+Tracker spec's goal of "see $50/week on junk → cut it → save $1,300/year."
+Built for a student watching every leu/dollar.
+
+**How it works.**
+- Two new collections: **expenses** (amount, category, note, date) and
+  **budgets** (one doc per user: currency symbol, a monthly total, and optional
+  per-category caps).
+- Everything is grouped **by month**; you navigate months with ← / →.
+- The **projection** is pace-based for the current month (spend-so-far ÷
+  days-elapsed × days-in-month), and simply the actual total for past months —
+  so it never shows a fake forecast for a finished month.
+- Alerts fire two ways: a red **over-budget** banner, and an amber **on-pace-to-
+  overspend** warning when the projection exceeds the budget.
+- Security rules: expenses and budgets are owner-scoped — publish the updated
+  `firestore.rules`.
+
+**Features.**
+- Expenses page (`/expenses`): month navigation, a summary (spent vs budget,
+  amount left/over, days remaining, projected month-end), a budget progress bar
+  that turns amber/red as you approach/exceed the cap.
+- **By-category breakdown** with bars; if you set a per-category limit the bar
+  measures against it and turns red when exceeded, otherwise it shows each
+  category's share of the month.
+- Add / edit / delete expenses; a **budget settings** dialog for the currency,
+  monthly total, and per-category limits.
+
+**How to use.**
+1. Open **Expenses → the gear icon** and set your currency and a monthly budget
+   (and per-category limits if you like).
+2. Tap **Add** whenever you spend — amount, category, optional note.
+3. Watch the summary: the projection and amber warning tell you early if you're
+   on track to overspend, so you can adjust before month-end.
+
+> **Note:** requires publishing the updated `firestore.rules` (adds the
+> `expenses` and `budgets` collections) in the Firebase Console.
