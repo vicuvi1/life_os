@@ -30,6 +30,7 @@ import {
   Undo2,
   Tag,
   ArrowRightLeft,
+  BarChart3,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -124,7 +125,7 @@ function formatDayLabel(dateKey: string): string {
 
 export default function FinancePage() {
   const { user, displayName } = useAuth();
-  const now = new Date();
+  const now = useMemo(() => new Date(), []);
 
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
@@ -314,6 +315,41 @@ export default function FinancePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prev, spent, byCategory, savingsTarget, savingsProgress, daysToGoal, netToday, spentToday, isCurrentMonth, currency]);
 
+  const budgetStatus = useMemo(() => {
+    if (budget?.monthlyTotal == null) return null;
+    const spentSoFar = spent;
+    const remaining = Math.round((budget.monthlyTotal - spentSoFar) * 100) / 100;
+    const pctUsed = budget.monthlyTotal > 0 ? Math.min(100, (spentSoFar / budget.monthlyTotal) * 100) : null;
+    const daysElapsed = isCurrentMonth ? now.getDate() : dim;
+    const projectedSpend = daysElapsed > 0 ? Math.round((spentSoFar / daysElapsed) * dim * 100) / 100 : 0;
+    return {
+      spent: spentSoFar,
+      budget: budget.monthlyTotal,
+      remaining,
+      pctUsed,
+      projectedSpend,
+      daysElapsed,
+      daysRemaining: Math.max(0, dim - daysElapsed),
+    };
+  }, [budget?.monthlyTotal, spent, isCurrentMonth, now, dim]);
+
+  const financialScore = useMemo(() => {
+    let score = 45;
+    if (net >= 0) score += 15;
+    if (savingsRate >= 10) score += 10;
+    if (savingsRate >= 25) score += 10;
+    if (budgetStatus?.pctUsed != null && budgetStatus.pctUsed < 75) score += 10;
+    if (savingsTarget && savingsProgress != null) score += Math.min(20, Math.round(savingsProgress / 5));
+    return Math.min(100, Math.max(0, score));
+  }, [net, savingsRate, budgetStatus?.pctUsed, savingsTarget, savingsProgress]);
+
+  const financialScoreLabel = useMemo(() => {
+    if (financialScore >= 85) return { label: "Excellent", tone: "good" as const };
+    if (financialScore >= 65) return { label: "Strong", tone: "info" as const };
+    if (financialScore >= 45) return { label: "Solid", tone: "warn" as const };
+    return { label: "Needs attention", tone: "destructive" as const };
+  }, [financialScore]);
+
   // --- Mutations -------------------------------------------------------------
   async function commitAmount(dateKey: string, kind: EntryKind, entry: Expense | undefined, num: number | null) {
     if (!user) return;
@@ -469,7 +505,7 @@ export default function FinancePage() {
             <StatCard
               icon={Landmark}
               iconClass="bg-primary/15 text-primary"
-              label="Total net worth"
+              label="Current money"
               value={formatAmount(netWorth, currency)}
               sub={
                 <Delta pct={pctChange(netWorth, netWorth - net)} good={net >= 0} suffix="vs last month" />
@@ -491,15 +527,11 @@ export default function FinancePage() {
               sub={<span className="text-xs text-muted-foreground">Keep building 💪</span>}
             />
             <StatCard
-              icon={TrendingDown}
-              iconClass="bg-rose-500/15 text-rose-500"
-              label="Spent this month"
-              value={formatAmount(spent, currency)}
-              sub={
-                <span className="text-xs text-muted-foreground">
-                  {isCurrentMonth ? `${formatAmount(spentToday, currency)} today` : `Net ${formatAmount(net, currency)}`}
-                </span>
-              }
+              icon={BarChart3}
+              iconClass="bg-violet-500/15 text-violet-500"
+              label="Total net worth"
+              value={formatAmount(netWorth, currency)}
+              sub={<span className="text-xs text-muted-foreground">Includes wallet and savings</span>}
             />
             <StatCard
               icon={Target}
@@ -546,141 +578,272 @@ export default function FinancePage() {
             </div>
           )}
 
-          {/* Charts row */}
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-            <Panel title="Spending overview">
-              <Donut data={byCategory} currency={currency} total={spent} />
-            </Panel>
-            <Panel title="Income vs expenses">
-              <IncomeExpenseBars income={earned} expense={spent} net={net} currency={currency} />
-            </Panel>
-            <Panel title="Calendar heatmap">
-              <Heatmap year={year} month={month} byDay={byDay} todayKey={todayKey} />
-            </Panel>
-          </div>
-
-          {/* Activity / trend / quick add row */}
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-            <Panel title="Recent activity">
-              {recent.length === 0 ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">No transactions yet.</p>
-              ) : (
-                <ul className="divide-y">
-                  {recent.map((e) => {
-                    const Icon = iconFor(e.category);
-                    return (
-                      <li key={e.id} className="flex items-center gap-3 py-2.5">
-                        <span
-                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-                          style={{ backgroundColor: `${categoryColor(e.category)}22`, color: categoryColor(e.category) }}
-                        >
-                          <Icon className="h-4 w-4" />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium">{e.note || categoryLabel(e.category)}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatDayLabel(e.date)} · {ACCOUNT_LABEL[e.account]}
-                          </p>
-                        </div>
-                        <span className={cn("shrink-0 text-sm font-semibold tabular-nums", e.kind === "income" ? "text-emerald-500" : "text-rose-500")}>
-                          {e.kind === "income" ? "+" : "−"}{formatAmount(e.amount, currency)}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </Panel>
-
-            <Panel title="Monthly trend">
-              <TrendChart data={monthly} currency={currency} highlight={month} />
-            </Panel>
-
-            <Panel title="Quick add">
-              <div className="grid grid-cols-2 gap-3">
-                <QuickAdd icon={TrendingUp} label="Income" cls="hover:border-emerald-500/60 hover:bg-emerald-500/5" iconCls="bg-emerald-500/15 text-emerald-500" onClick={() => openAdd("income")} />
-                <QuickAdd icon={TrendingDown} label="Expense" cls="hover:border-rose-500/60 hover:bg-rose-500/5" iconCls="bg-rose-500/15 text-rose-500" onClick={() => openAdd("expense")} />
-                <QuickAdd icon={ArrowRightLeft} label="Transfer" cls="hover:border-sky-500/60 hover:bg-sky-500/5" iconCls="bg-sky-500/15 text-sky-500" onClick={() => openAdd("expense")} />
-                <QuickAdd icon={Settings2} label="Settings" cls="hover:border-primary/60 hover:bg-primary/5" iconCls="bg-primary/15 text-primary" onClick={() => setBudgetOpen(true)} />
+          <div className="grid gap-4 xl:grid-cols-[1.65fr_0.85fr]">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+                <Panel title="Spending overview" action={<Button variant="ghost" size="sm">View full report</Button>}>
+                  <Donut data={byCategory} currency={currency} total={spent} />
+                </Panel>
+                <Panel title="Income vs expenses" action={<Button variant="ghost" size="sm" onClick={() => exportCsv("month")}>Export</Button>}>
+                  <IncomeExpenseBars income={earned} expense={spent} net={net} currency={currency} />
+                </Panel>
+                <Panel title="Calendar heatmap" action={<span className="text-xs text-muted-foreground">{days.length} days</span>}>
+                  <Heatmap year={year} month={month} byDay={byDay} todayKey={todayKey} />
+                </Panel>
               </div>
-              <div className="mt-4 space-y-2 rounded-lg border p-3 text-sm">
-                <div className="flex justify-between"><span className="text-muted-foreground">Income</span><span className="font-semibold tabular-nums text-emerald-500">{formatAmount(earned, currency)}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Expenses</span><span className="font-semibold tabular-nums text-rose-500">{formatAmount(spent, currency)}</span></div>
-                <div className="flex justify-between border-t pt-2"><span className="text-muted-foreground">Net</span><span className={cn("font-semibold tabular-nums", net >= 0 ? "text-emerald-500" : "text-rose-500")}>{formatAmount(net, currency)}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Savings rate</span><span className="font-semibold tabular-nums">{savingsRate.toFixed(1)}%</span></div>
-              </div>
-            </Panel>
-          </div>
 
-          {/* Editable transactions grid */}
-          <Panel title="Transactions" bodyClassName="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[780px] table-fixed border-collapse text-sm">
-                <colgroup>
-                  <col className="w-[70px]" /><col className="w-[46px]" /><col className="w-[88px]" />
-                  <col className="w-[150px]" /><col /><col className="w-[100px]" />
-                  <col className="w-[100px]" /><col className="w-[108px]" /><col className="w-[32px]" />
-                </colgroup>
-                <thead>
-                  <tr className="border-b bg-muted/40 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    <th className="px-2 py-2">Date</th><th className="px-1 py-2">Day</th><th className="px-2 py-2">Type</th>
-                    <th className="px-2 py-2">Category</th><th className="px-2 py-2">Description</th>
-                    <th className="px-2 py-2 text-right text-emerald-600 dark:text-emerald-400">Income</th>
-                    <th className="px-2 py-2 text-right text-rose-600 dark:text-rose-400">Expense</th>
-                    <th className="px-2 py-2 text-right">Balance</th><th className="px-1 py-2" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r, idx) => {
-                    const isToday = r.dateKey === todayKey;
-                    const isWeekend = r.weekday === "Sat" || r.weekday === "Sun";
-                    return (
-                      <tr key={`${r.dateKey}-${idx}`} className={cn("group border-b last:border-0", isWeekend && "bg-muted/20", isToday && "bg-primary/5", "hover:bg-accent/40")}>
-                        <td className="px-2 py-1 align-middle">{r.firstOfDay && <span className="tabular-nums font-medium">{r.day} {MONTHS_SHORT[month]}</span>}</td>
-                        <td className="px-1 py-1 align-middle">{r.firstOfDay && <span className="text-xs text-muted-foreground">{r.weekday}</span>}</td>
-                        <td className="px-2 py-1 align-middle">
-                          {r.entry ? (
-                            <span className={cn("inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase", r.kind === "income" ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-rose-500/15 text-rose-600 dark:text-rose-400")}>{r.kind}</span>
-                          ) : (r.firstOfDay && <span className="text-muted-foreground/40">—</span>)}
-                        </td>
-                        <td className="px-1 py-1 align-middle">{r.entry && <CategorySelect entry={r.entry} kind={r.kind as EntryKind} onChange={(c) => commitCategory(r.entry!, c)} />}</td>
-                        <td className="px-1 py-1 align-middle">{r.entry && <NoteInput entry={r.entry} onCommit={(t) => commitNote(r.entry!, t)} />}</td>
-                        <td className="px-1 py-1 text-right align-middle">
-                          {r.kind === "income" || r.kind === null ? (
-                            <AmountInput value={r.entry?.amount ?? null} tone="income" onCommit={(num) => commitAmount(r.dateKey, "income", r.entry, num)} />
-                          ) : <span className="pr-2 text-muted-foreground/30">–</span>}
-                        </td>
-                        <td className="px-1 py-1 text-right align-middle">
-                          {r.kind === "expense" || r.kind === null ? (
-                            <AmountInput value={r.entry?.amount ?? null} tone="expense" onCommit={(num) => commitAmount(r.dateKey, "expense", r.entry, num)} />
-                          ) : <span className="pr-2 text-muted-foreground/30">–</span>}
-                        </td>
-                        <td className={cn("px-2 py-1 text-right align-middle tabular-nums", r.lastOfDay ? (dayBalances[r.dateKey] < 0 ? "text-destructive" : "text-muted-foreground") : "text-transparent")}>
-                          {r.lastOfDay ? formatAmount(dayBalances[r.dateKey] ?? 0, currency) : ""}
-                        </td>
-                        <td className="px-1 py-1 text-center align-middle">
-                          {r.entry ? (
-                            <button onClick={() => removeEntry(r.entry!)} aria-label="Delete entry" className="rounded p-1 text-muted-foreground/40 opacity-0 transition hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"><X className="h-3.5 w-3.5" /></button>
-                          ) : (r.firstOfDay && (
-                            <button onClick={() => addLine(r.dateKey)} aria-label="Add entry" className="rounded p-1 text-muted-foreground/40 opacity-0 transition hover:bg-accent hover:text-foreground group-hover:opacity-100"><Plus className="h-3.5 w-3.5" /></button>
-                          ))}
-                        </td>
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.4fr_0.6fr]">
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <Panel title="Recent activity">
+                    {recent.length === 0 ? (
+                      <p className="py-8 text-center text-sm text-muted-foreground">No transactions yet.</p>
+                    ) : (
+                      <ul className="divide-y">
+                        {recent.map((e) => {
+                          const Icon = iconFor(e.category);
+                          return (
+                            <li key={e.id} className="flex items-center gap-3 py-2.5">
+                              <span
+                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                                style={{ backgroundColor: `${categoryColor(e.category)}22`, color: categoryColor(e.category) }}
+                              >
+                                <Icon className="h-4 w-4" />
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium">{e.note || categoryLabel(e.category)}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {formatDayLabel(e.date)} · {ACCOUNT_LABEL[e.account]}
+                                </p>
+                              </div>
+                              <span className={cn("shrink-0 text-sm font-semibold tabular-nums", e.kind === "income" ? "text-emerald-500" : "text-rose-500")}>
+                                {e.kind === "income" ? "+" : "−"}{formatAmount(e.amount, currency)}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </Panel>
+
+                  <Panel title="Monthly trend">
+                    <TrendChart data={monthly} currency={currency} highlight={month} />
+                  </Panel>
+                </div>
+
+                <Panel title="Quick add">
+                  <div className="grid grid-cols-2 gap-3">
+                    <QuickAdd icon={TrendingUp} label="Income" cls="hover:border-emerald-500/60 hover:bg-emerald-500/5" iconCls="bg-emerald-500/15 text-emerald-500" onClick={() => openAdd("income")} />
+                    <QuickAdd icon={TrendingDown} label="Expense" cls="hover:border-rose-500/60 hover:bg-rose-500/5" iconCls="bg-rose-500/15 text-rose-500" onClick={() => openAdd("expense")} />
+                    <QuickAdd icon={ArrowRightLeft} label="Transfer" cls="hover:border-sky-500/60 hover:bg-sky-500/5" iconCls="bg-sky-500/15 text-sky-500" onClick={() => openAdd("expense")} />
+                    <QuickAdd icon={Settings2} label="Settings" cls="hover:border-primary/60 hover:bg-primary/5" iconCls="bg-primary/15 text-primary" onClick={() => setBudgetOpen(true)} />
+                  </div>
+                  <div className="mt-4 space-y-2 rounded-lg border p-3 text-sm">
+                    <div className="flex justify-between"><span className="text-muted-foreground">Income</span><span className="font-semibold tabular-nums text-emerald-500">{formatAmount(earned, currency)}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Expenses</span><span className="font-semibold tabular-nums text-rose-500">{formatAmount(spent, currency)}</span></div>
+                    <div className="flex justify-between border-t pt-2"><span className="text-muted-foreground">Net</span><span className={cn("font-semibold tabular-nums", net >= 0 ? "text-emerald-500" : "text-rose-500")}>{formatAmount(net, currency)}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Savings rate</span><span className="font-semibold tabular-nums">{savingsRate.toFixed(1)}%</span></div>
+                  </div>
+                </Panel>
+              </div>
+
+              <Panel title="Transactions" bodyClassName="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[780px] table-fixed border-collapse text-sm">
+                    <colgroup>
+                      <col className="w-[70px]" /><col className="w-[46px]" /><col className="w-[88px]" />
+                      <col className="w-[150px]" /><col /><col className="w-[100px]" />
+                      <col className="w-[100px]" /><col className="w-[108px]" /><col className="w-[32px]" />
+                    </colgroup>
+                    <thead>
+                      <tr className="border-b bg-muted/40 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        <th className="px-2 py-2">Date</th><th className="px-1 py-2">Day</th><th className="px-2 py-2">Type</th>
+                        <th className="px-2 py-2">Category</th><th className="px-2 py-2">Description</th>
+                        <th className="px-2 py-2 text-right text-emerald-600 dark:text-emerald-400">Income</th>
+                        <th className="px-2 py-2 text-right text-rose-600 dark:text-rose-400">Expense</th>
+                        <th className="px-2 py-2 text-right">Balance</th><th className="px-1 py-2" />
                       </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t-2 bg-muted/40 font-semibold">
-                    <td className="px-2 py-2.5" colSpan={5}>Total</td>
-                    <td className="px-2 py-2.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{formatAmount(earned, currency)}</td>
-                    <td className="px-2 py-2.5 text-right tabular-nums text-rose-600 dark:text-rose-400">{formatAmount(spent, currency)}</td>
-                    <td className="px-2 py-2.5 text-right tabular-nums">{formatAmount(endBalance, currency)}</td>
-                    <td />
-                  </tr>
-                </tfoot>
-              </table>
+                    </thead>
+                    <tbody>
+                      {rows.map((r, idx) => {
+                        const isToday = r.dateKey === todayKey;
+                        const isWeekend = r.weekday === "Sat" || r.weekday === "Sun";
+                        return (
+                          <tr key={`${r.dateKey}-${idx}`} className={cn("group border-b last:border-0", isWeekend && "bg-muted/20", isToday && "bg-primary/5", "hover:bg-accent/40")}>
+                            <td className="px-2 py-1 align-middle">{r.firstOfDay && <span className="tabular-nums font-medium">{r.day} {MONTHS_SHORT[month]}</span>}</td>
+                            <td className="px-1 py-1 align-middle">{r.firstOfDay && <span className="text-xs text-muted-foreground">{r.weekday}</span>}</td>
+                            <td className="px-2 py-1 align-middle">
+                              {r.entry ? (
+                                <span className={cn("inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase", r.kind === "income" ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-rose-500/15 text-rose-600 dark:text-rose-400")}>{r.kind}</span>
+                              ) : (r.firstOfDay && <span className="text-muted-foreground/40">—</span>)}
+                            </td>
+                            <td className="px-1 py-1 align-middle">{r.entry && <CategorySelect entry={r.entry} kind={r.kind as EntryKind} onChange={(c) => commitCategory(r.entry!, c)} />}</td>
+                            <td className="px-1 py-1 align-middle">{r.entry && <NoteInput entry={r.entry} onCommit={(t) => commitNote(r.entry!, t)} />}</td>
+                            <td className="px-1 py-1 text-right align-middle">
+                              {r.kind === "income" || r.kind === null ? (
+                                <AmountInput value={r.entry?.amount ?? null} tone="income" onCommit={(num) => commitAmount(r.dateKey, "income", r.entry, num)} />
+                              ) : <span className="pr-2 text-muted-foreground/30">–</span>}
+                            </td>
+                            <td className="px-1 py-1 text-right align-middle">
+                              {r.kind === "expense" || r.kind === null ? (
+                                <AmountInput value={r.entry?.amount ?? null} tone="expense" onCommit={(num) => commitAmount(r.dateKey, "expense", r.entry, num)} />
+                              ) : <span className="pr-2 text-muted-foreground/30">–</span>}
+                            </td>
+                            <td className={cn("px-2 py-1 text-right align-middle tabular-nums", r.lastOfDay ? (dayBalances[r.dateKey] < 0 ? "text-destructive" : "text-muted-foreground") : "text-transparent")}>
+                              {r.lastOfDay ? formatAmount(dayBalances[r.dateKey] ?? 0, currency) : ""}
+                            </td>
+                            <td className="px-1 py-1 text-center align-middle">
+                              {r.entry ? (
+                                <button onClick={() => removeEntry(r.entry!)} aria-label="Delete entry" className="rounded p-1 text-muted-foreground/40 opacity-0 transition hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"><X className="h-3.5 w-3.5" /></button>
+                              ) : (r.firstOfDay && (
+                                <button onClick={() => addLine(r.dateKey)} aria-label="Add entry" className="rounded p-1 text-muted-foreground/40 opacity-0 transition hover:bg-accent hover:text-foreground group-hover:opacity-100"><Plus className="h-3.5 w-3.5" /></button>
+                              ))}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 bg-muted/40 font-semibold">
+                        <td className="px-2 py-2.5" colSpan={5}>Total</td>
+                        <td className="px-2 py-2.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{formatAmount(earned, currency)}</td>
+                        <td className="px-2 py-2.5 text-right tabular-nums text-rose-600 dark:text-rose-400">{formatAmount(spent, currency)}</td>
+                        <td className="px-2 py-2.5 text-right tabular-nums">{formatAmount(endBalance, currency)}</td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </Panel>
             </div>
-          </Panel>
+
+            <aside className="space-y-4">
+              <Card className="overflow-hidden">
+                <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Account summary</span>
+                  <Button variant="ghost" size="icon" aria-label="Refresh" onClick={() => load({ quiet: true })}>
+                    <ArrowUp className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="space-y-3 p-4">
+                  <div className="rounded-2xl border border-input bg-background/80 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Wallet (Cash)</p>
+                        <p className="mt-2 text-lg font-semibold">{formatAmount(walletBalance, currency)}</p>
+                      </div>
+                      <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/10 text-sky-500">
+                        <Wallet className="h-5 w-5" />
+                      </span>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-input bg-background/80 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Safe (Savings)</p>
+                        <p className="mt-2 text-lg font-semibold">{formatAmount(safeBalance, currency)}</p>
+                      </div>
+                      <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500">
+                        <PiggyBank className="h-5 w-5" />
+                      </span>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-input bg-background/80 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Net worth</p>
+                        <p className="mt-2 text-lg font-semibold">{formatAmount(netWorth, currency)}</p>
+                      </div>
+                      <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                        <Landmark className="h-5 w-5" />
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="overflow-hidden">
+                <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Savings goal</span>
+                  {savingsTarget ? <span className="text-xs text-muted-foreground">{(savingsProgress ?? 0).toFixed(0)}%</span> : null}
+                </div>
+                <div className="p-4">
+                  {savingsTarget ? (
+                    <>
+                      <p className="text-sm text-muted-foreground">{formatAmount(netWorth, currency)} of {formatAmount(savingsTarget, currency)} saved</p>
+                      <div className="mt-3 h-3 overflow-hidden rounded-full bg-muted">
+                        <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(100, savingsProgress ?? 0)}%` }} />
+                      </div>
+                      <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{daysToGoal != null ? `${daysToGoal} days to goal` : "Keep saving to hit your target"}</span>
+                        <span>{formatAmount(netWorth, currency)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="space-y-3 text-sm text-muted-foreground">
+                      <p>Set a savings goal to unlock progress tracking and personalized insights.</p>
+                      <Button variant="secondary" size="sm" onClick={() => setBudgetOpen(true)}>Set goal</Button>
+                    </div>
+                  )}
+                </div>
+              </Card>
+
+              <Card className="overflow-hidden">
+                <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Financial score</span>
+                  <span
+                    className={cn(
+                      "rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                      financialScoreLabel.tone === "good" && "bg-emerald-500/10 text-emerald-500",
+                      financialScoreLabel.tone === "info" && "bg-sky-500/10 text-sky-500",
+                      financialScoreLabel.tone === "warn" && "bg-amber-500/10 text-amber-500",
+                      financialScoreLabel.tone === "destructive" && "bg-rose-500/10 text-rose-500"
+                    )}
+                  >
+                    {financialScoreLabel.label}
+                  </span>
+                </div>
+                <div className="space-y-4 p-4">
+                  <div className="text-4xl font-bold tabular-nums">{financialScore}</div>
+                  <p className="text-sm text-muted-foreground">A quick snapshot of your current financial momentum.</p>
+                  <div className="h-3 overflow-hidden rounded-full bg-muted">
+                    <div className="h-full rounded-full bg-emerald-500" style={{ width: `${financialScore}%` }} />
+                  </div>
+                </div>
+              </Card>
+
+              {budgetStatus && (
+                <Card className="overflow-hidden">
+                  <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Budget snapshot</span>
+                    <span className="text-xs text-muted-foreground">{Math.round(budgetStatus.pctUsed ?? 0)}%</span>
+                  </div>
+                  <div className="space-y-4 p-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm text-muted-foreground">
+                        <span>Budget</span>
+                        <span>{formatAmount(budgetStatus.budget, currency)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm text-muted-foreground">
+                        <span>Spent</span>
+                        <span>{formatAmount(budgetStatus.spent, currency)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm text-muted-foreground">
+                        <span>Remaining</span>
+                        <span>{formatAmount(budgetStatus.remaining, currency)}</span>
+                      </div>
+                    </div>
+                    <div className="h-3 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-emerald-500" style={{ width: `${budgetStatus.pctUsed ?? 0}%` }} />
+                    </div>
+                    <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
+                      <span>{budgetStatus.daysElapsed} days elapsed</span>
+                      <span>{budgetStatus.daysRemaining} days remaining</span>
+                    </div>
+                  </div>
+                </Card>
+              )}
+            </aside>
+          </div>
         </>
       )}
 
