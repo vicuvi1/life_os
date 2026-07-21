@@ -647,8 +647,9 @@ export default function FinancePage() {
               </div>
 
               <Panel title="Transactions" bodyClassName="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[980px] table-fixed border-collapse text-sm">
+                <div className="max-h-[680px] overflow-y-auto">
+                  <div className="overflow-x-auto min-w-full">
+                    <table className="w-full min-w-[980px] table-fixed border-collapse text-sm">
                     <colgroup>
                       <col className="w-[86px]" /><col className="w-[54px]" /><col className="w-[102px]" />
                       <col className="w-[180px]" /><col className="w-[220px]" /><col className="w-[116px]" />
@@ -717,6 +718,7 @@ export default function FinancePage() {
                       </tr>
                     </tfoot>
                   </table>
+                </div>
                 </div>
               </Panel>
             </div>
