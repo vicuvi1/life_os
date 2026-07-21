@@ -1016,3 +1016,40 @@ repeat transactions takes fewer clicks.
 2. In the quick-add row, type an amount and hit **Enter** to log it. The type,
    account, and category stay put for the next one.
 3. Hover a transaction row and click the **copy icon** to duplicate it.
+
+---
+
+## Finance — Phase 2: cleaner header & richer Cards / Calendar views
+
+**What it is.** A layout pass that tidies the busy top of the Finance page and
+turns the alternate views (Cards, Calendar) from bare read-outs into useful,
+interactive surfaces.
+
+**How it works.**
+- **Decluttered header.** The old single row of eight controls is split into two
+  intentional zones: a **title row** with the primary actions (Add transaction ·
+  Export · Settings), and a dedicated **filter bar** underneath holding the time
+  range (month stepper + range select), a search box that now grows to fill the
+  space, the account filter, and the view switcher. The redundant range badge is
+  gone.
+- **Compact number-format toggle.** "Full numbers / Compact k/m" is now a small
+  segmented control that previews the formats themselves — **`1,234`** vs
+  **`1.2k`** — instead of a wide dropdown.
+- **Labeled widget toggles.** The show/hide widget row is now prefixed with a
+  "Widgets" label so it reads as a control, not stray buttons.
+- **Richer Cards view.** Each transaction is a tidy row with its **category icon
+  in brand color**, description, date · category · account meta, and a
+  **signed, color-coded amount** (green income, red expense, sky transfer).
+  Hovering reveals **Duplicate** and **Delete** actions. Empty state included.
+- **Better Calendar view.** For a month it keeps the heatmap, then lists **every
+  active day in the range** (not just the last six) as compact summary cards —
+  each showing the weekday, entry count, a colored net badge, and income/expense
+  totals — with today ringed. Empty state included.
+
+**How to use it.**
+1. Use the **filter bar** to switch range, search, filter by account, or change
+   the view — all in one place.
+2. Tap **`1.2k`** in the toolbar to shrink large numbers; tap **`1,234`** to
+   show them in full.
+3. Switch to **Cards** or **Calendar** in the view menu for a different lens on
+   the same transactions; hover a card to duplicate or delete it.

@@ -685,8 +685,8 @@ export default function FinancePage() {
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-5">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* Header — title + primary actions */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold md:text-3xl">
             {greeting()}, {firstName}! <span className="align-middle">👋</span>
@@ -695,57 +695,10 @@ export default function FinancePage() {
             Here&apos;s your financial overview for {rangeLabel}.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center rounded-lg border bg-background px-2 py-1 text-sm font-medium text-muted-foreground">
-            <span>{rangeLabel}</span>
-          </div>
-          {rangeFilter === "month" && (
-            <div className="flex items-center rounded-lg border">
-              <Button variant="ghost" size="icon" aria-label="Previous month" onClick={prevMonth} className="h-9 w-9">
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <span className="min-w-[96px] text-center text-sm font-medium">{monthLabel(year, month)}</span>
-              <Button variant="ghost" size="icon" aria-label="Next month" onClick={nextMonth} className="h-9 w-9">
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
-          <Select value={rangeFilter} onValueChange={(v) => setRangeFilter(v as "month" | "last30" | "all")}> 
-            <SelectTrigger className="h-9 w-[132px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="month">This month</SelectItem>
-              <SelectItem value="last30">Last 30 days</SelectItem>
-              <SelectItem value="all">All entries</SelectItem>
-            </SelectContent>
-          </Select>
-          <Input
-            placeholder="Search transactions"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            className="h-9 w-[220px]"
-          />
-          <Select value={viewMode} onValueChange={(v) => setViewMode(v as "table" | "cards" | "calendar")}> 
-            <SelectTrigger className="h-9 w-[144px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="table">Table view</SelectItem>
-              <SelectItem value="cards">Card view</SelectItem>
-              <SelectItem value="calendar">Calendar view</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={filter} onValueChange={(v) => setFilter(v as AccountFilter)}>
-            <SelectTrigger className="h-9 w-[132px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All accounts</SelectItem>
-              {ACCOUNTS.map((a) => <SelectItem key={a} value={a}>{ACCOUNT_LABEL[a]}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={amountView} onValueChange={(v) => setAmountView(v as "full" | "compact")}> 
-            <SelectTrigger className="h-9 w-[156px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="full">Full numbers</SelectItem>
-              <SelectItem value="compact">Compact k/m</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => openAdd("expense")}>
+            <Plus className="h-4 w-4" /> Add transaction
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon" aria-label="Export"><Download className="h-4 w-4" /></Button>
@@ -759,13 +712,79 @@ export default function FinancePage() {
           <Button variant="outline" size="icon" aria-label="Settings" onClick={() => setBudgetOpen(true)}>
             <Settings2 className="h-4 w-4" />
           </Button>
-          <Button onClick={() => openAdd("expense")}>
-            <Plus className="h-4 w-4" /> Add transaction
-          </Button>
         </div>
       </div>
- 
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border bg-surface p-3 text-sm text-muted-foreground">
+
+      {/* Filter bar — time range · search · view options */}
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border bg-surface p-2">
+        <div className="flex items-center gap-2">
+          {rangeFilter === "month" && (
+            <div className="flex items-center rounded-lg border bg-background">
+              <Button variant="ghost" size="icon" aria-label="Previous month" onClick={prevMonth} className="h-9 w-9">
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="min-w-[92px] text-center text-sm font-medium">{monthLabel(year, month)}</span>
+              <Button variant="ghost" size="icon" aria-label="Next month" onClick={nextMonth} className="h-9 w-9">
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+          <Select value={rangeFilter} onValueChange={(v) => setRangeFilter(v as "month" | "last30" | "all")}>
+            <SelectTrigger className="h-9 w-[132px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="month">This month</SelectItem>
+              <SelectItem value="last30">Last 30 days</SelectItem>
+              <SelectItem value="all">All entries</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <Input
+          placeholder="Search transactions…"
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          className="h-9 min-w-[150px] flex-1"
+        />
+
+        <Select value={filter} onValueChange={(v) => setFilter(v as AccountFilter)}>
+          <SelectTrigger className="h-9 w-[128px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All accounts</SelectItem>
+            {ACCOUNTS.map((a) => <SelectItem key={a} value={a}>{ACCOUNT_LABEL[a]}</SelectItem>)}
+          </SelectContent>
+        </Select>
+
+        <Select value={viewMode} onValueChange={(v) => setViewMode(v as "table" | "cards" | "calendar")}>
+          <SelectTrigger className="h-9 w-[116px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="table">Table</SelectItem>
+            <SelectItem value="cards">Cards</SelectItem>
+            <SelectItem value="calendar">Calendar</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {/* Amount format — compact segmented toggle showing example output */}
+        <div className="flex items-center rounded-lg border bg-background p-0.5" role="group" aria-label="Number format">
+          {(["full", "compact"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              aria-pressed={amountView === m}
+              onClick={() => setAmountView(m)}
+              className={cn(
+                "rounded-md px-2.5 py-1 text-xs font-medium tabular-nums transition-colors",
+                amountView === m ? "bg-secondary text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {m === "full" ? "1,234" : "1.2k"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Widget toggles */}
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border bg-surface p-2 text-sm text-muted-foreground">
+        <span className="px-1.5 text-xs font-medium uppercase tracking-wide">Widgets</span>
         {Object.entries(visibleWidgets).map(([key, visible]) => (
           <Button
             key={key}
@@ -1070,56 +1089,85 @@ export default function FinancePage() {
                       </table>
                     </div>
                   ) : viewMode === "cards" ? (
-                    <div className="grid gap-4 lg:grid-cols-2">
-                      {displayExpenses.slice().sort((a, b) => b.createdAt - a.createdAt).map((entry) => (
-                        <div key={entry.id} className="rounded-3xl border border-input bg-background p-4 shadow-sm">
-                          <div className="flex items-start justify-between gap-4">
-                            <div>
-                              <p className="text-sm font-semibold">{entry.note ?? categoryLabel(entry.category)}</p>
-                              <p className="mt-1 text-xs text-muted-foreground">{entry.date} • {entry.account} • {entry.kind}</p>
-                            </div>
-                            <div className={cn("rounded-2xl px-3 py-1 text-sm font-semibold", entry.kind === "income" ? "bg-emerald-500/10 text-emerald-600" : "bg-rose-500/10 text-rose-600")}>
-                              {formatDisplayAmount(entry.amount)}
-                            </div>
-                          </div>
-                          <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                            <span className="rounded-full border border-input px-2 py-1">{categoryLabel(entry.category)}</span>
-                            <span className="rounded-full border border-input px-2 py-1">{ACCOUNT_LABEL[entry.account]}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="rounded-3xl border border-input bg-background p-4">
-                        <p className="text-sm font-semibold">Calendar overview</p>
-                        <p className="mt-1 text-xs text-muted-foreground">A quick view of activity across the selected range.</p>
-                        <div className="mt-4">
-                          <Heatmap year={year} month={month} byDay={byDay} todayKey={todayKey} />
-                        </div>
-                      </div>
-                      <div className="grid gap-4 lg:grid-cols-2">
-                        {displayDays.slice(-6).reverse().map((dateKey) => {
-                          const b = byDay.get(dateKey) ?? { income: [], expense: [], net: 0 };
+                    displayExpenses.length === 0 ? (
+                      <p className="py-12 text-center text-sm text-muted-foreground">No transactions in this view.</p>
+                    ) : (
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        {displayExpenses.slice().sort((a, b) => b.createdAt - a.createdAt).map((entry) => {
+                          const Icon = iconFor(entry.category);
+                          const color = categoryColor(entry.category);
+                          const transfer = isTransfer(entry);
+                          const income = entry.kind === "income";
                           return (
-                            <div key={dateKey} className="rounded-3xl border border-input bg-background p-4">
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <p className="text-sm font-semibold">{dateKey}</p>
-                                  <p className="mt-1 text-xs text-muted-foreground">{WEEKDAYS_SHORT[new Date(`${dateKey}T00:00:00`).getDay()]}</p>
-                                </div>
-                                <span className={cn("rounded-2xl px-3 py-1 text-sm font-semibold", b.net >= 0 ? "bg-emerald-500/10 text-emerald-600" : "bg-rose-500/10 text-rose-600")}>
-                                  {formatDisplayAmount(b.net)}
-                                </span>
+                            <div key={entry.id} className="group flex items-center gap-3 rounded-2xl border bg-background p-3.5 transition-shadow hover:shadow-sm">
+                              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: `${color}22`, color }}>
+                                <Icon className="h-5 w-5" />
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-semibold">{entry.note || categoryLabel(entry.category)}</p>
+                                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                                  {formatDayLabel(entry.date)} · {categoryLabel(entry.category)} · {ACCOUNT_LABEL[entry.account]}
+                                </p>
                               </div>
-                              <div className="mt-3 space-y-2 text-xs text-muted-foreground">
-                                <p>Income: {formatDisplayAmount(totalEarned(b.income))}</p>
-                                <p>Expenses: {formatDisplayAmount(totalSpent(b.expense))}</p>
+                              <span className={cn("shrink-0 text-sm font-semibold tabular-nums", transfer ? "text-sky-500" : income ? "text-emerald-500" : "text-rose-500")}>
+                                {transfer ? "" : income ? "+" : "−"}{formatDisplayAmount(entry.amount)}
+                              </span>
+                              <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                                <button onClick={() => duplicateEntry(entry)} aria-label="Duplicate" title="Duplicate" className="rounded p-1 text-muted-foreground/50 transition hover:bg-accent hover:text-foreground"><Copy className="h-3.5 w-3.5" /></button>
+                                <button onClick={() => removeEntry(entry)} aria-label="Delete" title="Delete" className="rounded p-1 text-muted-foreground/50 transition hover:bg-destructive/10 hover:text-destructive"><X className="h-3.5 w-3.5" /></button>
                               </div>
                             </div>
                           );
                         })}
                       </div>
+                    )
+                  ) : (
+                    <div className="space-y-4">
+                      {rangeFilter === "month" && (
+                        <div className="rounded-2xl border bg-background p-4">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-semibold">{monthLabel(year, month)}</p>
+                            <span className="text-xs text-muted-foreground">green = saved · red = spent</span>
+                          </div>
+                          <div className="mt-4">
+                            <Heatmap year={year} month={month} byDay={byDay} todayKey={todayKey} />
+                          </div>
+                        </div>
+                      )}
+                      {(() => {
+                        const activeDays = displayDays.filter((d) => byDay.has(d)).reverse();
+                        if (activeDays.length === 0) {
+                          return <p className="py-12 text-center text-sm text-muted-foreground">No activity in this view.</p>;
+                        }
+                        return (
+                          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                            {activeDays.map((dateKey) => {
+                              const b = byDay.get(dateKey) ?? { income: [], expense: [], net: 0 };
+                              const count = b.income.length + b.expense.length;
+                              const isToday = dateKey === todayKey;
+                              return (
+                                <div key={dateKey} className={cn("rounded-2xl border bg-background p-4", isToday && "ring-1 ring-primary")}>
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div>
+                                      <p className="text-sm font-semibold">{formatDayLabel(dateKey)}</p>
+                                      <p className="mt-0.5 text-xs text-muted-foreground">
+                                        {WEEKDAYS_SHORT[new Date(`${dateKey}T00:00:00`).getDay()]} · {count} {count === 1 ? "entry" : "entries"}
+                                      </p>
+                                    </div>
+                                    <span className={cn("rounded-lg px-2.5 py-1 text-sm font-semibold tabular-nums", b.net >= 0 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-rose-500/10 text-rose-600 dark:text-rose-400")}>
+                                      {b.net >= 0 ? "+" : "−"}{formatDisplayAmount(Math.abs(b.net))}
+                                    </span>
+                                  </div>
+                                  <div className="mt-3 flex items-center justify-between border-t pt-3 text-xs">
+                                    <span className="text-emerald-600 dark:text-emerald-400">↑ {formatDisplayAmount(totalEarned(b.income))}</span>
+                                    <span className="text-rose-600 dark:text-rose-400">↓ {formatDisplayAmount(totalSpent(b.expense))}</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
