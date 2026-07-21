@@ -1182,3 +1182,54 @@ is now noticeably larger — bigger ring, a bigger center total, and a full-size
 legend so category names (Food, Fitness, Health…) and amounts read clearly instead
 of truncating to single letters. Its panel was widened to give the legend room.
 The **Monthly Trend** chart was removed to cut clutter.
+
+---
+
+## Storage & Data — footprint monitor + data-retention manager
+
+**What it is.** A **Settings → Storage & Data** page that keeps Life OS lean and
+free to run for years: it measures your data footprint, trims old disposable logs
+on a schedule, and lets you export a full copy — all client-side, no server, no
+paid plan.
+
+**Honesty first.** This app is client-only Firestore, so a few things in the
+original spec can't be done truthfully and are **not faked**: Firestore doesn't
+expose exact *billed* storage to the app, there's no overnight cron, and there are
+no managed automatic backups. So every number here is a clearly-labelled
+**estimate of your own document data** (billed size is higher because of indexes),
+cleanup runs **when you open the page** (not via a server), and "backup" means a
+one-click **JSON export** you save yourself.
+
+**How it works.**
+- **Footprint scan.** Reads all your owner-scoped documents and sums Firestore's
+  documented per-document byte sizes, giving a real estimate + a usage bar against
+  the ~1 GiB free tier, total document count, and scan latency.
+- **By-collection breakdown.** Every collection with its estimated size, share, and
+  document count. Protected collections are marked with a lock.
+- **Retention policies.** For **log-like** collections only (habit logs, sessions,
+  sleep, nutrition, meal-plan, tracker logs, shopping lists, weekly reviews) you set
+  "keep N days"; it previews exactly how many records/bytes are older and lets you
+  **Run now** or **Apply enabled policies**. Optional **auto-clean on open** runs
+  enabled policies (once/day guard) when you visit the page.
+- **Protected data is never touched.** Goals, projects, tasks, habits, finance,
+  budgets, meals, routines, trackers, wardrobe, and settings can't be auto-deleted
+  or selected for cleanup — by construction, not by convention.
+- **Manual cleanup.** Delete disposable logs older than a chosen date, with a
+  per-collection preview and a confirmation dialog. Irreversible actions always
+  confirm first.
+- **Trend & projection.** Each visit records a lightweight snapshot (stored on your
+  prefs doc, capped at 30); from these you get a real growth trend, a per-month
+  growth figure, and a "hit 1 GiB in ~N months" projection.
+- **Cost context.** Shows where your estimate sits in the free tier and a rough
+  overage figure if you ever exceeded it.
+- **Export.** One click downloads all your data as JSON (Firestore Timestamps
+  converted to millis) — your portable, real backup.
+- **Health.** Honest signals only: connectivity, last-scan latency, document count,
+  and a plain note that backups aren't automated (use Export).
+
+**How to use it.**
+1. Open **Settings → Storage & data**. It scans automatically and shows your
+   footprint and breakdown.
+2. Enable the retention policies you want, set the keep-windows, and either **Run
+   now** or turn on **Auto-clean on open**.
+3. Hit **Export** anytime to save a full JSON backup.

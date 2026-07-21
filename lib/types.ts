@@ -346,6 +346,30 @@ export interface ClothingItem {
   createdAt: number;
 }
 
+/** A retention rule for one log-like collection (trim data older than `days`). */
+export interface RetentionPolicy {
+  collection: string;
+  days: number;
+  enabled: boolean;
+  lastRun: number | null; // ms of the last cleanup run
+}
+
+/** A point-in-time measurement of the user's estimated data footprint. */
+export interface StorageSnapshot {
+  at: number; // ms
+  totalBytes: number;
+  docCount: number;
+  byCollection: Record<string, number>; // collection name -> estimated bytes
+}
+
+/** Storage-manager config, embedded on the prefs doc (no extra collection). */
+export interface StorageConfig {
+  policies: RetentionPolicy[];
+  snapshots: StorageSnapshot[];
+  /** Run enabled policies automatically when the app is opened. */
+  autoCleanup: boolean;
+}
+
 /** Lightweight per-user preferences (doc id = userId). */
 export interface UserPrefs {
   userId: string;
@@ -356,6 +380,8 @@ export interface UserPrefs {
   sleepTarget: number;
   /** Week-score scale for the Weekly Review: rate out of 10 or out of 100. */
   reviewScale: 10 | 100;
+  /** Storage monitoring & data-retention config. */
+  storage?: StorageConfig | null;
 }
 
 /** Firestore collection names, centralized to avoid typos. */

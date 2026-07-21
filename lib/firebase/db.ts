@@ -18,6 +18,13 @@ import {
 import { db } from "@/lib/firebase/config";
 import { normalizeRecurringRule } from "@/lib/recurring";
 import {
+  estimateDocBytes,
+  collectionLabel,
+  isProtectedCollection,
+  type CollectionUsage,
+  type UsageScan,
+} from "@/lib/storage";
+import {
   COLLECTIONS,
   type Budget,
   type ClothingItem,
@@ -35,6 +42,7 @@ import {
   type Session,
   type ShoppingCheck,
   type SleepLog,
+  type StorageConfig,
   type Task,
   type Tracker,
   type TrackerLog,
@@ -1269,7 +1277,66 @@ export async function getPrefs(userId: string): Promise<UserPrefs> {
     hiddenTrackers: Array.isArray(d.hiddenTrackers) ? d.hiddenTrackers : [],
     sleepTarget: d.sleepTarget ?? 8,
     reviewScale: d.reviewScale === 10 ? 10 : 100,
+    storage: d.storage && typeof d.storage === "object" ? (d.storage as StorageConfig) : null,
   };
+}
+
+/** Persist the storage-manager config (merge write — leaves other prefs alone). */
+export async function setStorageConfig(userId: string, storage: StorageConfig): Promise<void> {
+  const ref = doc(db, COLLECTIONS.prefs, userId);
+  await setDoc(ref, { userId, storage }, { merge: true });
+}
+
+/**
+ * Estimate the user's data footprint by reading every owner-scoped document and
+ * summing Firestore's documented per-document byte sizes. Returns per-collection
+ * counts/bytes plus the raw docs (so cleanup/export need no extra reads).
+ * NOTE: this counts document data only — real billed storage is higher (indexes).
+ */
+export async function scanUsage(userId: string): Promise<UsageScan> {
+  const names = Object.values(COLLECTIONS);
+  const results = await Promise.all(
+    names.map(async (name) => {
+      const q = query(collection(db, name), where("userId", "==", userId));
+      const snap = await getDocs(q);
+      let bytes = 0;
+      const docs = snap.docs.map((docSnap) => {
+        const data = docSnap.data() as Record<string, unknown>;
+        bytes += estimateDocBytes(docSnap.id, data);
+        return { id: docSnap.id, data };
+      });
+      return { name, count: docs.length, bytes, docs };
+    })
+  );
+  const raw: Record<string, { id: string; data: Record<string, unknown> }[]> = {};
+  let totalBytes = 0;
+  let totalDocs = 0;
+  const collections: CollectionUsage[] = results
+    .map((r) => {
+      raw[r.name] = r.docs;
+      totalBytes += r.bytes;
+      totalDocs += r.count;
+      return {
+        name: r.name,
+        label: collectionLabel(r.name),
+        count: r.count,
+        bytes: r.bytes,
+        protectedForever: isProtectedCollection(r.name),
+      };
+    })
+    .sort((a, b) => b.bytes - a.bytes);
+  return { at: Date.now(), totalBytes, totalDocs, collections, raw };
+}
+
+/** Delete many documents by id from one collection (batched under the 500 cap). */
+export async function deleteDocsByIds(collectionName: string, ids: string[]): Promise<void> {
+  for (let i = 0; i < ids.length; i += 450) {
+    const batch = writeBatch(db);
+    for (const id of ids.slice(i, i + 450)) {
+      batch.delete(doc(db, collectionName, id));
+    }
+    await batch.commit();
+  }
 }
 
 export async function upsertPrefs(
