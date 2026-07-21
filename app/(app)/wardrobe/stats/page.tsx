@@ -3,13 +3,10 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ChevronLeft,
   Shirt,
   TrendingUp,
   TrendingDown,
   Sparkles,
-  CalendarDays,
-  Layers,
   ArrowRight,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
@@ -29,6 +26,7 @@ import { toDateKey } from "@/lib/greeting";
 import { SkeletonCard } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { WardrobeNav } from "@/components/wardrobe/wardrobe-nav";
 import type { ClothingItem } from "@/lib/types";
 
 export default function WardrobeStatsPage() {
@@ -80,21 +78,11 @@ export default function WardrobeStatsPage() {
 
   return (
     <div className="mx-auto max-w-[1200px] space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="space-y-3">
+        <WardrobeNav />
         <div>
-          <Link href="/wardrobe" className="mb-1 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-            <ChevronLeft className="h-4 w-4" /> Wardrobe
-          </Link>
           <h1 className="text-2xl font-bold md:text-3xl">Statistics</h1>
           <p className="text-muted-foreground">What you actually wear — and what&apos;s just taking up space.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" asChild>
-            <Link href="/wardrobe/calendar"><CalendarDays className="h-4 w-4" /> Calendar</Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link href="/wardrobe/outfits"><Layers className="h-4 w-4" /> Outfits</Link>
-          </Button>
         </div>
       </div>
 

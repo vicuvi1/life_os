@@ -50,6 +50,7 @@ export function WearPickerDialog({ open, onOpenChange, userId, items, outfits, d
   const [outfitName, setOutfitName] = useState("");
   const [asTemplate, setAsTemplate] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -64,6 +65,7 @@ export function WearPickerDialog({ open, onOpenChange, userId, items, outfits, d
     setSaveAsOutfit(false);
     setOutfitName("");
     setAsTemplate(false);
+    setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialIds]);
 
@@ -147,6 +149,10 @@ export function WearPickerDialog({ open, onOpenChange, userId, items, outfits, d
         prevOutfit,
       });
       onOpenChange(false);
+      onSaved();
+    } catch {
+      // A referenced item/outfit may have been deleted elsewhere — resync and tell the user.
+      setError("Couldn't save — something changed. Please review and try again.");
       onSaved();
     } finally {
       setSaving(false);
@@ -252,6 +258,8 @@ export function WearPickerDialog({ open, onOpenChange, userId, items, outfits, d
             </div>
           )}
         </div>
+
+        {error && <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>}
 
         <DialogFooter className="sm:justify-between">
           {onClear && existing ? (

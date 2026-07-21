@@ -1585,3 +1585,16 @@ review of the whole wardrobe area):
   stale `?occasion=` deep link self-clears, the outfit "Wear today" action is
   disabled (not silently ignored) when an outfit has no wearable items, and the
   item photo viewer no longer blanks after you delete a photo.
+
+**UI polish pass.**
+- **Unified sub-navigation.** Every wardrobe page (Wardrobe · Outfits · Calendar
+  · Packing · Laundry · Statistics) now shares one horizontal tab strip that
+  highlights the current page, replacing the ad-hoc back-links and the crowded
+  row of header buttons on the Overview. Navigation is consistent and one tap
+  from anywhere; each page keeps only its own primary action (Add item, New
+  outfit, New trip…).
+- **Resilient saves.** Every wear write (confirm, plan, log, surprise, outfit
+  "wear today", clear day) now recovers from a mid-air failure — if something it
+  referenced was deleted on another device, the app resyncs instead of silently
+  losing the change, and the pickers show a clear inline message rather than
+  failing quietly.

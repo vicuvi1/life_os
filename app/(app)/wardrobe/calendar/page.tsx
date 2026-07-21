@@ -1,13 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
   Shirt,
-  BarChart3,
-  Layers,
   Check,
   Clock,
 } from "lucide-react";
@@ -18,6 +15,7 @@ import { toDateKey } from "@/lib/greeting";
 import { SkeletonCard } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { WardrobeNav } from "@/components/wardrobe/wardrobe-nav";
 import { WearPickerDialog } from "@/components/wardrobe/wear-picker-dialog";
 import { cn } from "@/lib/utils";
 import type { ClothingItem, WearLog } from "@/lib/types";
@@ -91,27 +89,20 @@ export default function WardrobeCalendarPage() {
             return o ? { id: o.id, timesWorn: o.timesWorn } : null;
           })()
         : null;
-    await removeWearDay({ userId: user.uid, date, prevItems, prevOutfit });
-    await load({ quiet: true });
+    try {
+      await removeWearDay({ userId: user.uid, date, prevItems, prevOutfit });
+    } finally {
+      await load({ quiet: true });
+    }
   }
 
   return (
     <div className="mx-auto max-w-[1100px] space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="space-y-3">
+        <WardrobeNav />
         <div>
-          <Link href="/wardrobe" className="mb-1 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-            <ChevronLeft className="h-4 w-4" /> Wardrobe
-          </Link>
           <h1 className="text-2xl font-bold md:text-3xl">Outfit calendar</h1>
           <p className="text-muted-foreground">Plan ahead, and look back at what you wore.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" asChild>
-            <Link href="/wardrobe/stats"><BarChart3 className="h-4 w-4" /> Statistics</Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link href="/wardrobe/outfits"><Layers className="h-4 w-4" /> Outfits</Link>
-          </Button>
         </div>
       </div>
 

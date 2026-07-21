@@ -2,15 +2,15 @@
 
 import { SkeletonCard } from "@/components/ui/skeleton";
 
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, WashingMachine, CheckSquare, Square } from "lucide-react";
+import { WashingMachine, CheckSquare, Square } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { getWardrobe, updateClothing, bulkUpdateClothingStatus } from "@/lib/firebase/db";
 import { STATUS_META, WARDROBE_STATUSES, statusCounts } from "@/lib/wardrobe";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { WardrobeNav } from "@/components/wardrobe/wardrobe-nav";
 import { ItemCard } from "@/components/wardrobe/item-card";
 import { cn } from "@/lib/utils";
 import type { ClothingItem, WardrobeStatus } from "@/lib/types";
@@ -94,14 +94,14 @@ function LaundryInner() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
-      <div>
-        <Link href="/wardrobe" className="mb-1 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <ChevronLeft className="h-4 w-4" /> Wardrobe
-        </Link>
-        <h1 className="flex items-center gap-2 text-2xl font-bold md:text-3xl">
-          <WashingMachine className="h-6 w-6 text-primary" /> Laundry
-        </h1>
-        <p className="text-muted-foreground">Track the wash cycle — select several items to move them together.</p>
+      <div className="space-y-3">
+        <WardrobeNav />
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold md:text-3xl">
+            <WashingMachine className="h-6 w-6 text-primary" /> Laundry
+          </h1>
+          <p className="text-muted-foreground">Track the wash cycle — select several items to move them together.</p>
+        </div>
       </div>
 
       {/* Tabs (filtered views over the same items — not separate lists) */}

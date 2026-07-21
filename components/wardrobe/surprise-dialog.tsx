@@ -36,6 +36,7 @@ export function SurpriseDialog({ open, onOpenChange, userId, items, outfits, exi
   const [combo, setCombo] = useState<ClothingItem[]>([]);
   const [seed, setSeed] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const wearableCount = useMemo(() => items.filter(isWearable).length, [items]);
 
@@ -46,7 +47,10 @@ export function SurpriseDialog({ open, onOpenChange, userId, items, outfits, exi
   }, [open, season, seed, items]);
 
   useEffect(() => {
-    if (open) setSeason(null);
+    if (open) {
+      setSeason(null);
+      setError(null);
+    }
   }, [open]);
 
   async function wearIt() {
@@ -78,6 +82,9 @@ export function SurpriseDialog({ open, onOpenChange, userId, items, outfits, exi
         prevOutfit,
       });
       onOpenChange(false);
+      onSaved();
+    } catch {
+      setError("Couldn't save — please shuffle and try again.");
       onSaved();
     } finally {
       setSaving(false);
@@ -148,6 +155,8 @@ export function SurpriseDialog({ open, onOpenChange, userId, items, outfits, exi
             ))}
           </div>
         )}
+
+        {error && <p className="text-center text-sm text-rose-600 dark:text-rose-400">{error}</p>}
 
         <DialogFooter className="sm:justify-between">
           <Button type="button" variant="outline" onClick={() => setSeed((s) => s + 1)} disabled={combo.length === 0}>

@@ -6,7 +6,6 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ChevronLeft,
   Plus,
   Shirt,
   Heart,
@@ -46,6 +45,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { OutfitBuilderDialog } from "@/components/wardrobe/outfit-builder-dialog";
+import { WardrobeNav } from "@/components/wardrobe/wardrobe-nav";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { cn } from "@/lib/utils";
 import type { ClothingItem, Outfit } from "@/lib/types";
@@ -163,17 +163,23 @@ function OutfitsInner() {
             return p ? { id: p.id, timesWorn: p.timesWorn } : null;
           })()
         : null;
-    await setWearForDay({
-      userId: user.uid,
-      date: today,
-      kind: "confirm",
-      chosen: wearItems.map((i) => ({ id: i.id, timesWorn: i.timesWorn, lastWorn: i.lastWorn })),
-      outfit: { id: o.id, timesWorn: o.timesWorn, lastWorn: o.lastWorn },
-      prevItems,
-      prevOutfit,
-    });
-    await load({ quiet: true });
-    return true;
+    try {
+      await setWearForDay({
+        userId: user.uid,
+        date: today,
+        kind: "confirm",
+        chosen: wearItems.map((i) => ({ id: i.id, timesWorn: i.timesWorn, lastWorn: i.lastWorn })),
+        outfit: { id: o.id, timesWorn: o.timesWorn, lastWorn: o.lastWorn },
+        prevItems,
+        prevOutfit,
+      });
+      await load({ quiet: true });
+      return true;
+    } catch {
+      // Something referenced was deleted elsewhere — resync so the UI reflects reality.
+      await load({ quiet: true });
+      return false;
+    }
   }
 
   async function duplicate(o: Outfit) {
@@ -230,19 +236,19 @@ function OutfitsInner() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Link href="/wardrobe" className="mb-1 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-            <ChevronLeft className="h-4 w-4" /> Wardrobe
-          </Link>
-          <h1 className="flex items-center gap-2 text-2xl font-bold md:text-3xl">
-            <Layers className="h-6 w-6 text-primary" /> Outfits
-          </h1>
-          <p className="text-muted-foreground">Saved combinations — templates are your reusable go-tos.</p>
+      <div className="space-y-3">
+        <WardrobeNav />
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="flex items-center gap-2 text-2xl font-bold md:text-3xl">
+              <Layers className="h-6 w-6 text-primary" /> Outfits
+            </h1>
+            <p className="text-muted-foreground">Saved combinations — templates are your reusable go-tos.</p>
+          </div>
+          <Button onClick={() => { setEditing(null); setBuilderOpen(true); }}>
+            <Plus className="h-4 w-4" /> New outfit
+          </Button>
         </div>
-        <Button onClick={() => { setEditing(null); setBuilderOpen(true); }}>
-          <Plus className="h-4 w-4" /> New outfit
-        </Button>
       </div>
 
       {shared && (

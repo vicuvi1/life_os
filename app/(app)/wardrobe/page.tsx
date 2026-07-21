@@ -11,11 +11,7 @@ import {
   Sparkles,
   MapPin,
   CalendarDays,
-  WashingMachine,
   ChevronRight,
-  Layers,
-  BarChart3,
-  Luggage,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -36,6 +32,7 @@ import {
   currentSeason,
 } from "@/lib/wardrobe";
 import { SurpriseDialog } from "@/components/wardrobe/surprise-dialog";
+import { WardrobeNav } from "@/components/wardrobe/wardrobe-nav";
 import { toDateKey } from "@/lib/greeting";
 import { addDays } from "@/lib/habits";
 import { Button } from "@/components/ui/button";
@@ -180,52 +177,43 @@ export default function WardrobeOverviewPage() {
 
   async function confirmPlannedToday() {
     if (!user || !todayWear || todayItems.length === 0) return;
-    // The day was planned (no counters applied yet) → nothing to reconcile.
-    await setWearForDay({
-      userId: user.uid,
-      date: today,
-      kind: "confirm",
-      chosen: todayItems.map((i) => ({ id: i.id, timesWorn: i.timesWorn, lastWorn: i.lastWorn })),
-      outfit: todayOutfit ? { id: todayOutfit.id, timesWorn: todayOutfit.timesWorn, lastWorn: todayOutfit.lastWorn } : null,
-      prevItems: [],
-      prevOutfit: null,
-    });
-    await load({ quiet: true });
+    try {
+      // The day was planned (no counters applied yet) → nothing to reconcile.
+      await setWearForDay({
+        userId: user.uid,
+        date: today,
+        kind: "confirm",
+        chosen: todayItems.map((i) => ({ id: i.id, timesWorn: i.timesWorn, lastWorn: i.lastWorn })),
+        outfit: todayOutfit ? { id: todayOutfit.id, timesWorn: todayOutfit.timesWorn, lastWorn: todayOutfit.lastWorn } : null,
+        prevItems: [],
+        prevOutfit: null,
+      });
+    } finally {
+      await load({ quiet: true });
+    }
   }
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-5">
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold md:text-3xl">Wardrobe</h1>
-          <p className="text-muted-foreground">Your clothes, outfits, and laundry — decided in seconds.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {activeItems.length > 0 && (
-            <Button variant="outline" onClick={() => setSurpriseOpen(true)}>
-              <Sparkles className="h-4 w-4" /> Surprise me
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold md:text-3xl">Wardrobe</h1>
+            <p className="text-muted-foreground">Your clothes, outfits, and laundry — decided in seconds.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {activeItems.length > 0 && (
+              <Button variant="outline" onClick={() => setSurpriseOpen(true)}>
+                <Sparkles className="h-4 w-4" /> Surprise me
+              </Button>
+            )}
+            <Button onClick={() => setFormOpen(true)}>
+              <Plus className="h-4 w-4" /> Add item
             </Button>
-          )}
-          <Button variant="outline" asChild>
-            <Link href="/wardrobe/outfits"><Layers className="h-4 w-4" /> Outfits</Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link href="/wardrobe/calendar"><CalendarDays className="h-4 w-4" /> Calendar</Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link href="/wardrobe/packing"><Luggage className="h-4 w-4" /> Packing</Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link href="/wardrobe/laundry"><WashingMachine className="h-4 w-4" /> Laundry</Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link href="/wardrobe/stats"><BarChart3 className="h-4 w-4" /> Stats</Link>
-          </Button>
-          <Button onClick={() => setFormOpen(true)}>
-            <Plus className="h-4 w-4" /> Add item
-          </Button>
+          </div>
         </div>
+        <WardrobeNav />
       </div>
 
       {loading ? (
