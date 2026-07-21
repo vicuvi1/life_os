@@ -53,6 +53,31 @@ export function difficultyPoints(difficulty: HabitDifficulty, completions: numbe
 }
 
 // ---------------------------------------------------------------------------
+// Streak milestones (celebration messages)
+// ---------------------------------------------------------------------------
+export const STREAK_MILESTONES = [3, 7, 14, 21, 30, 50, 75, 100, 150, 200, 300, 365];
+
+const MILESTONE_MESSAGES: Record<number, string> = {
+  3: "3 days in — momentum! 💫",
+  7: "A full week! 🔥",
+  14: "Two weeks strong 💪",
+  21: "21 days — officially a habit! ✨",
+  30: "30 days! You're on fire 🚀",
+  50: "50 days — incredible 🙌",
+  75: "75 days of showing up 👏",
+  100: "100 days!! Legend — keep it up, boss 👑",
+  150: "150 days of pure discipline 🧠",
+  200: "200 days 🤯",
+  300: "300 days — nearly a year! 🌟",
+  365: "365 DAYS. A FULL YEAR 🏆🎉",
+};
+
+/** A celebration line if `streak` just hit a milestone, else null. */
+export function streakMilestoneMessage(streak: number): string | null {
+  return MILESTONE_MESSAGES[streak] ?? null;
+}
+
+// ---------------------------------------------------------------------------
 // Completion semantics
 // ---------------------------------------------------------------------------
 /**

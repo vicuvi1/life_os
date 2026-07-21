@@ -46,7 +46,18 @@ const TARGET_TYPES: { key: HabitTargetType; label: string; hint: string }[] = [
   { key: "duration", label: "Duration (minutes)", hint: "e.g. 30 min meditation" },
 ];
 
-const EMOJI_PRESETS = ["💧", "🏃", "🧘", "📚", "💪", "🥗", "😴", "☀️", "🌙", "🚭", "💊", "🧠", "✍️", "🎯", "🙏", "🚿", "🦷", "💻"];
+const EMOJI_PRESETS = [
+  // health & fitness
+  "💧", "🏃", "🏋️", "🧘", "💪", "🚴", "🏊", "🤸", "🥗", "🥦", "🍎", "💊", "🩺", "😴", "🚭", "🦷", "🚿", "⚖️",
+  // mind & learning
+  "📚", "📖", "✍️", "🧠", "🎯", "🗣️", "🧩", "🎓", "📝", "💡", "🌱", "🙏",
+  // work & productivity
+  "💻", "📅", "✅", "📧", "📊", "💼", "⏰", "🔧", "🚀", "🗒️",
+  // creative
+  "🎸", "🎨", "🎹", "📸", "🎬", "🎤", "🕹️", "📷",
+  // lifestyle
+  "☀️", "🌙", "🛏️", "🧹", "🍳", "🐕", "🌿", "💰", "📵", "🍷", "☕", "🚶", "❤️", "👨‍👩‍👧", "📞", "🧴", "🔋", "🌊",
+];
 
 interface Props {
   open: boolean;
@@ -174,14 +185,14 @@ export function HabitFormDialog({
                 className="flex-1"
               />
             </div>
-            <div className="flex flex-wrap gap-1">
+            <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto rounded-lg border bg-muted/20 p-1.5">
               {EMOJI_PRESETS.map((e) => (
                 <button
                   key={e}
                   type="button"
                   onClick={() => setEmoji(e)}
                   className={cn(
-                    "flex h-7 w-7 items-center justify-center rounded text-base transition hover:bg-accent",
+                    "flex h-7 w-7 shrink-0 items-center justify-center rounded text-base transition hover:bg-accent",
                     emoji === e && "bg-accent ring-1 ring-ring"
                   )}
                 >

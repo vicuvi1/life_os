@@ -1357,3 +1357,19 @@ queried habit logs by `habitId` only, which Firestore's owner-scoped rules
 Those queries are now scoped by `userId` (filtered to the habit client-side), and
 the toggle's fallback reconciles **silently** — so check-ins are instant with no
 flash.
+
+---
+
+## Habits — delight: animations, milestones, more templates & emoji
+
+**What it is.** Check-ins now feel good, and progress gets celebrated.
+- **Check-in animation.** Completing a cell gives it a springy **pop** (respects
+  reduced-motion).
+- **Streak milestones.** Hitting **3 / 7 / 14 / 21 / 30 / 50 / 75 / 100 / 150 /
+  200 / 300 / 365** days pops a celebration message — e.g. *"100 days!! Legend —
+  keep it up, boss 👑"* — that auto-dismisses.
+- **More templates.** Added **Mindfulness, Break bad habits, Money, Language, and
+  Creativity** packs (on top of Morning / Gym / Study / Productivity / Health /
+  Night).
+- **Bigger emoji picker.** The habit form's emoji presets went from ~18 to ~70,
+  in a compact scrollable grid (you can still type or paste any emoji).

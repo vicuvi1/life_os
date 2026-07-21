@@ -104,4 +104,61 @@ export const TEMPLATE_PACKS: TemplatePack[] = [
       { title: "Sleep by 11pm", emoji: "😴", tags: ["sleep"], category: "evening", color: C.cyan, targetType: "check", targetValue: null, difficulty: "medium" },
     ],
   },
+  {
+    key: "mindfulness",
+    name: "Mindfulness",
+    emoji: "🧘",
+    description: "Calm mind, clearer focus.",
+    habits: [
+      { title: "Meditate", emoji: "🧘", tags: ["mind"], category: "morning", color: C.violet, targetType: "duration", targetValue: 10, difficulty: "medium" },
+      { title: "Breathwork", emoji: "🌬️", tags: ["mind"], category: "morning", color: C.cyan, targetType: "check", targetValue: null, difficulty: "easy" },
+      { title: "Gratitude (3 things)", emoji: "🙏", tags: ["mind"], category: "evening", color: C.amber, targetType: "check", targetValue: null, difficulty: "easy" },
+      { title: "Digital sunset", emoji: "📵", tags: ["mind", "evening"], category: "evening", color: C.rose, targetType: "check", targetValue: null, difficulty: "hard" },
+    ],
+  },
+  {
+    key: "detox",
+    name: "Break bad habits",
+    emoji: "🚫",
+    description: "Say no, one day at a time.",
+    habits: [
+      { title: "No sugar", emoji: "🍭", tags: ["health"], category: "health", color: C.rose, targetType: "check", targetValue: null, difficulty: "hard" },
+      { title: "No smoking", emoji: "🚭", tags: ["health"], category: "health", color: C.emerald, targetType: "check", targetValue: null, difficulty: "expert" },
+      { title: "No alcohol", emoji: "🍷", tags: ["health"], category: "health", color: C.violet, targetType: "check", targetValue: null, difficulty: "hard" },
+      { title: "Under 1h social media", emoji: "📱", tags: ["focus"], category: "health", color: C.blue, targetType: "check", targetValue: null, difficulty: "medium" },
+    ],
+  },
+  {
+    key: "money",
+    name: "Money",
+    emoji: "💰",
+    description: "Small money habits, big results.",
+    habits: [
+      { title: "Log expenses", emoji: "🧾", tags: ["finance"], category: "evening", color: C.emerald, targetType: "check", targetValue: null, difficulty: "easy" },
+      { title: "No impulse buys", emoji: "🛑", tags: ["finance"], category: "health", color: C.rose, targetType: "check", targetValue: null, difficulty: "medium" },
+      { title: "Read finance (10 min)", emoji: "📈", tags: ["finance", "learning"], category: "learning", color: C.blue, targetType: "duration", targetValue: 10, difficulty: "easy" },
+    ],
+  },
+  {
+    key: "language",
+    name: "Language",
+    emoji: "🗣️",
+    description: "Learn a language, daily.",
+    habits: [
+      { title: "Vocabulary", emoji: "🔤", tags: ["learning"], category: "learning", color: C.blue, targetType: "count", targetValue: 10, difficulty: "medium" },
+      { title: "Listening practice", emoji: "🎧", tags: ["learning"], category: "learning", color: C.cyan, targetType: "duration", targetValue: 15, difficulty: "easy" },
+      { title: "Speak out loud", emoji: "🗣️", tags: ["learning"], category: "learning", color: C.violet, targetType: "check", targetValue: null, difficulty: "hard" },
+    ],
+  },
+  {
+    key: "creativity",
+    name: "Creativity",
+    emoji: "🎨",
+    description: "Make something every day.",
+    habits: [
+      { title: "Draw / sketch", emoji: "✏️", tags: ["creative"], category: "learning", color: C.pink, targetType: "duration", targetValue: 15, difficulty: "medium" },
+      { title: "Practice instrument", emoji: "🎸", tags: ["creative"], category: "learning", color: C.amber, targetType: "duration", targetValue: 20, difficulty: "medium" },
+      { title: "Write (500 words)", emoji: "✍️", tags: ["creative"], category: "learning", color: C.violet, targetType: "count", targetValue: 500, difficulty: "hard" },
+    ],
+  },
 ];

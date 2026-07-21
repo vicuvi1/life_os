@@ -41,6 +41,7 @@ import {
   isLogDone,
   habitCurrentStreak,
   habitLongestStreak,
+  streakMilestoneMessage,
   HABIT_CATEGORIES,
   HABIT_CATEGORY_LABEL,
   DEFAULT_HABIT_COLOR,
@@ -109,6 +110,8 @@ export default function HabitsPage() {
   const [quickName, setQuickName] = useState("");
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [noteTarget, setNoteTarget] = useState<{ habit: Habit; date: string } | null>(null);
+  const [poppedCell, setPoppedCell] = useState<string | null>(null);
+  const [celebrate, setCelebrate] = useState<{ message: string; habit: string } | null>(null);
 
   const [windowOffset, setWindowOffset] = useState(0); // 0 = current window (ends today)
   const [viewMode, setViewMode] = useState<"table" | "cards" | "compact" | "calendar">("table");
@@ -136,6 +139,12 @@ export default function HabitsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!celebrate) return;
+    const t = window.setTimeout(() => setCelebrate(null), 4500);
+    return () => window.clearTimeout(t);
+  }, [celebrate]);
 
   const logMap = useMemo(() => {
     const m = new Map<string, Map<string, HabitLog>>();
@@ -282,6 +291,17 @@ export default function HabitsPage() {
       if (done) logs.push({ id: `${habit.id}_${key}`, habitId: habit.id, userId: user.uid, completedDate: key, value: fullValue, note: null, createdAt: Date.now() });
       return { ...prev, [habit.id]: logs };
     });
+    if (done) {
+      // Satisfying pop on the cell we just completed.
+      const cellId = `${habit.id}:${key}`;
+      setPoppedCell(cellId);
+      window.setTimeout(() => setPoppedCell((p) => (p === cellId ? null : p)), 500);
+      // Celebrate when this completion reaches a streak milestone.
+      const doneSet = new Set(doneDates(habit, logsByHabit[habit.id] ?? []));
+      doneSet.add(key);
+      const msg = streakMilestoneMessage(habitCurrentStreak(habit, Array.from(doneSet), today));
+      if (msg) setCelebrate({ message: msg, habit: habit.emoji ? `${habit.emoji} ${habit.title}` : habit.title });
+    }
     void toggleHabitLog(user.uid, habit.id, key, done, fullValue).catch(() => {
       void load({ quiet: true }); // reconcile silently — never flash the skeleton
     });
@@ -333,6 +353,15 @@ export default function HabitsPage() {
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-5">
+      {celebrate && (
+        <div className="pointer-events-none fixed left-1/2 top-20 z-50 -translate-x-1/2">
+          <div className="animate-celebrate rounded-2xl border border-amber-500/40 bg-card/95 px-5 py-3 text-center shadow-xl backdrop-blur">
+            <p className="text-2xl">🎉🔥🎉</p>
+            <p className="mt-1 text-sm font-semibold">{celebrate.message}</p>
+            <p className="text-xs text-muted-foreground">{celebrate.habit}</p>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -502,6 +531,7 @@ export default function HabitsPage() {
                                 showNumber={showNumbers && (habit.targetType ?? "check") !== "check"}
                                 disabled={c.key > today}
                                 hasNote={Boolean(c.log?.note)}
+                                animate={poppedCell === `${habit.id}:${c.key}`}
                                 onClick={() => toggleCell(habit, c.key, c.status)}
                                 onNote={() => setNoteTarget({ habit, date: c.key })}
                               />
@@ -542,7 +572,7 @@ export default function HabitsPage() {
                       </div>
                       <div className="hidden items-center gap-0.5 md:flex">
                         {recent.map((c) => (
-                          <StatusCell key={c.key} status={c.status} color={color} value={c.log?.value ?? null} showNumber={false} disabled={c.key > today} hasNote={Boolean(c.log?.note)} onClick={() => toggleCell(habit, c.key, c.status)} onNote={() => setNoteTarget({ habit, date: c.key })} />
+                          <StatusCell key={c.key} status={c.status} color={color} value={c.log?.value ?? null} showNumber={false} disabled={c.key > today} hasNote={Boolean(c.log?.note)} animate={poppedCell === `${habit.id}:${c.key}`} onClick={() => toggleCell(habit, c.key, c.status)} onNote={() => setNoteTarget({ habit, date: c.key })} />
                         ))}
                       </div>
                       <span className="flex shrink-0 items-center gap-1 text-sm font-semibold text-orange-500"><Flame className="h-3.5 w-3.5" />{streak}</span>
@@ -804,10 +834,13 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-function StatusCell({ status, color, value, showNumber, disabled, hasNote, onClick, onNote }: {
-  status: DayStatus; color: string; value: number | null; showNumber: boolean; disabled: boolean; hasNote: boolean; onClick: () => void; onNote: () => void;
+function StatusCell({ status, color, value, showNumber, disabled, hasNote, animate, onClick, onNote }: {
+  status: DayStatus; color: string; value: number | null; showNumber: boolean; disabled: boolean; hasNote: boolean; animate?: boolean; onClick: () => void; onNote: () => void;
 }) {
-  const base = "relative mx-auto flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold tabular-nums transition";
+  const base = cn(
+    "relative mx-auto flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold tabular-nums transition",
+    animate && status === "completed" && "animate-checkin"
+  );
   let cls = "";
   let style: React.CSSProperties | undefined;
   let content: React.ReactNode = null;
