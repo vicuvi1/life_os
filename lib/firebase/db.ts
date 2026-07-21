@@ -1149,9 +1149,16 @@ export async function upsertNutritionLog(
   input: Partial<NutritionLogInput>
 ): Promise<void> {
   const ref = doc(db, COLLECTIONS.nutritionLogs, `${userId}_${date}`);
-  const existing = await getDoc(ref);
+  // Owner-scoped rules reject reads of a non-existent doc (permission-denied),
+  // so guard the existence check — a throw just means "doesn't exist yet".
+  let exists = false;
+  try {
+    exists = (await getDoc(ref)).exists();
+  } catch {
+    exists = false;
+  }
   // Only stamp createdAt on first creation so merge-writes don't reset it.
-  const created = existing.exists() ? {} : { createdAt: serverTimestamp() };
+  const created = exists ? {} : { createdAt: serverTimestamp() };
   await setDoc(ref, { userId, date, ...input, ...created }, { merge: true });
 }
 
