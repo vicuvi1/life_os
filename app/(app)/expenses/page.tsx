@@ -648,19 +648,19 @@ export default function FinancePage() {
 
               <Panel title="Transactions" bodyClassName="p-0">
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[780px] table-fixed border-collapse text-sm">
+                  <table className="w-full min-w-[980px] table-fixed border-collapse text-sm">
                     <colgroup>
-                      <col className="w-[70px]" /><col className="w-[46px]" /><col className="w-[88px]" />
-                      <col className="w-[150px]" /><col /><col className="w-[100px]" />
-                      <col className="w-[100px]" /><col className="w-[108px]" /><col className="w-[32px]" />
+                      <col className="w-[86px]" /><col className="w-[54px]" /><col className="w-[102px]" />
+                      <col className="w-[180px]" /><col className="w-[220px]" /><col className="w-[116px]" />
+                      <col className="w-[116px]" /><col className="w-[128px]" /><col className="w-[42px]" />
                     </colgroup>
                     <thead>
-                      <tr className="border-b bg-muted/40 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        <th className="px-2 py-2">Date</th><th className="px-1 py-2">Day</th><th className="px-2 py-2">Type</th>
-                        <th className="px-2 py-2">Category</th><th className="px-2 py-2">Description</th>
-                        <th className="px-2 py-2 text-right text-emerald-600 dark:text-emerald-400">Income</th>
-                        <th className="px-2 py-2 text-right text-rose-600 dark:text-rose-400">Expense</th>
-                        <th className="px-2 py-2 text-right">Balance</th><th className="px-1 py-2" />
+                      <tr className="border-b bg-muted/40 text-left text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        <th className="px-3 py-3">Date</th><th className="px-2 py-3">Day</th><th className="px-3 py-3">Type</th>
+                        <th className="px-3 py-3">Category</th><th className="px-3 py-3">Description</th>
+                        <th className="px-3 py-3 text-right text-emerald-600 dark:text-emerald-400">Income</th>
+                        <th className="px-3 py-3 text-right text-rose-600 dark:text-rose-400">Expense</th>
+                        <th className="px-3 py-3 text-right">Balance</th><th className="px-2 py-3" />
                       </tr>
                     </thead>
                     <tbody>
@@ -669,26 +669,26 @@ export default function FinancePage() {
                         const isWeekend = r.weekday === "Sat" || r.weekday === "Sun";
                         return (
                           <tr key={`${r.dateKey}-${idx}`} className={cn("group border-b last:border-0", isWeekend && "bg-muted/20", isToday && "bg-primary/5", "hover:bg-accent/40")}>
-                            <td className="px-2 py-1 align-middle">{r.firstOfDay && <span className="tabular-nums font-medium">{r.day} {MONTHS_SHORT[month]}</span>}</td>
-                            <td className="px-1 py-1 align-middle">{r.firstOfDay && <span className="text-xs text-muted-foreground">{r.weekday}</span>}</td>
-                            <td className="px-2 py-1 align-middle">
+                            <td className="px-3 py-2 align-middle">{r.firstOfDay && <span className="tabular-nums font-medium">{r.day} {MONTHS_SHORT[month]}</span>}</td>
+                            <td className="px-2 py-2 align-middle">{r.firstOfDay && <span className="text-sm text-muted-foreground">{r.weekday}</span>}</td>
+                            <td className="px-3 py-2 align-middle">
                               {r.entry ? (
                                 <span className={cn("inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase", r.kind === "income" ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-rose-500/15 text-rose-600 dark:text-rose-400")}>{r.kind}</span>
                               ) : (r.firstOfDay && <span className="text-muted-foreground/40">—</span>)}
                             </td>
-                            <td className="px-1 py-1 align-middle">{r.entry && <CategorySelect entry={r.entry} kind={r.kind as EntryKind} onChange={(c) => commitCategory(r.entry!, c)} />}</td>
-                            <td className="px-1 py-1 align-middle">{r.entry && <NoteInput entry={r.entry} onCommit={(t) => commitNote(r.entry!, t)} />}</td>
-                            <td className="px-1 py-1 text-right align-middle">
+                            <td className="px-3 py-2 align-middle">{r.entry && <CategorySelect entry={r.entry} kind={r.kind as EntryKind} onChange={(c) => commitCategory(r.entry!, c)} />}</td>
+                            <td className="px-3 py-2 align-middle">{r.entry && <NoteInput entry={r.entry} onCommit={(t) => commitNote(r.entry!, t)} />}</td>
+                            <td className="px-3 py-2 text-right align-middle">
                               {r.kind === "income" || r.kind === null ? (
                                 <AmountInput value={r.entry?.amount ?? null} tone="income" onCommit={(num) => commitAmount(r.dateKey, "income", r.entry, num)} />
                               ) : <span className="pr-2 text-muted-foreground/30">–</span>}
                             </td>
-                            <td className="px-1 py-1 text-right align-middle">
+                            <td className="px-3 py-2 text-right align-middle">
                               {r.kind === "expense" || r.kind === null ? (
                                 <AmountInput value={r.entry?.amount ?? null} tone="expense" onCommit={(num) => commitAmount(r.dateKey, "expense", r.entry, num)} />
                               ) : <span className="pr-2 text-muted-foreground/30">–</span>}
                             </td>
-                            <td className={cn("px-2 py-1 text-right align-middle tabular-nums", r.lastOfDay ? (dayBalances[r.dateKey] < 0 ? "text-destructive" : "text-muted-foreground") : "text-transparent")}>
+                            <td className={cn("px-3 py-2 text-right align-middle tabular-nums", r.lastOfDay ? (dayBalances[r.dateKey] < 0 ? "text-destructive" : "text-muted-foreground") : "text-transparent")}>
                               {r.lastOfDay ? formatAmount(dayBalances[r.dateKey] ?? 0, currency) : ""}
                             </td>
                             <td className="px-1 py-1 text-center align-middle">
