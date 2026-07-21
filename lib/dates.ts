@@ -44,9 +44,11 @@ export function formatMonthYear(year: number, month: number): string {
   return `${MONTHS[month]} ${year}`;
 }
 
-/** Long human date, e.g. "Monday, Jul 20". */
+/** Long human date, e.g. "Monday, Jul 20". Returns "" for an empty/invalid key. */
 export function formatLongDate(key: string): string {
+  if (!key) return "";
   const d = new Date(key + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return "";
   const wd = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
   return `${wd}, ${MONTHS[d.getMonth()].slice(0, 3)} ${d.getDate()}`;
 }

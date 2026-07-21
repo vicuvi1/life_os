@@ -17,6 +17,7 @@ import { addHubNotification, updateAutomation } from "@/lib/firebase/db";
 import { tgSend } from "@/lib/telegram";
 import { surpriseOutfit, weatherSeason } from "@/lib/wardrobe";
 import { formatLongDate } from "@/lib/dates";
+import { toDateKey } from "@/lib/greeting";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { HubAgent } from "@/lib/types";
@@ -114,7 +115,7 @@ export default function HubPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold md:text-3xl"><Bot className="h-6 w-6 text-primary" /> Agent Hub</h1>
-          <p className="text-muted-foreground">{formatLongDate(data?.today ?? "")} — one glance, whole life.</p>
+          <p className="text-muted-foreground">{formatLongDate(data?.today ?? toDateKey(new Date()))} — one glance, whole life.</p>
         </div>
         {data?.weather && (
           <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
