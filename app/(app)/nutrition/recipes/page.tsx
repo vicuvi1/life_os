@@ -2,11 +2,11 @@
 
 import { SkeletonCard } from "@/components/ui/skeleton";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, BookOpen, Search, Star, Archive, MoreVertical, Pencil, Copy, ArchiveRestore, Trash2, CalendarPlus, Check } from "lucide-react";
+import { Plus, BookOpen, Search, Star, Archive, MoreVertical, Pencil, Copy, ArchiveRestore, Trash2, CalendarPlus, Check, ChefHat, Clock, ShoppingCart, X } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
   getNutritionAll, getBudget, createRecipe, updateRecipe, deleteRecipe, reorderRecipes,
-  createNutritionMeal, type NutritionAll,
+  createNutritionMeal, setPrepPlan, createShoppingItem, type NutritionAll,
 } from "@/lib/firebase/db";
 import { resolveCurrency, formatAmount, type Currency } from "@/lib/currency";
 import { toFoodMap, recipeTotals, genId } from "@/lib/food";
@@ -20,7 +20,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { NutritionNav } from "@/components/nutrition/nutrition-nav";
 import { RecipeEditor } from "@/components/nutrition/recipe-editor";
 import { cn } from "@/lib/utils";
-import type { Recipe, RecipeKind, RecipeMealType } from "@/lib/types";
+import type { Recipe, RecipeKind, RecipeMealType, PrepItem } from "@/lib/types";
 
 type KindFilter = "all" | "recipe" | "template";
 const MEAL_TYPE_CHIPS: { value: RecipeMealType; label: string }[] = [
@@ -115,6 +115,54 @@ export default function RecipesPage() {
       calories: null, protein: null, carbs: null, fat: null, cost: null,
     });
   }
+
+  // --- Meal-prep plan ---------------------------------------------------
+  const prep = useMemo(() => all?.prep ?? [], [all]);
+  const prepRows = useMemo(() =>
+    prep
+      .map((p) => ({ ...p, recipe: recipes.find((r) => r.id === p.recipeId) }))
+      .filter((x): x is PrepItem & { recipe: Recipe } => !!x.recipe),
+  [prep, recipes]);
+  const prepPending = prepRows.filter((p) => !p.done);
+  const prepMinutes = prepPending.reduce((s, p) => s + (p.recipe.prepMinutes ?? 0), 0);
+  const [shoppingAdded, setShoppingAdded] = useState(false);
+
+  async function savePrep(items: PrepItem[]) {
+    if (!user) return;
+    setAll((prev) => (prev ? { ...prev, prep: items } : prev));
+    await setPrepPlan(user.uid, items);
+  }
+  function addToPrep(r: Recipe) {
+    if (prep.some((p) => p.recipeId === r.id)) return;
+    void savePrep([...prep, { recipeId: r.id, done: false }]);
+  }
+  function togglePrepDone(recipeId: string) {
+    void savePrep(prep.map((p) => (p.recipeId === recipeId ? { ...p, done: !p.done } : p)));
+  }
+  function removeFromPrep(recipeId: string) {
+    void savePrep(prep.filter((p) => p.recipeId !== recipeId));
+  }
+  async function prepIngredientsToShopping() {
+    if (!user || !all) return;
+    // Total grams needed per food across the pending prep recipes.
+    const need = new Map<string, { name: string; unit: "g" | "ml"; grams: number }>();
+    for (const row of prepPending) {
+      for (const e of row.recipe.items) {
+        const cur = need.get(e.foodId) ?? { name: e.name, unit: e.unit, grams: 0 };
+        cur.grams += e.quantity * e.servingGrams;
+        need.set(e.foodId, cur);
+      }
+    }
+    // Skip foods already waiting on the list.
+    const listed = new Set(all.shopping.filter((s) => !s.purchased && s.foodId).map((s) => s.foodId as string));
+    const toAdd = [...need.entries()].filter(([foodId]) => !listed.has(foodId));
+    for (const [foodId, v] of toAdd) {
+      const food = foodMap.get(foodId);
+      await createShoppingItem(user.uid, { foodId, name: food?.name ?? v.name, unit: v.unit, quantity: Math.round(v.grams), estCost: null, sortOrder: all.shopping.length });
+    }
+    setShoppingAdded(true);
+    await load({ quiet: true });
+  }
   function dropOn(targetId: string) {
     if (!canReorder || !dragId || dragId === targetId) { setDragId(null); return; }
     const ids = visible.map((r) => r.id);
@@ -184,6 +232,38 @@ export default function RecipesPage() {
         )}
       </div>
 
+      {/* Meal-prep plan */}
+      {prepRows.length > 0 && (
+        <Card className="overflow-hidden border-border/40">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 bg-muted/20 px-4 py-3">
+            <p className="flex items-center gap-2 font-semibold"><ChefHat className="h-4 w-4 text-primary" /> Meal prep plan</p>
+            <p className="flex items-center gap-1.5 text-xs tabular-nums text-muted-foreground">
+              <Clock className="h-3.5 w-3.5" />
+              {prepPending.length} to cook{prepMinutes > 0 && <> · ~{Math.floor(prepMinutes / 60) > 0 ? `${Math.floor(prepMinutes / 60)}h ` : ""}{prepMinutes % 60}m total</>}
+            </p>
+          </div>
+          <div className="divide-y divide-border/40">
+            {prepRows.map((p) => (
+              <div key={p.recipeId} className="flex items-center gap-3 px-4 py-2.5">
+                <button type="button" onClick={() => togglePrepDone(p.recipeId)} aria-label={p.done ? "Mark not cooked" : "Mark cooked"} className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition", p.done ? "border-emerald-500 bg-emerald-500 text-white" : "border-border hover:border-primary")}>
+                  {p.done && <Check className="h-3.5 w-3.5" />}
+                </button>
+                <span className={cn("min-w-0 flex-1 truncate text-sm", p.done && "text-muted-foreground line-through")}>{p.recipe.name}</span>
+                {p.recipe.prepMinutes != null && <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{p.recipe.prepMinutes} min</span>}
+                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{p.recipe.items.length} ingredient{p.recipe.items.length === 1 ? "" : "s"}</span>
+                <button type="button" onClick={() => removeFromPrep(p.recipeId)} className="shrink-0 p-1 text-muted-foreground hover:text-rose-500" aria-label="Remove from prep"><X className="h-4 w-4" /></button>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 border-t border-border/40 px-4 py-2.5">
+            <Button size="sm" variant="outline" onClick={prepIngredientsToShopping} disabled={shoppingAdded || prepPending.length === 0}>
+              <ShoppingCart className="h-3.5 w-3.5" /> {shoppingAdded ? "Added to shopping" : "Add ingredients to shopping"}
+            </Button>
+            <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => void savePrep([])}>Clear plan</Button>
+          </div>
+        </Card>
+      )}
+
       {loading ? (
         <div className="grid gap-3 sm:grid-cols-2"><SkeletonCard lines={2} /><SkeletonCard lines={2} /></div>
       ) : visible.length === 0 ? (
@@ -229,6 +309,7 @@ export default function RecipesPage() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => setEditor({ open: true, recipe: r, kind: r.kind })}><Pencil className="h-4 w-4" /> Edit</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => duplicate(r)}><Copy className="h-4 w-4" /> Duplicate</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => addToPrep(r)} disabled={prep.some((p) => p.recipeId === r.id)}><ChefHat className="h-4 w-4" /> {prep.some((p) => p.recipeId === r.id) ? "In prep plan" : "Add to prep plan"}</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => toggleArchive(r)}>{r.archived ? <><ArchiveRestore className="h-4 w-4" /> Unarchive</> : <><Archive className="h-4 w-4" /> Archive</>}</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => remove(r)} className="text-destructive focus:text-destructive"><Trash2 className="h-4 w-4" /> Delete</DropdownMenuItem>
                         </DropdownMenuContent>

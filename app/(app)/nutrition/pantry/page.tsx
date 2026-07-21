@@ -2,11 +2,11 @@
 
 import { SkeletonCard } from "@/components/ui/skeleton";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Package, Wallet, TriangleAlert, Clock, MoreVertical, Pencil, Trash2, ShoppingCart, Check } from "lucide-react";
+import { Plus, Package, Wallet, TriangleAlert, Clock, MoreVertical, Pencil, Trash2, ShoppingCart, Check, ChefHat, CalendarPlus } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
-import { getNutritionAll, getBudget, createShoppingItem, deletePantryItem, reorderPantry, type NutritionAll } from "@/lib/firebase/db";
+import { getNutritionAll, getBudget, createShoppingItem, deletePantryItem, reorderPantry, createNutritionMeal, type NutritionAll } from "@/lib/firebase/db";
 import { resolveCurrency, formatAmount, type Currency } from "@/lib/currency";
-import { toFoodMap, pantryItemValue, pantryValue, stockStatus, expiryStatus, daysBetween } from "@/lib/food";
+import { toFoodMap, pantryItemValue, pantryValue, stockStatus, expiryStatus, daysBetween, genId } from "@/lib/food";
 import { toDateKey } from "@/lib/greeting";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -65,6 +65,31 @@ export default function PantryPage() {
   const lowItems = useMemo(() => pantry.filter((p) => stockStatus(p) !== "ok"), [pantry]);
   const expiringItems = useMemo(() => pantry.filter((p) => { const e = expiryStatus(p, today); return e === "soon" || e === "expired"; }), [pantry, today]);
   const canReorder = sort === "custom";
+
+  // Recipes that use up what's expiring — waste less, decide less.
+  const useUp = useMemo(() => {
+    const urgent = new Set(expiringItems.filter((p) => p.quantityRemaining > 0 && p.foodId).map((p) => p.foodId as string));
+    if (urgent.size === 0) return [];
+    return (all?.recipes ?? [])
+      .filter((r) => !r.archived && r.items.some((e) => urgent.has(e.foodId)))
+      .map((r) => ({ recipe: r, uses: [...new Set(r.items.filter((e) => urgent.has(e.foodId)).map((e) => foodMap.get(e.foodId)?.name ?? e.name))] }))
+      .sort((a, b) => b.uses.length - a.uses.length)
+      .slice(0, 4);
+  }, [all, expiringItems, foodMap]);
+  const [loggedUseUp, setLoggedUseUp] = useState<Set<string>>(new Set());
+
+  async function logUseUp(recipeId: string) {
+    if (!user || !all) return;
+    const r = all.recipes.find((x) => x.id === recipeId);
+    if (!r) return;
+    setLoggedUseUp((s) => new Set(s).add(recipeId));
+    await createNutritionMeal(user.uid, today, {
+      name: r.name, icon: "🥘", color: null, time: null, notes: null,
+      items: r.items.map((e, i) => ({ ...e, id: genId(), sortOrder: i })),
+      calories: null, protein: null, carbs: null, fat: null, cost: null,
+    });
+    await load({ quiet: true });
+  }
 
   async function addToShopping(item: PantryItem) {
     if (!user) return;
@@ -127,6 +152,25 @@ export default function PantryPage() {
                 </AlertCard>
               )}
             </div>
+          )}
+
+          {useUp.length > 0 && (
+            <Card className="overflow-hidden">
+              <div className="flex items-center gap-1.5 border-b bg-muted/30 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><ChefHat className="h-3.5 w-3.5" /> Use them up — recipes with your expiring food</div>
+              <div className="divide-y">
+                {useUp.map(({ recipe, uses }) => (
+                  <div key={recipe.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+                    <span className="min-w-0 flex-1 truncate">
+                      {recipe.name}
+                      <span className="ml-1.5 text-xs text-muted-foreground">uses {uses.join(", ")}</span>
+                    </span>
+                    <Button variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-xs text-muted-foreground" onClick={() => logUseUp(recipe.id)} disabled={loggedUseUp.has(recipe.id)}>
+                      {loggedUseUp.has(recipe.id) ? <><Check className="h-3.5 w-3.5" /> Logged</> : <><CalendarPlus className="h-3.5 w-3.5" /> Log today</>}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </Card>
           )}
 
           <div className="flex items-center justify-between">

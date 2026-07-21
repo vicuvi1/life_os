@@ -430,6 +430,12 @@ export interface PantryItem {
   createdAt: number;
 }
 
+/** One recipe queued for a meal-prep session (stored on a singleton prep doc). */
+export interface PrepItem {
+  recipeId: string;
+  done: boolean;
+}
+
 /** One line on the shopping list. May reference a food or be a free-text item. */
 export interface ShoppingItem {
   id: string;

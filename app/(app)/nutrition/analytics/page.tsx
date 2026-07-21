@@ -6,7 +6,7 @@ import { Flame, Beef, GlassWater, Wallet, Utensils, HeartPulse, TrendingUp, Rota
 import { useAuth } from "@/components/auth-provider";
 import { getNutritionAll, getBudget, getPrefs, upsertPrefs, type NutritionAll } from "@/lib/firebase/db";
 import { resolveCurrency, formatAmount, type Currency } from "@/lib/currency";
-import { toFoodMap, mealTotals, entryMacros } from "@/lib/food";
+import { toFoodMap, mealTotals, dayTotals, entryMacros } from "@/lib/food";
 import { healthScore, healthMeta, DEFAULT_WATER_TARGET, DEFAULT_PROTEIN_TARGET } from "@/lib/nutrition";
 import { toDateKey } from "@/lib/greeting";
 import { addDays } from "@/lib/habits";
@@ -25,6 +25,7 @@ export default function NutritionAnalyticsPage() {
   const [all, setAll] = useState<NutritionAll | null>(null);
   const [currency, setCurrency] = useState<Currency | null>(null);
   const [proteinTarget, setProteinTarget] = useState(DEFAULT_PROTEIN_TARGET);
+  const [calorieTarget, setCalorieTarget] = useState(2000);
   const [weeklyBudget, setWeeklyBudget] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState(30);
@@ -40,6 +41,7 @@ export default function NutritionAnalyticsPage() {
       setAll(data);
       setCurrency(resolveCurrency(budget));
       setProteinTarget(prefs.proteinTarget ?? DEFAULT_PROTEIN_TARGET);
+      setCalorieTarget(prefs.calorieTarget ?? 2000);
       setWeeklyBudget(prefs.foodBudgetWeekly ?? null);
     } finally { setLoading(false); }
   }, [user]);
@@ -102,6 +104,34 @@ export default function NutritionAnalyticsPage() {
   // Budget
   const weekStart = startOfWeekKey(today);
   const weekSpend = useMemo(() => (all?.meals ?? []).filter((m) => m.date >= weekStart && m.date <= today).reduce((s, m) => s + mealTotals(m, foodMap).cost, 0), [all, weekStart, today, foodMap]);
+
+  // This-week summary: totals vs (pro-rated) targets + best / needs-work days.
+  const weekly = useMemo(() => {
+    const keys: string[] = [];
+    for (let k = weekStart; k <= today; k = addDays(k, 1)) keys.push(k);
+    const days = keys.map((k) => {
+      const dm = (all?.meals ?? []).filter((m) => m.date === k);
+      const t = dayTotals(dm, foodMap);
+      const log = logByDate.get(k);
+      const water = log?.water ?? 0;
+      const wt = log?.waterTarget ?? DEFAULT_WATER_TARGET;
+      return { key: k, ...t, water, wt, mealCount: dm.length, hs: healthScore({ water, waterTarget: wt, mealCount: dm.length, protein: t.protein, proteinTarget }) };
+    });
+    const sum = (f: (d: (typeof days)[number]) => number) => Math.round(days.reduce((s, d) => s + f(d), 0) * 10) / 10;
+    const active = days.filter((d) => d.mealCount > 0 || d.water > 0);
+    const best = active.length ? active.reduce((a, b) => (b.hs > a.hs ? b : a)) : null;
+    const worst = active.length > 1 ? active.reduce((a, b) => (b.hs < a.hs ? b : a)) : null;
+    return {
+      n: days.length,
+      calories: Math.round(sum((d) => d.calories)),
+      protein: Math.round(sum((d) => d.protein)),
+      water: sum((d) => d.water),
+      waterTargetSum: sum((d) => d.wt),
+      cost: Math.round(sum((d) => d.cost) * 100) / 100,
+      best, worst,
+    };
+  }, [all, weekStart, today, foodMap, logByDate, proteinTarget]);
+  const dayName = (k: string) => new Date(`${k}T00:00:00`).toLocaleDateString("en-US", { weekday: "long" });
   const thisMonth = today.slice(0, 7);
   const monthSpend = useMemo(() => (all?.meals ?? []).filter((m) => m.date.slice(0, 7) === thisMonth).reduce((s, m) => s + mealTotals(m, foodMap).cost, 0), [all, thisMonth, foodMap]);
 
@@ -195,6 +225,25 @@ export default function NutritionAnalyticsPage() {
             </div>
           </div>
 
+          {/* This week vs targets */}
+          <Card className="overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-4 py-2.5">
+              <p className="text-sm font-semibold">This week <span className="font-normal text-muted-foreground">· {weekly.n} day{weekly.n > 1 ? "s" : ""} so far</span></p>
+              {(weekly.best || weekly.worst) && (
+                <p className="flex flex-wrap items-center gap-2 text-xs">
+                  {weekly.best && <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 font-medium text-emerald-600 dark:text-emerald-400">Best: {dayName(weekly.best.key)} ({weekly.best.hs})</span>}
+                  {weekly.worst && weekly.worst.key !== weekly.best?.key && <span className="rounded-full bg-amber-500/10 px-2 py-0.5 font-medium text-amber-600 dark:text-amber-400">Needs work: {dayName(weekly.worst.key)} ({weekly.worst.hs})</span>}
+                </p>
+              )}
+            </div>
+            <div className="grid grid-cols-2 divide-x divide-border/40 sm:grid-cols-4">
+              <WeekTotal label="Calories" value={fmtNum(weekly.calories)} target={`${fmtNum(calorieTarget * weekly.n)}`} ok={weekly.calories <= calorieTarget * weekly.n * 1.05} />
+              <WeekTotal label="Protein" value={`${fmtNum(weekly.protein)}g`} target={`${fmtNum(proteinTarget * weekly.n)}g`} ok={weekly.protein >= proteinTarget * weekly.n * 0.9} />
+              <WeekTotal label="Water" value={String(weekly.water)} target={String(weekly.waterTargetSum)} ok={weekly.water >= weekly.waterTargetSum * 0.9} />
+              <WeekTotal label="Spending" value={formatAmount(weekly.cost, cur)} target={weeklyBudget ? formatAmount(weeklyBudget, cur) : "—"} ok={!weeklyBudget || weekly.cost <= weeklyBudget} />
+            </div>
+          </Card>
+
           {/* Charts */}
           <div className="grid gap-3 sm:grid-cols-2">
             <ChartCard title="Daily calories" range={`${rangeStart} → today`}><MiniBars data={perDay.map((d) => ({ key: d.key, value: d.calories }))} barClass="bg-primary" /></ChartCard>
@@ -209,6 +258,18 @@ export default function NutritionAnalyticsPage() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+const fmtNum = (n: number) => n.toLocaleString("en-US");
+
+function WeekTotal({ label, value, target, ok }: { label: string; value: string; target: string; ok: boolean }) {
+  return (
+    <div className="px-4 py-3">
+      <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">{label} <span className={cn("text-xs", ok ? "text-emerald-500" : "text-amber-500")}>{ok ? "✓" : "⚠️"}</span></p>
+      <p className="mt-0.5 text-lg font-bold tabular-nums leading-tight">{value}</p>
+      <p className="text-[11px] tabular-nums text-muted-foreground">of {target}</p>
     </div>
   );
 }

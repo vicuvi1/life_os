@@ -53,6 +53,7 @@ import {
   type PantryItem,
   type ShoppingItem,
   type Recipe,
+  type PrepItem,
   type Outfit,
   type PackingList,
   type Project,
@@ -965,7 +966,7 @@ export async function getNutritionLogs(
   );
   const snap = await getDocs(q);
   return snap.docs
-    .filter((d) => { const t = d.data().docType; return t !== "meal" && t !== "food"; }) // per-day logs only
+    .filter((d) => !d.data().docType) // per-day logs are the only docs WITHOUT a docType
     .map(mapNutritionLog)
     .sort((a, b) => (a.date < b.date ? 1 : -1));
 }
@@ -1444,6 +1445,22 @@ export async function reorderRecipes(ids: string[]): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Meal-prep plan — one singleton doc (docType "prep", id `${userId}_prep`)
+// ---------------------------------------------------------------------------
+function mapPrepItems(d: DocumentData): PrepItem[] {
+  if (!Array.isArray(d.items)) return [];
+  return (d.items as Record<string, unknown>[])
+    .filter((i) => typeof i.recipeId === "string")
+    .map((i) => ({ recipeId: i.recipeId as string, done: i.done === true }));
+}
+
+/** Replace the prep plan (merge-write; no read needed, so no rules pitfall). */
+export async function setPrepPlan(userId: string, items: PrepItem[]): Promise<void> {
+  const ref = doc(db, COLLECTIONS.nutritionLogs, `${userId}_prep`);
+  await setDoc(ref, { userId, docType: "prep", items }, { merge: true });
+}
+
+// ---------------------------------------------------------------------------
 // One-shot loader for cross-feature pages (analytics, shopping-from-pantry)
 // ---------------------------------------------------------------------------
 export interface NutritionAll {
@@ -1453,12 +1470,13 @@ export interface NutritionAll {
   pantry: PantryItem[];
   shopping: ShoppingItem[];
   recipes: Recipe[];
+  prep: PrepItem[];
 }
 
 /** Load the entire nutrition dataset in a single query (all docTypes at once). */
 export async function getNutritionAll(userId: string): Promise<NutritionAll> {
   const snap = await getDocs(query(collection(db, COLLECTIONS.nutritionLogs), where("userId", "==", userId)));
-  const all: NutritionAll = { logs: [], meals: [], foods: [], pantry: [], shopping: [], recipes: [] };
+  const all: NutritionAll = { logs: [], meals: [], foods: [], pantry: [], shopping: [], recipes: [], prep: [] };
   for (const ds of snap.docs) {
     const t = ds.data().docType;
     if (t === "meal") all.meals.push(mapNutritionMeal(ds));
@@ -1466,7 +1484,8 @@ export async function getNutritionAll(userId: string): Promise<NutritionAll> {
     else if (t === "pantry") all.pantry.push(mapPantry(ds));
     else if (t === "shopping") all.shopping.push(mapShopping(ds));
     else if (t === "recipe") all.recipes.push(mapRecipe(ds));
-    else all.logs.push(mapNutritionLog(ds));
+    else if (t === "prep") all.prep = mapPrepItems(ds.data());
+    else if (!t) all.logs.push(mapNutritionLog(ds));
   }
   all.meals.sort((a, b) => (a.date < b.date ? 1 : -1) || a.sortOrder - b.sortOrder);
   all.foods.sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt);

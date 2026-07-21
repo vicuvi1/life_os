@@ -21,7 +21,18 @@ import { FoodPicker } from "@/components/nutrition/food-picker";
 import { cn } from "@/lib/utils";
 import type { ShoppingItem, FoodItem } from "@/lib/types";
 
-type Sort = "custom" | "name" | "cost" | "todo";
+type Sort = "custom" | "name" | "cost" | "todo" | "aisle";
+
+/** Store sections, derived from each item's food category. */
+const AISLES: { label: string; cats: string[] }[] = [
+  { label: "🥬 Produce", cats: ["Vegetables", "Fruit"] },
+  { label: "🥩 Meat & Protein", cats: ["Protein"] },
+  { label: "🥛 Dairy", cats: ["Dairy"] },
+  { label: "🌾 Grains & Pantry", cats: ["Grains", "Condiments", "Fats & Oils", "Nuts & Seeds", "Supplements"] },
+  { label: "🍿 Snacks & Drinks", cats: ["Snacks", "Drinks"] },
+  { label: "🍱 Prepared", cats: ["Prepared"] },
+  { label: "🛒 Other", cats: [] },
+];
 
 export default function ShoppingPage() {
   const { user } = useAuth();
@@ -67,6 +78,17 @@ export default function ShoppingPage() {
   const remainingCost = useMemo(() => shoppingCost(items, foodMap, { unpurchasedOnly: true }), [items, foodMap]);
   const purchased = items.filter((i) => i.purchased);
   const canReorder = sort === "custom";
+
+  // Aisle groups (only in "aisle" mode): section label → its items.
+  const aisleGroups = useMemo(() => {
+    if (sort !== "aisle") return null;
+    const of = (i: ShoppingItem) => {
+      const cat = foodMap.get(i.foodId ?? "")?.category;
+      const aisle = cat ? AISLES.find((a) => a.cats.includes(cat)) : undefined;
+      return aisle?.label ?? "🛒 Other";
+    };
+    return AISLES.map((a) => ({ label: a.label, items: sorted.filter((i) => of(i) === a.label) })).filter((g) => g.items.length > 0);
+  }, [sort, sorted, foodMap]);
 
   function setLocal(next: ShoppingItem[]) { setAll((prev) => (prev ? { ...prev, shopping: next } : prev)); }
   function patch(id: string, p: Partial<ShoppingItem>) { setLocal(items.map((i) => (i.id === id ? { ...i, ...p } : i))); }
@@ -164,6 +186,7 @@ export default function ShoppingPage() {
                   <SelectTrigger className="h-8 w-[150px] text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="custom">Custom order</SelectItem>
+                    <SelectItem value="aisle">By store aisle</SelectItem>
                     <SelectItem value="todo">To-buy first</SelectItem>
                     <SelectItem value="name">Name (A–Z)</SelectItem>
                     <SelectItem value="cost">Cost (high→low)</SelectItem>
@@ -172,44 +195,56 @@ export default function ShoppingPage() {
               </div>
 
               <Card className="divide-y overflow-hidden">
-                {sorted.map((item) => {
-                  const est = shoppingItemCost(item, foodMap.get(item.foodId ?? ""));
-                  return (
-                    <div
-                      key={item.id}
-                      draggable={canReorder}
-                      onDragStart={() => canReorder && setDragId(item.id)}
-                      onDragEnd={() => setDragId(null)}
-                      onDragOver={(e) => { if (canReorder && dragId) e.preventDefault(); }}
-                      onDrop={(e) => { e.preventDefault(); dropOn(item.id); }}
-                      className={cn("flex items-center gap-2 px-2.5 py-2", dragId === item.id && "opacity-40", item.purchased && "bg-muted/30")}
-                    >
-                      {canReorder && <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-muted-foreground/30" />}
-                      <Checkbox checked={item.purchased} onCheckedChange={() => togglePurchased(item)} aria-label="Purchased" />
-                      <input
-                        defaultValue={item.name}
-                        onBlur={(e) => commitField(item, "name", e.target.value)}
-                        className={cn("min-w-0 flex-1 bg-transparent text-sm outline-none", item.purchased && "text-muted-foreground line-through")}
-                      />
-                      <input
-                        type="number" min={0} defaultValue={item.quantity ?? ""}
-                        onBlur={(e) => commitField(item, "quantity", e.target.value)}
-                        placeholder="qty"
-                        className="w-14 rounded border bg-transparent px-1.5 py-1 text-right text-xs tabular-nums outline-none focus:border-primary"
-                      />
-                      <span className="w-6 shrink-0 text-xs text-muted-foreground">{item.unit ?? ""}</span>
-                      <div className="relative w-20 shrink-0">
-                        <input
-                          type="number" min={0} step="0.01" defaultValue={item.estCost ?? ""}
-                          onBlur={(e) => commitField(item, "estCost", e.target.value)}
-                          placeholder={est ? String(est) : "cost"}
-                          className="w-full rounded border bg-transparent px-1.5 py-1 text-right text-xs tabular-nums outline-none focus:border-primary"
-                        />
+                {(aisleGroups ?? [{ label: null as string | null, items: sorted }]).map((group) => (
+                  <div key={group.label ?? "_all"}>
+                    {group.label && (
+                      <div className="flex items-center justify-between bg-muted/30 px-2.5 py-1.5">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.label}</p>
+                        <p className="text-xs tabular-nums text-muted-foreground">{formatAmount(shoppingCost(group.items, foodMap, { unpurchasedOnly: true }), cur)}</p>
                       </div>
-                      <button type="button" onClick={() => remove(item)} className="shrink-0 p-1 text-muted-foreground hover:text-rose-500" aria-label="Remove"><X className="h-4 w-4" /></button>
+                    )}
+                    <div className="divide-y">
+                      {group.items.map((item) => {
+                        const est = shoppingItemCost(item, foodMap.get(item.foodId ?? ""));
+                        return (
+                          <div
+                            key={item.id}
+                            draggable={canReorder}
+                            onDragStart={() => canReorder && setDragId(item.id)}
+                            onDragEnd={() => setDragId(null)}
+                            onDragOver={(e) => { if (canReorder && dragId) e.preventDefault(); }}
+                            onDrop={(e) => { e.preventDefault(); dropOn(item.id); }}
+                            className={cn("flex items-center gap-2 px-2.5 py-2", dragId === item.id && "opacity-40", item.purchased && "bg-muted/30")}
+                          >
+                            {canReorder && <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-muted-foreground/30" />}
+                            <Checkbox checked={item.purchased} onCheckedChange={() => togglePurchased(item)} aria-label="Purchased" />
+                            <input
+                              defaultValue={item.name}
+                              onBlur={(e) => commitField(item, "name", e.target.value)}
+                              className={cn("min-w-0 flex-1 bg-transparent text-sm outline-none", item.purchased && "text-muted-foreground line-through")}
+                            />
+                            <input
+                              type="number" min={0} defaultValue={item.quantity ?? ""}
+                              onBlur={(e) => commitField(item, "quantity", e.target.value)}
+                              placeholder="qty"
+                              className="w-14 rounded border bg-transparent px-1.5 py-1 text-right text-xs tabular-nums outline-none focus:border-primary"
+                            />
+                            <span className="w-6 shrink-0 text-xs text-muted-foreground">{item.unit ?? ""}</span>
+                            <div className="relative w-20 shrink-0">
+                              <input
+                                type="number" min={0} step="0.01" defaultValue={item.estCost ?? ""}
+                                onBlur={(e) => commitField(item, "estCost", e.target.value)}
+                                placeholder={est ? String(est) : "cost"}
+                                className="w-full rounded border bg-transparent px-1.5 py-1 text-right text-xs tabular-nums outline-none focus:border-primary"
+                              />
+                            </div>
+                            <button type="button" onClick={() => remove(item)} className="shrink-0 p-1 text-muted-foreground hover:text-rose-500" aria-label="Remove"><X className="h-4 w-4" /></button>
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </Card>
 
               {purchased.length > 0 && (
