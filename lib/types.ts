@@ -27,6 +27,9 @@ export type HabitCategory =
 /** How completing a habit is measured. */
 export type HabitTargetType = "check" | "count" | "duration";
 
+/** Relative effort of a habit; weights the difficulty-adjusted score. */
+export type HabitDifficulty = "easy" | "medium" | "hard" | "expert";
+
 /** How a goal's progress is measured. */
 export type GoalProgressType = "percent" | "count" | "manual";
 
@@ -132,6 +135,10 @@ export interface Habit {
   targetType: HabitTargetType;
   /** For count/duration habits: the daily target (glasses, minutes, …). */
   targetValue: number | null;
+  /** Effort level; defaults to "medium". Weights the difficulty-adjusted score. */
+  difficulty: HabitDifficulty;
+  /** Archived habits are hidden from the tracker but keep their full history. */
+  archived: boolean;
   streak: number;
   bestStreak: number;
   lastCompleted: string | null; // YYYY-MM-DD
@@ -145,6 +152,8 @@ export interface HabitLog {
   completedDate: string; // YYYY-MM-DD
   /** For count/duration habits: the amount logged that day. */
   value: number | null;
+  /** Optional freeform note for that day (e.g. "felt tired", "80kg bench"). */
+  note: string | null;
   createdAt: number;
 }
 

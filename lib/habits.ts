@@ -1,5 +1,5 @@
 import { toDateKey } from "@/lib/greeting";
-import type { Habit, HabitCategory, HabitLog } from "@/lib/types";
+import type { Habit, HabitCategory, HabitDifficulty, HabitLog } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Categories & colors
@@ -33,6 +33,24 @@ export const HABIT_COLORS: { name: string; value: string }[] = [
 ];
 
 export const DEFAULT_HABIT_COLOR = HABIT_COLORS[0].value;
+
+// ---------------------------------------------------------------------------
+// Difficulty
+// ---------------------------------------------------------------------------
+export const DIFFICULTIES: HabitDifficulty[] = ["easy", "medium", "hard", "expert"];
+
+/** Label, points weight, and a color for each difficulty. */
+export const DIFFICULTY_META: Record<HabitDifficulty, { label: string; weight: number; color: string }> = {
+  easy: { label: "Easy", weight: 1, color: "#10b981" },
+  medium: { label: "Medium", weight: 2, color: "#3b82f6" },
+  hard: { label: "Hard", weight: 3, color: "#f59e0b" },
+  expert: { label: "Expert", weight: 4, color: "#f43f5e" },
+};
+
+/** Difficulty-weighted points for N completions of a habit. */
+export function difficultyPoints(difficulty: HabitDifficulty, completions: number): number {
+  return (DIFFICULTY_META[difficulty]?.weight ?? 2) * completions;
+}
 
 // ---------------------------------------------------------------------------
 // Completion semantics
@@ -113,6 +131,59 @@ export function longestStreak(dateList: string[]): number {
     best = Math.max(best, count);
   }
   return best;
+}
+
+// Frequency-aware streaks: daily habits count consecutive days; weekly habits
+// count consecutive ISO-ish weeks (Monday-anchored), so a habit kept once a week
+// still builds a streak.
+function weekAnchor(dateKey: string): string {
+  const d = new Date(dateKey + "T00:00:00");
+  return addDays(dateKey, -((d.getDay() + 6) % 7)); // Monday of that week
+}
+function weeklyCurrentStreak(dates: string[], today: string): number {
+  const weeks = new Set(dates.map(weekAnchor));
+  const thisWeek = weekAnchor(today);
+  let cur: string;
+  if (weeks.has(thisWeek)) cur = thisWeek;
+  else if (weeks.has(addDays(thisWeek, -7))) cur = addDays(thisWeek, -7);
+  else return 0;
+  let count = 0;
+  while (weeks.has(cur)) {
+    count++;
+    cur = addDays(cur, -7);
+  }
+  return count;
+}
+function weeklyLongestStreak(dates: string[]): number {
+  const weeks = new Set(dates.map(weekAnchor));
+  let best = 0;
+  for (const w of Array.from(weeks)) {
+    if (weeks.has(addDays(w, -7))) continue; // not a run start
+    let count = 0;
+    let cur = w;
+    while (weeks.has(cur)) {
+      count++;
+      cur = addDays(cur, 7);
+    }
+    best = Math.max(best, count);
+  }
+  return best;
+}
+
+/** Current streak honoring the habit's cadence (days for daily, weeks for weekly). */
+export function habitCurrentStreak(
+  habit: Pick<Habit, "frequency">,
+  dates: string[],
+  today: string
+): number {
+  return (habit.frequency ?? "daily") === "weekly"
+    ? weeklyCurrentStreak(dates, today)
+    : currentStreak(new Set(dates), today);
+}
+
+/** Longest streak honoring the habit's cadence. */
+export function habitLongestStreak(habit: Pick<Habit, "frequency">, dates: string[]): number {
+  return (habit.frequency ?? "daily") === "weekly" ? weeklyLongestStreak(dates) : longestStreak(dates);
 }
 
 export interface HabitState {

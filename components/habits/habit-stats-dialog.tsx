@@ -14,6 +14,8 @@ import {
   addDays,
   dayStatus,
   tallyStatuses,
+  difficultyPoints,
+  DIFFICULTY_META,
   DEFAULT_HABIT_COLOR,
 } from "@/lib/habits";
 import { toDateKey } from "@/lib/greeting";
@@ -80,10 +82,16 @@ export function HabitStatsDialog({ open, onOpenChange, habit, logs }: Props) {
       successPct: tally.rate,
       missedPct: tally.scheduled > 0 ? (tally.missed / tally.scheduled) * 100 : 0,
       totalCompletions: done.length,
+      points: difficultyPoints(habit.difficulty, done.length),
       byWeekday,
       byMonth: Array.from(byMonth.entries()),
     };
   }, [habit, logs]);
+
+  const notes = useMemo(
+    () => logs.filter((l) => l.note).sort((a, b) => (a.completedDate < b.completedDate ? 1 : -1)).slice(0, 6),
+    [logs]
+  );
 
   const color = habit?.color ?? DEFAULT_HABIT_COLOR;
   const maxWd = stats ? Math.max(1, ...stats.byWeekday) : 1;
@@ -109,6 +117,30 @@ export function HabitStatsDialog({ open, onOpenChange, habit, logs }: Props) {
               <Metric label="Missed" value={`${Math.round(stats.missedPct)}%`} tone="bad" />
               <Metric label="Completions" value={stats.totalCompletions.toLocaleString()} />
             </div>
+
+            {habit && (
+              <div className="flex items-center justify-between rounded-lg border bg-background/60 p-2.5 text-sm">
+                <span className="flex items-center gap-2 text-muted-foreground">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: DIFFICULTY_META[habit.difficulty].color }} />
+                  {DIFFICULTY_META[habit.difficulty].label} difficulty
+                </span>
+                <span className="font-semibold tabular-nums">{stats.points.toLocaleString()} pts</span>
+              </div>
+            )}
+
+            {notes.length > 0 && (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recent notes</p>
+                <ul className="space-y-1.5">
+                  {notes.map((n) => (
+                    <li key={n.id} className="flex gap-2 text-sm">
+                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{n.completedDate.slice(5)}</span>
+                      <span className="min-w-0 flex-1">{n.note}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">By weekday</p>

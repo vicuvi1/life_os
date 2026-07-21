@@ -718,6 +718,7 @@ export default function DashboardPage() {
           userId: user.uid,
           completedDate: today,
           value: habit.targetType !== "check" ? habit.targetValue : null,
+          note: null,
           createdAt: Date.now(),
         });
       }
@@ -746,6 +747,7 @@ export default function DashboardPage() {
           userId: user.uid,
           completedDate: today,
           value,
+          note: null,
           createdAt: Date.now(),
         });
       }

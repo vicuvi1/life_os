@@ -27,12 +27,15 @@ import {
   HABIT_CATEGORY_LABEL,
   HABIT_COLORS,
   DEFAULT_HABIT_COLOR,
+  DIFFICULTIES,
+  DIFFICULTY_META,
 } from "@/lib/habits";
 import { NumberField } from "@/components/ui/number-field";
 import { cn } from "@/lib/utils";
 import type {
   Habit,
   HabitCategory,
+  HabitDifficulty,
   HabitFrequency,
   HabitTargetType,
 } from "@/lib/types";
@@ -71,6 +74,7 @@ export function HabitFormDialog({
   const [color, setColor] = useState(DEFAULT_HABIT_COLOR);
   const [targetType, setTargetType] = useState<HabitTargetType>("check");
   const [targetValue, setTargetValue] = useState<number | null>(null);
+  const [difficulty, setDifficulty] = useState<HabitDifficulty>("medium");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -86,6 +90,7 @@ export function HabitFormDialog({
     setColor(habit?.color ?? DEFAULT_HABIT_COLOR);
     setTargetType(habit?.targetType ?? "check");
     setTargetValue(habit?.targetValue ?? null);
+    setDifficulty(habit?.difficulty ?? "medium");
     setError(null);
   }, [open, habit]);
 
@@ -122,6 +127,8 @@ export function HabitFormDialog({
       color,
       targetType,
       targetValue: targetType === "check" ? null : targetValue,
+      difficulty,
+      archived: habit?.archived ?? false,
     };
     try {
       if (isEdit && habit) {
@@ -290,6 +297,26 @@ export function HabitFormDialog({
                 />
               </div>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Difficulty</Label>
+            <div className="flex gap-2">
+              {DIFFICULTIES.map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setDifficulty(d)}
+                  className={cn(
+                    "flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition",
+                    difficulty === d ? "text-white" : "text-muted-foreground hover:bg-accent"
+                  )}
+                  style={difficulty === d ? { backgroundColor: DIFFICULTY_META[d].color, borderColor: DIFFICULTY_META[d].color } : undefined}
+                >
+                  {DIFFICULTY_META[d].label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="space-y-2">

@@ -49,7 +49,7 @@ import {
   type UserPrefs,
   type WeeklyReview,
 } from "@/lib/types";
-import { currentStreak, longestStreak, isLogDone } from "@/lib/habits";
+import { habitCurrentStreak, habitLongestStreak, isLogDone } from "@/lib/habits";
 import { toDateKey } from "@/lib/greeting";
 
 /** Convert a Firestore Timestamp (or null during pending writes) to epoch ms. */
@@ -131,6 +131,9 @@ function mapHabit(snap: QueryDocumentSnapshot<DocumentData>): Habit {
     color: d.color ?? null,
     targetType: d.targetType ?? "check",
     targetValue: d.targetValue ?? null,
+    difficulty:
+      d.difficulty === "easy" || d.difficulty === "hard" || d.difficulty === "expert" ? d.difficulty : "medium",
+    archived: d.archived === true,
     streak: d.streak ?? 0,
     bestStreak: d.bestStreak ?? 0,
     lastCompleted: d.lastCompleted ?? null,
@@ -407,6 +410,7 @@ function mapHabitLog(snap: QueryDocumentSnapshot<DocumentData>): HabitLog {
     userId: d.userId,
     completedDate: d.completedDate,
     value: d.value ?? null,
+    note: d.note ?? null,
     createdAt: toMillis(d.createdAt),
   };
 }
@@ -446,6 +450,8 @@ export type HabitInput = Pick<
   | "color"
   | "targetType"
   | "targetValue"
+  | "difficulty"
+  | "archived"
 >;
 
 export async function createHabit(
@@ -456,12 +462,37 @@ export async function createHabit(
     userId,
     ...input,
     tags: input.tags ?? [],
+    difficulty: input.difficulty ?? "medium",
+    archived: input.archived ?? false,
     streak: 0,
     bestStreak: 0,
     lastCompleted: null,
     createdAt: serverTimestamp(),
   });
   return ref.id;
+}
+
+/** Set/clear a freeform note on a day's log (creates the log if needed). */
+export async function setHabitLogNote(
+  userId: string,
+  habitId: string,
+  date: string,
+  note: string | null
+): Promise<void> {
+  const logRef = doc(db, COLLECTIONS.habitLogs, `${habitId}_${date}`);
+  const existing = await getDoc(logRef);
+  if (!existing.exists() && !note) return; // nothing to do
+  await setDoc(
+    logRef,
+    {
+      userId,
+      habitId,
+      completedDate: date,
+      note: note || null,
+      ...(existing.exists() ? {} : { value: null, createdAt: serverTimestamp() }),
+    },
+    { merge: true }
+  );
 }
 
 export async function updateHabit(
@@ -493,6 +524,7 @@ async function recomputeHabitStreaks(habitId: string): Promise<void> {
   const habit = {
     targetType: habitSnap.data().targetType ?? "check",
     targetValue: habitSnap.data().targetValue ?? null,
+    frequency: habitSnap.data().frequency ?? "daily",
   };
 
   const snap = await getDocs(
@@ -502,8 +534,8 @@ async function recomputeHabitStreaks(habitId: string): Promise<void> {
     .filter((d) => isLogDone(habit, { value: d.data().value ?? null }))
     .map((d) => d.data().completedDate as string);
   const today = toDateKey(new Date());
-  const streak = currentStreak(new Set(dates), today);
-  const best = longestStreak(dates);
+  const streak = habitCurrentStreak(habit, dates, today);
+  const best = habitLongestStreak(habit, dates);
   const lastCompleted =
     dates.length > 0 ? dates.reduce((a, b) => (a > b ? a : b)) : null;
 

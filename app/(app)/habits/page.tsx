@@ -18,6 +18,10 @@ import {
   Pencil,
   Trash2,
   BarChart3,
+  Archive,
+  ArchiveRestore,
+  StickyNote,
+  LayoutTemplate,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -25,6 +29,7 @@ import {
   getHabitLogs,
   toggleHabitLog,
   createHabit,
+  updateHabit,
   deleteHabit,
 } from "@/lib/firebase/db";
 import {
@@ -33,14 +38,18 @@ import {
   lastNDays,
   addDays,
   doneDates,
-  currentStreak,
-  longestStreak,
+  isLogDone,
+  habitCurrentStreak,
+  habitLongestStreak,
   HABIT_CATEGORIES,
   HABIT_CATEGORY_LABEL,
   DEFAULT_HABIT_COLOR,
+  DIFFICULTY_META,
   type DayStatus,
 } from "@/lib/habits";
 import { HabitStatsDialog } from "@/components/habits/habit-stats-dialog";
+import { TemplatesDialog } from "@/components/habits/templates-dialog";
+import { NoteDialog } from "@/components/habits/note-dialog";
 import { toDateKey } from "@/lib/greeting";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -89,9 +98,12 @@ export default function HabitsPage() {
   const [deleting, setDeleting] = useState<Habit | null>(null);
   const [statsHabit, setStatsHabit] = useState<Habit | null>(null);
   const [quickName, setQuickName] = useState("");
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [noteTarget, setNoteTarget] = useState<{ habit: Habit; date: string } | null>(null);
 
-  const [anchorEnd, setAnchorEnd] = useState(toDateKey(new Date()));
+  const [windowOffset, setWindowOffset] = useState(0); // 0 = current window (ends today)
   const [showNumbers, setShowNumbers] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [filterCategory, setFilterCategory] = useState<"all" | HabitCategory>("all");
   const [search, setSearch] = useState("");
 
@@ -125,12 +137,18 @@ export default function HabitsPage() {
     return m;
   }, [logsByHabit]);
 
+  // Window end is derived from the LIVE today, so it never goes stale at midnight.
+  const anchorEnd = useMemo(() => addDays(today, -windowOffset * WINDOW), [today, windowOffset]);
   const keys = useMemo(() => lastNDays(anchorEnd, WINDOW), [anchorEnd]);
   const prevKeys = useMemo(() => lastNDays(addDays(keys[0], -1), WINDOW), [keys]);
+
+  const activeHabits = useMemo(() => habits.filter((h) => !h.archived), [habits]);
+  const archivedCount = habits.length - activeHabits.length;
 
   const filteredHabits = useMemo(() => {
     const q = search.trim().toLowerCase();
     return habits.filter((h) => {
+      if (!showArchived && h.archived) return false;
       if (filterCategory !== "all" && h.category !== filterCategory) return false;
       if (!q) return true;
       return (
@@ -139,7 +157,7 @@ export default function HabitsPage() {
         (h.description ?? "").toLowerCase().includes(q)
       );
     });
-  }, [habits, filterCategory, search]);
+  }, [habits, filterCategory, search, showArchived]);
 
   // Per-habit cells + tally for the current window.
   const grid = useMemo(() => {
@@ -156,27 +174,28 @@ export default function HabitsPage() {
   }, [filteredHabits, logMap, keys, today]);
 
   const allTally = useMemo(() => tallyStatuses(grid.flatMap((g) => g.cells.map((c) => c.status))), [grid]);
-  const prevRate = useMemo(() => {
+  const prevTally = useMemo(() => {
     const statuses: DayStatus[] = filteredHabits.flatMap((h) => {
       const createdKey = toDateKey(new Date(h.createdAt));
       const perDate = logMap.get(h.id) ?? new Map<string, HabitLog>();
       return prevKeys.map((k) => dayStatus(h, perDate.get(k), k, today, createdKey));
     });
-    return tallyStatuses(statuses).rate;
+    return tallyStatuses(statuses);
   }, [filteredHabits, logMap, prevKeys, today]);
+  const hasBaseline = prevTally.scheduled > 0;
 
   // Streaks computed live from logs (so toggling updates instantly, no refetch).
   const streaksByHabit = useMemo(() => {
     const m = new Map<string, { streak: number; best: number }>();
     for (const h of habits) {
       const done = doneDates(h, logsByHabit[h.id] ?? []);
-      m.set(h.id, { streak: currentStreak(new Set(done), today), best: longestStreak(done) });
+      m.set(h.id, { streak: habitCurrentStreak(h, done, today), best: habitLongestStreak(h, done) });
     }
     return m;
   }, [habits, logsByHabit, today]);
   const currentStreakMax = filteredHabits.reduce((m, h) => Math.max(m, streaksByHabit.get(h.id)?.streak ?? 0), 0);
   const bestStreakMax = filteredHabits.reduce((m, h) => Math.max(m, streaksByHabit.get(h.id)?.best ?? 0), 0);
-  const trend = allTally.rate - prevRate;
+  const trend = allTally.rate - prevTally.rate;
   const topStreak = useMemo(() => {
     let top: { habit: Habit; streak: number } | null = null;
     for (const h of filteredHabits) {
@@ -227,7 +246,19 @@ export default function HabitsPage() {
     return m;
   }, [filteredHabits, logMap, yearKeys, today]);
 
-  const doneToday = habits.filter((h) => (logMap.get(h.id)?.has(today) ?? false)).length;
+  const doneToday = activeHabits.filter((h) => {
+    const log = logMap.get(h.id)?.get(today);
+    return log ? isLogDone(h, log) : false;
+  }).length;
+
+  async function setArchived(habit: Habit, archived: boolean) {
+    setHabits((prev) => prev.map((h) => (h.id === habit.id ? { ...h, archived } : h)));
+    try {
+      await updateHabit(habit.id, { archived });
+    } catch {
+      await load();
+    }
+  }
 
   // Instant, flicker-free toggle: update local state synchronously and write to
   // Firestore in the background (idempotent deterministic doc id). No refetch —
@@ -238,7 +269,7 @@ export default function HabitsPage() {
     const fullValue = (habit.targetType ?? "check") !== "check" ? habit.targetValue : null;
     setLogsByHabit((prev) => {
       const logs = (prev[habit.id] ?? []).filter((l) => l.completedDate !== key);
-      if (done) logs.push({ id: `${habit.id}_${key}`, habitId: habit.id, userId: user.uid, completedDate: key, value: fullValue, createdAt: Date.now() });
+      if (done) logs.push({ id: `${habit.id}_${key}`, habitId: habit.id, userId: user.uid, completedDate: key, value: fullValue, note: null, createdAt: Date.now() });
       return { ...prev, [habit.id]: logs };
     });
     void toggleHabitLog(user.uid, habit.id, key, done, fullValue).catch(() => {
@@ -254,7 +285,7 @@ export default function HabitsPage() {
       await createHabit(user.uid, {
         title: name, description: null, emoji: null, tags: [],
         frequency: "daily", category: "morning", color: DEFAULT_HABIT_COLOR,
-        targetType: "check", targetValue: null,
+        targetType: "check", targetValue: null, difficulty: "medium", archived: false,
       });
       await load();
     } catch {
@@ -263,12 +294,10 @@ export default function HabitsPage() {
   }
 
   function shiftWindow(delta: number) {
-    setAnchorEnd((cur) => {
-      const next = addDays(cur, delta * WINDOW);
-      return next > today ? today : next;
-    });
+    // delta -1 = older window, +1 = newer; offset can't go below 0 (today).
+    setWindowOffset((o) => Math.max(0, o - delta));
   }
-  const atToday = anchorEnd >= today;
+  const atToday = windowOffset === 0;
 
   function openCreate() {
     setEditing(null);
@@ -282,7 +311,7 @@ export default function HabitsPage() {
         <div>
           <h1 className="text-2xl font-bold md:text-3xl">My Habits</h1>
           <p className="text-muted-foreground">
-            {habits.length > 0 ? `${doneToday}/${habits.length} done today — small daily actions, big life changes.` : "Small daily actions, big life changes."}
+            {activeHabits.length > 0 ? `${doneToday}/${activeHabits.length} done today — small daily actions, big life changes.` : "Small daily actions, big life changes."}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -296,9 +325,14 @@ export default function HabitsPage() {
             </Button>
           </div>
           {user && (
-            <Button onClick={openCreate}>
-              <Plus className="h-4 w-4" /> Add habit
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => setTemplatesOpen(true)}>
+                <LayoutTemplate className="h-4 w-4" /> Templates
+              </Button>
+              <Button onClick={openCreate}>
+                <Plus className="h-4 w-4" /> Add habit
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -341,11 +375,11 @@ export default function HabitsPage() {
             <Stat icon={Flame} tint="bg-orange-500/15 text-orange-500" label="Current streak" value={`${currentStreakMax} ${currentStreakMax === 1 ? "day" : "days"}`} sub={`Best ${bestStreakMax} days`} />
             <Stat icon={Award} tint="bg-amber-500/15 text-amber-500" label="Total completions" value={allTally.completed.toLocaleString()} sub="This period" />
             <Stat
-              icon={trend >= 0 ? TrendingUp : TrendingDown}
-              tint={trend >= 0 ? "bg-emerald-500/15 text-emerald-500" : "bg-rose-500/15 text-rose-500"}
+              icon={!hasBaseline ? TrendingUp : trend >= 0 ? TrendingUp : TrendingDown}
+              tint={!hasBaseline ? "bg-muted text-muted-foreground" : trend >= 0 ? "bg-emerald-500/15 text-emerald-500" : "bg-rose-500/15 text-rose-500"}
               label="Success trend"
-              value={`${trend >= 0 ? "+" : ""}${Math.round(trend)}%`}
-              sub="vs last 4 weeks"
+              value={hasBaseline ? `${trend >= 0 ? "+" : ""}${Math.round(trend)}%` : "New"}
+              sub={hasBaseline ? "vs last 4 weeks" : "no prior data yet"}
             />
           </div>
 
@@ -363,6 +397,12 @@ export default function HabitsPage() {
               <input type="checkbox" checked={showNumbers} onChange={(e) => setShowNumbers(e.target.checked)} className="h-4 w-4 rounded border-input" />
               Show numbers
             </label>
+            {archivedCount > 0 && (
+              <label className="flex items-center gap-2 px-2 text-sm text-muted-foreground">
+                <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} className="h-4 w-4 rounded border-input" />
+                Show archived ({archivedCount})
+              </label>
+            )}
           </div>
 
           {/* Grid */}
@@ -396,14 +436,17 @@ export default function HabitsPage() {
                     {grid.map(({ habit, cells, tally }) => {
                       const color = habit.color ?? DEFAULT_HABIT_COLOR;
                       return (
-                        <tr key={habit.id} className="border-b last:border-0 hover:bg-accent/30">
+                        <tr key={habit.id} className={cn("group border-b last:border-0 hover:bg-accent/30", habit.archived && "opacity-50")}>
                           <td className="sticky left-0 z-10 bg-card px-3 py-2">
                             <div className="flex items-center gap-2">
                               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-base" style={{ backgroundColor: `${color}22` }}>
                                 {habit.emoji || <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />}
                               </span>
                               <div className="min-w-0">
-                                <p className="truncate text-sm font-medium">{habit.title}</p>
+                                <p className="flex items-center gap-1.5 truncate text-sm font-medium">
+                                  <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: DIFFICULTY_META[habit.difficulty].color }} title={`${DIFFICULTY_META[habit.difficulty].label} difficulty`} />
+                                  {habit.title}
+                                </p>
                                 {(habit.tags ?? []).length > 0 && (
                                   <div className="flex flex-wrap gap-1">
                                     {habit.tags.slice(0, 3).map((t) => (
@@ -422,7 +465,9 @@ export default function HabitsPage() {
                                 value={c.log?.value ?? null}
                                 showNumber={showNumbers && (habit.targetType ?? "check") !== "check"}
                                 disabled={c.key > today}
+                                hasNote={Boolean(c.log?.note)}
                                 onClick={() => toggleCell(habit, c.key, c.status)}
+                                onNote={() => setNoteTarget({ habit, date: c.key })}
                               />
                             </td>
                           ))}
@@ -438,7 +483,11 @@ export default function HabitsPage() {
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
                                   <DropdownMenuItem onClick={() => setStatsHabit(habit)}><BarChart3 className="h-4 w-4" /> Statistics</DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => setNoteTarget({ habit, date: today })}><StickyNote className="h-4 w-4" /> Note for today</DropdownMenuItem>
                                   <DropdownMenuItem onClick={() => { setEditing(habit); setFormOpen(true); }}><Pencil className="h-4 w-4" /> Edit</DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => setArchived(habit, !habit.archived)}>
+                                    {habit.archived ? <><ArchiveRestore className="h-4 w-4" /> Unarchive</> : <><Archive className="h-4 w-4" /> Archive</>}
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem onClick={() => setDeleting(habit)} className="text-destructive focus:text-destructive"><Trash2 className="h-4 w-4" /> Delete</DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -551,6 +600,22 @@ export default function HabitsPage() {
         logs={statsHabit ? (logsByHabit[statsHabit.id] ?? []) : []}
       />
 
+      {user && (
+        <TemplatesDialog open={templatesOpen} onOpenChange={setTemplatesOpen} userId={user.uid} onSaved={load} />
+      )}
+
+      {user && (
+        <NoteDialog
+          open={noteTarget !== null}
+          onOpenChange={(o) => { if (!o) setNoteTarget(null); }}
+          userId={user.uid}
+          habit={noteTarget?.habit ?? null}
+          date={noteTarget?.date ?? null}
+          currentNote={noteTarget ? (logsByHabit[noteTarget.habit.id]?.find((l) => l.completedDate === noteTarget.date)?.note ?? null) : null}
+          onSaved={load}
+        />
+      )}
+
       <ConfirmDialog
         open={Boolean(deleting)}
         onOpenChange={(o) => !o && setDeleting(null)}
@@ -591,33 +656,43 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-function StatusCell({ status, color, value, showNumber, disabled, onClick }: {
-  status: DayStatus; color: string; value: number | null; showNumber: boolean; disabled: boolean; onClick: () => void;
+function StatusCell({ status, color, value, showNumber, disabled, hasNote, onClick, onNote }: {
+  status: DayStatus; color: string; value: number | null; showNumber: boolean; disabled: boolean; hasNote: boolean; onClick: () => void; onNote: () => void;
 }) {
-  const base = "mx-auto flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold tabular-nums transition";
+  const base = "relative mx-auto flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold tabular-nums transition";
+  let cls = "";
+  let style: React.CSSProperties | undefined;
+  let content: React.ReactNode = null;
+  let label = "Not done";
   if (status === "completed") {
-    return (
-      <button onClick={onClick} disabled={disabled} className={cn(base, "text-white")} style={{ backgroundColor: color }} aria-label="Completed">
-        {showNumber ? value : <Check className="h-3.5 w-3.5" />}
-      </button>
-    );
-  }
-  if (status === "partial") {
-    return (
-      <button onClick={onClick} disabled={disabled} className={cn(base)} style={{ backgroundColor: `${color}40`, color }} aria-label="Partial">
-        {showNumber ? value : "◐"}
-      </button>
-    );
-  }
-  if (status === "missed") {
-    return (
-      <button onClick={onClick} disabled={disabled} className={cn(base, "bg-rose-500/15 text-rose-500")} aria-label="Missed">
-        ✕
-      </button>
-    );
+    cls = "text-white";
+    style = { backgroundColor: color };
+    content = showNumber ? value : <Check className="h-3.5 w-3.5" />;
+    label = "Completed";
+  } else if (status === "partial") {
+    style = { backgroundColor: `${color}40`, color };
+    content = showNumber ? value : "◐";
+    label = "Partial";
+  } else if (status === "missed") {
+    cls = "bg-rose-500/15 text-rose-500";
+    content = "✕";
+    label = "Missed";
+  } else {
+    cls = cn("border border-muted-foreground/25 text-transparent hover:border-muted-foreground/60", disabled && "opacity-30 hover:border-muted-foreground/25");
   }
   return (
-    <button onClick={onClick} disabled={disabled} className={cn(base, "border border-muted-foreground/25 text-transparent hover:border-muted-foreground/60", disabled && "opacity-30 hover:border-muted-foreground/25")} aria-label="Not done" />
+    <button
+      onClick={onClick}
+      onContextMenu={(e) => { e.preventDefault(); if (!disabled) onNote(); }}
+      disabled={disabled}
+      className={cn(base, cls)}
+      style={style}
+      aria-label={label}
+      title={hasNote ? "Has a note · right-click to edit" : "Right-click to add a note"}
+    >
+      {content}
+      {hasNote && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-sky-400 ring-1 ring-card" />}
+    </button>
   );
 }
 

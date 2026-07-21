@@ -1301,3 +1301,34 @@ GitHub-style full-width year heatmap, per-habit statistics, and a streak nudge.
 **How to use it.** Tap across the grid (instant); add habits from the row under the
 grid; open a habit's ⋯ → **Statistics** for its breakdown; scan the 365-day
 heatmap for your year at a glance.
+
+---
+
+## Habits — templates, difficulty, archive, per-day notes (+ correctness fixes)
+
+**What it is.** A quick-wins bundle plus fixes surfaced by an adversarial review.
+
+**New features.**
+- **Templates.** A **Templates** button opens ready-made packs (Morning, Gym,
+  Study, Productivity, Health, Night) — pick individual habits or whole packs and
+  add several at once, then tweak.
+- **Difficulty.** Each habit has an Easy / Medium / Hard / Expert level (a colored
+  dot on its row), and completions earn **difficulty-weighted points** shown in
+  its Statistics.
+- **Archive.** ⋯ → **Archive** hides a habit from the tracker while keeping its
+  full history; a **Show archived (n)** toggle brings them back. Nothing is
+  deleted.
+- **Per-day notes.** **Right-click any cell** (or ⋯ → **Note for today**) to jot
+  down how a day went ("felt tired", "80kg bench"). Days with a note show a small
+  blue dot, and recent notes appear in the habit's Statistics — so you can see
+  *why* a streak broke.
+
+**Correctness fixes (from the review).**
+- **Weekly habits build streaks properly** now — streaks are counted in weeks for
+  weekly habits instead of requiring impossible consecutive days.
+- **"X/Y done today"** uses real completion (a below-target log is no longer
+  counted as done), matching the grid.
+- **Midnight-safe window.** The date window is derived from the live date, so
+  today's column never disappears if the tab is left open past midnight.
+- **Honest success trend.** Brand-new habits with no prior 4 weeks show **"New"**
+  instead of an inflated "+X%" against an empty baseline.
