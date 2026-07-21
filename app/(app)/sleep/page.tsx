@@ -448,7 +448,7 @@ export default function SleepPage() {
 
       {user && (
         <>
-          <SleepLogDialog open={dialog.open} onOpenChange={(o) => setDialog((s) => ({ ...s, open: o }))} userId={user.uid} date={dialog.date} kind={dialog.kind} entry={dialog.entry} notify={tgConnected && telegram!.onSleepLog ? { token: telegram!.botToken, chatId: telegram!.chatId, target } : null} onSaved={() => load({ quiet: true })} />
+          <SleepLogDialog open={dialog.open} onOpenChange={(o) => setDialog((s) => ({ ...s, open: o }))} userId={user.uid} date={dialog.date} kind={dialog.kind} entry={dialog.entry} defaultTimes={{ bedtime: bedtimeTarget || avgBed, wakeTime: wakeTarget || avgWk }} notify={tgConnected && telegram!.onSleepLog ? { token: telegram!.botToken, chatId: telegram!.chatId, target } : null} onSaved={() => load({ quiet: true })} />
           <RoutineEditDialog open={routineEdit === "evening"} onOpenChange={(o) => !o && setRoutineEdit(null)} title="Evening routine" steps={routine.evening} onSave={(s) => saveRoutine("evening", s)} />
           <RoutineEditDialog open={routineEdit === "morning"} onOpenChange={(o) => !o && setRoutineEdit(null)} title="Morning routine" steps={routine.morning} onSave={(s) => saveRoutine("morning", s)} />
           <SleepDaySheet open={sheetDate !== null} onOpenChange={(o) => !o && setSheetDate(null)} date={sheetDate} log={sheetLog} meta={sheetDate ? data.metas[sheetDate] : undefined} naps={sheetNaps} allSleep={primary} target={target} onEdit={(d) => { setSheetDate(null); openLog("sleep", d, byDate.get(d) ?? null); }} />

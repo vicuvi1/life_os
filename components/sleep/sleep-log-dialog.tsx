@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { TimeField } from "@/components/ui/time-field";
 import {
   upsertSleepLog,
   addNap,
@@ -36,12 +37,14 @@ interface Props {
   entry?: SleepLog | null;
   /** Smart default quality for a fresh entry. */
   defaultQuality?: number;
+  /** Prefill bedtime/wake for a NEW night's sleep (from targets or averages). */
+  defaultTimes?: { bedtime?: string | null; wakeTime?: string | null };
   /** When set, a summary is pushed to Telegram after logging a night's sleep. */
   notify?: { token: string; chatId: string; target: number } | null;
   onSaved: () => void;
 }
 
-export function SleepLogDialog({ open, onOpenChange, userId, date, kind, entry, defaultQuality, notify, onSaved }: Props) {
+export function SleepLogDialog({ open, onOpenChange, userId, date, kind, entry, defaultQuality, defaultTimes, notify, onSaved }: Props) {
   const effectiveKind: SleepKind = entry?.kind ?? kind;
   const isNap = effectiveKind === "nap";
 
@@ -56,14 +59,18 @@ export function SleepLogDialog({ open, onOpenChange, userId, date, kind, entry, 
 
   useEffect(() => {
     if (!open) return;
-    setBedtime(entry?.bedtime ?? "");
-    setWakeTime(entry?.wakeTime ?? "");
+    // New night sleep → prefill from targets/averages so it's often one tap to save.
+    const seedBed = entry?.bedtime ?? (!entry && kind === "sleep" ? defaultTimes?.bedtime ?? "" : "");
+    const seedWake = entry?.wakeTime ?? (!entry && kind === "sleep" ? defaultTimes?.wakeTime ?? "" : "");
+    setBedtime(seedBed || "");
+    setWakeTime(seedWake || "");
     setManualHours(entry && !entry.bedtime && entry.hours ? String(entry.hours) : "");
     setQuality(entry?.quality || defaultQuality || 7);
     setAwakeMin(entry?.awakeMinutes ?? 0);
     setNotes(entry?.notes ?? "");
     setError(null);
-  }, [open, entry, defaultQuality]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, entry]);
 
   const tib = useMemo(() => durationHours(bedtime || null, wakeTime || null), [bedtime, wakeTime]);
   const hasTimes = tib != null;
@@ -138,12 +145,12 @@ export function SleepLogDialog({ open, onOpenChange, userId, date, kind, entry, 
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="sl-bed">{isNap ? "Started" : "Bedtime"}</Label>
-              <Input id="sl-bed" type="time" value={bedtime} onChange={(e) => setBedtime(e.target.value)} />
+              <Label>{isNap ? "Started" : "Bedtime"}</Label>
+              <TimeField value={bedtime} onChange={setBedtime} ariaLabel={isNap ? "Nap start" : "Bedtime"} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="sl-wake">{isNap ? "Ended" : "Wake up"}</Label>
-              <Input id="sl-wake" type="time" value={wakeTime} onChange={(e) => setWakeTime(e.target.value)} />
+              <Label>{isNap ? "Ended" : "Wake up"}</Label>
+              <TimeField value={wakeTime} onChange={setWakeTime} ariaLabel={isNap ? "Nap end" : "Wake up"} />
             </div>
           </div>
 
