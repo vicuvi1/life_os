@@ -9,6 +9,7 @@ import {
   Plus,
   Check,
   Sparkles,
+  Shuffle,
   MapPin,
   CalendarDays,
   ChevronRight,
@@ -35,6 +36,8 @@ import {
   seasonsInUse,
   currentSeason,
   weatherSuggestions,
+  weatherSeason,
+  surpriseOutfit,
   relativeDay,
   weekdayName,
   favoriteBrand,
@@ -43,8 +46,6 @@ import {
   colorsInUse,
   colorSwatch,
 } from "@/lib/wardrobe";
-import { SurpriseDialog } from "@/components/wardrobe/surprise-dialog";
-import { WardrobeNav } from "@/components/wardrobe/wardrobe-nav";
 import { toDateKey } from "@/lib/greeting";
 import { addDays } from "@/lib/habits";
 import { Button } from "@/components/ui/button";
@@ -115,7 +116,7 @@ export default function WardrobeOverviewPage() {
   const [quickViewId, setQuickViewId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerDate, setPickerDate] = useState<string | null>(null);
-  const [surpriseOpen, setSurpriseOpen] = useState(false);
+  const [suggestSeed, setSuggestSeed] = useState(0);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -201,6 +202,23 @@ export default function WardrobeOverviewPage() {
   const fitMatch = weatherFitMatches(todayOutfit?.weatherFit ?? null, weather?.temp ?? null);
   const suggest = weather ? weatherSuggestions(weather.temp) : null;
 
+  // Weather-aware "suggested for today" outfit, shown when nothing is picked yet.
+  const recentIds = useMemo(() => {
+    const cutoff = addDays(today, -3);
+    return new Set(items.filter((i) => i.lastWorn && i.lastWorn >= cutoff).map((i) => i.id));
+  }, [items, today]);
+  const suggestion = useMemo(
+    () =>
+      surpriseOutfit(items, {
+        season: weather ? weatherSeason(weather.temp) : null,
+        avoidIds: recentIds,
+        preferFavorites: true,
+      }),
+    // suggestSeed re-rolls the suggestion on demand.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items, weather?.temp, recentIds, suggestSeed]
+  );
+
   const recent = useMemo(() => recentlyWorn(items, 10), [items]);
   const upcoming = useMemo(() => {
     const days = [1, 2, 3].map((d) => addDays(today, d));
@@ -220,6 +238,23 @@ export default function WardrobeOverviewPage() {
   const activePickerDate = pickerDate ?? today;
   const activePickerWear = useMemo(() => wearForDate(wears, activePickerDate), [wears, activePickerDate]);
   const quickViewItem = useMemo(() => items.find((i) => i.id === quickViewId) ?? null, [items, quickViewId]);
+
+  async function wearSuggestion() {
+    if (!user || suggestion.length === 0) return;
+    try {
+      await setWearForDay({
+        userId: user.uid,
+        date: today,
+        kind: "confirm",
+        chosen: suggestion.map((i) => ({ id: i.id, timesWorn: i.timesWorn, lastWorn: i.lastWorn })),
+        outfit: null,
+        prevItems: [],
+        prevOutfit: null,
+      });
+    } finally {
+      await load({ quiet: true });
+    }
+  }
 
   async function confirmPlannedToday() {
     if (!user || !todayWear || todayItems.length === 0) return;
@@ -242,24 +277,14 @@ export default function WardrobeOverviewPage() {
   return (
     <div className="mx-auto max-w-[1500px] space-y-5">
       {/* Header */}
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold md:text-3xl">Wardrobe</h1>
-            <p className="text-muted-foreground">Your clothes, outfits, and laundry — decided in seconds.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {activeItems.length > 0 && (
-              <Button variant="outline" onClick={() => setSurpriseOpen(true)}>
-                <Sparkles className="h-4 w-4" /> Surprise me
-              </Button>
-            )}
-            <Button onClick={() => { setFormItem(null); setFormOpen(true); }}>
-              <Plus className="h-4 w-4" /> Add item
-            </Button>
-          </div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold md:text-3xl">Wardrobe</h1>
+          <p className="text-muted-foreground">Your clothes, outfits, and laundry — decided in seconds.</p>
         </div>
-        <WardrobeNav />
+        <Button onClick={() => { setFormItem(null); setFormOpen(true); }}>
+          <Plus className="h-4 w-4" /> Add item
+        </Button>
       </div>
 
       {loading ? (
@@ -291,26 +316,58 @@ export default function WardrobeOverviewPage() {
               <div className="grid gap-5 p-5 lg:grid-cols-[1fr_230px]">
                 <div className="space-y-4">
                   {!todayWear ? (
-                    <>
-                      <div className="grid grid-cols-4 gap-3">
-                        {OUTFIT_SLOTS.map((slot) => (
-                          <div key={slot.label} className="flex flex-col items-center gap-1.5">
-                            <div className="flex aspect-square w-full items-center justify-center rounded-2xl border-2 border-dashed border-muted-foreground/20 text-4xl">
-                              <span className="opacity-30">{slot.emoji}</span>
+                    suggestion.length > 0 ? (
+                      <>
+                        <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                          <Sparkles className="h-3.5 w-3.5 text-primary" />
+                          Suggested for today{weather ? ` · ${weatherSeason(weather.temp).toLowerCase()} pick` : ""}
+                        </div>
+                        <div className="flex flex-wrap gap-3">
+                          {suggestion.map((i) => (
+                            <div key={i.id} className="w-24">
+                              <div className="aspect-square w-full overflow-hidden rounded-2xl border bg-muted/40">
+                                {i.imageData ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={i.imageData} alt={i.name} className="h-full w-full object-cover" />
+                                ) : (
+                                  <div className="flex h-full w-full items-center justify-center"><Shirt className="h-7 w-7 text-muted-foreground/40" /></div>
+                                )}
+                              </div>
+                              <p className="mt-1.5 truncate text-xs font-medium">{i.name}</p>
+                              <p className="truncate text-[10px] text-muted-foreground">{i.category ?? "—"}</p>
                             </div>
-                            <span className="text-[11px] text-muted-foreground">{slot.label}</span>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="flex flex-wrap gap-2">
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button size="sm" onClick={wearSuggestion}>
+                            <Check className="h-4 w-4" /> Wear this
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => setSuggestSeed((s) => s + 1)}>
+                            <Shuffle className="h-4 w-4" /> Shuffle
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => openPicker(today)}>Pick manually</Button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-4 gap-3">
+                          {OUTFIT_SLOTS.map((slot) => (
+                            <div key={slot.label} className="flex flex-col items-center gap-1.5">
+                              <div className="flex aspect-square w-full items-center justify-center rounded-2xl border-2 border-dashed border-muted-foreground/20 text-4xl">
+                                <span className="opacity-30">{slot.emoji}</span>
+                              </div>
+                              <span className="text-[11px] text-muted-foreground">{slot.label}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {activeItems.length === 0 ? "Add clothes to get outfit suggestions." : "Nothing clean to suggest right now — check your laundry."}
+                        </p>
                         <Button onClick={() => openPicker(today)}>
                           <Shirt className="h-4 w-4" /> Pick today&apos;s outfit
                         </Button>
-                        <Button variant="outline" onClick={() => setSurpriseOpen(true)}>
-                          <Sparkles className="h-4 w-4" /> Surprise me
-                        </Button>
-                      </div>
-                    </>
+                      </>
+                    )
                   ) : todayItems.length === 0 ? (
                     <div className="flex flex-col items-start gap-3 py-2">
                       <p className="text-sm text-muted-foreground">
@@ -357,9 +414,6 @@ export default function WardrobeOverviewPage() {
                           </span>
                         )}
                         <Button size="sm" variant="outline" onClick={() => openPicker(today)}>Change</Button>
-                        <Button size="sm" variant="ghost" onClick={() => setSurpriseOpen(true)}>
-                          <Sparkles className="h-4 w-4" /> Surprise me
-                        </Button>
                       </div>
                     </>
                   )}
@@ -422,7 +476,7 @@ export default function WardrobeOverviewPage() {
                   <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">My wardrobe</span>
                   <span className="text-xs text-muted-foreground">· {gridItems.length} of {activeItems.length}</span>
                   <div className="ml-auto flex flex-wrap items-center gap-2">
-                    <Input placeholder="Search name, brand, colour, style, tag…" value={query} onChange={(e) => setQuery(e.target.value)} className="h-8 w-[220px]" />
+                    <Input placeholder="Search wardrobe…" value={query} onChange={(e) => setQuery(e.target.value)} className="h-8 w-[180px]" />
                     <Select value={statusFilter} onValueChange={setStatusFilter}>
                       <SelectTrigger className="h-8 w-[130px]"><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -530,7 +584,7 @@ export default function WardrobeOverviewPage() {
                 <span className="rounded-full bg-secondary px-2 text-xs font-medium tabular-nums text-muted-foreground">{activeItems.length} items</span>
               </div>
               <div className="p-2">
-                {WARDROBE_STATUSES.map((s) => (
+                {WARDROBE_STATUSES.filter((s) => counts[s] > 0).map((s) => (
                   <Link key={s} href={`/wardrobe/laundry?status=${s}`} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition hover:bg-accent">
                     <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: STATUS_META[s].color }} />
                     <span className="flex-1">{STATUS_META[s].label}</span>
@@ -538,18 +592,22 @@ export default function WardrobeOverviewPage() {
                     <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50" />
                   </Link>
                 ))}
-                <Link href="/wardrobe/laundry?status=needsIroning" className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition hover:bg-accent">
-                  <span>👔</span>
-                  <span className="flex-1">Needs ironing</span>
-                  <span className="tabular-nums text-muted-foreground">{counts.needsIroning}</span>
-                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50" />
-                </Link>
-                <Link href="/wardrobe/stats" className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition hover:bg-accent">
-                  <span>🕳️</span>
-                  <span className="flex-1">Never worn</span>
-                  <span className="tabular-nums text-muted-foreground">{unusedCount}</span>
-                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50" />
-                </Link>
+                {counts.needsIroning > 0 && (
+                  <Link href="/wardrobe/laundry?status=needsIroning" className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition hover:bg-accent">
+                    <span>👔</span>
+                    <span className="flex-1">Needs ironing</span>
+                    <span className="tabular-nums text-muted-foreground">{counts.needsIroning}</span>
+                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50" />
+                  </Link>
+                )}
+                {unusedCount > 0 && (
+                  <Link href="/wardrobe/stats" className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition hover:bg-accent">
+                    <span>🕳️</span>
+                    <span className="flex-1">Never worn</span>
+                    <span className="tabular-nums text-muted-foreground">{unusedCount}</span>
+                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50" />
+                  </Link>
+                )}
               </div>
             </Card>
 
@@ -564,7 +622,9 @@ export default function WardrobeOverviewPage() {
                 <StatRow label="Most worn" name={mostWorn?.name ?? "—"} sub={mostWorn ? `${mostWorn.timesWorn} wears` : undefined} />
                 <StatRow label="Least worn" name={leastWorn?.name ?? "—"} sub={leastWorn ? `${leastWorn.timesWorn} wears` : undefined} />
                 <StatRow label="Never worn" name={`${unusedCount} ${unusedCount === 1 ? "item" : "items"}`} />
-                <StatRow label="Favorite brand" name={topBrand?.brand ?? "—"} sub={topBrand ? `${topBrand.count} ${topBrand.count === 1 ? "piece" : "pieces"}` : undefined} />
+                {topBrand && topBrand.count >= 2 && (
+                  <StatRow label="Favorite brand" name={topBrand.brand} sub={`${topBrand.count} pieces`} />
+                )}
                 <StatRow label="Outfits saved" name={String(outfits.length)} />
               </div>
             </Card>
@@ -643,15 +703,6 @@ export default function WardrobeOverviewPage() {
             date={activePickerDate}
             initialIds={activePickerWear?.itemIds}
             existing={activePickerWear}
-            onSaved={() => load({ quiet: true })}
-          />
-          <SurpriseDialog
-            open={surpriseOpen}
-            onOpenChange={setSurpriseOpen}
-            userId={user.uid}
-            items={items}
-            outfits={outfits}
-            existingToday={todayWear}
             onSaved={() => load({ quiet: true })}
           />
         </>

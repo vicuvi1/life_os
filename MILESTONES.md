@@ -1659,3 +1659,25 @@ click (instead of a full page), a drag-and-drop outfit builder, and a
   threshold the app **nudges you to wash it** (with a one-tap "Mark dirty"). The
   counter resets automatically whenever you move the item to washing / clean /
   ready, so it always reflects reality.
+
+---
+
+## Wardrobe — Overview refinements
+
+A cleanup pass from a design review of the Overview:
+- **One navigation.** Removed the top tab bar; the **left sidebar** is the single
+  source of navigation (Packing was added there so every wardrobe page is
+  listed). No more duplicate nav for the same pages.
+- **One "Surprise me".** Consolidated the three surprise entry points into a
+  single in-context flow (below).
+- **Today's suggestion is now real.** Instead of empty silhouettes beside a
+  disconnected weather checklist, when no outfit is picked the hero shows an
+  actual **suggested outfit** — real items chosen for today's weather (warm →
+  summer pieces, cold → winter), avoiding what you wore in the last few days and
+  leaning on favorites — with **Wear this**, **Shuffle**, and **Pick manually**.
+  (If nothing's clean, it falls back to the placeholder slots with a note.)
+- **Wardrobe health** now hides zero-count status rows, so you see only what's
+  actually there instead of five "0" lines.
+- **Favorite brand** only appears once you own 2+ pieces of a brand (no more
+  single placeholder entry).
+- Fixed the clipped search placeholder.

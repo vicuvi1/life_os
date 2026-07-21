@@ -15,7 +15,6 @@ import { toDateKey } from "@/lib/greeting";
 import { SkeletonCard } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { WardrobeNav } from "@/components/wardrobe/wardrobe-nav";
 import { WearPickerDialog } from "@/components/wardrobe/wear-picker-dialog";
 import { cn } from "@/lib/utils";
 import type { ClothingItem, WearLog } from "@/lib/types";
@@ -98,12 +97,9 @@ export default function WardrobeCalendarPage() {
 
   return (
     <div className="mx-auto max-w-[1100px] space-y-5">
-      <div className="space-y-3">
-        <WardrobeNav />
-        <div>
-          <h1 className="text-2xl font-bold md:text-3xl">Outfit calendar</h1>
-          <p className="text-muted-foreground">Plan ahead, and look back at what you wore.</p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold md:text-3xl">Outfit calendar</h1>
+        <p className="text-muted-foreground">Plan ahead, and look back at what you wore.</p>
       </div>
 
       {loading ? (

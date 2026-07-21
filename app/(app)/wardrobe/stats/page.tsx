@@ -26,7 +26,6 @@ import { toDateKey } from "@/lib/greeting";
 import { SkeletonCard } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { WardrobeNav } from "@/components/wardrobe/wardrobe-nav";
 import type { ClothingItem } from "@/lib/types";
 
 export default function WardrobeStatsPage() {
@@ -78,12 +77,9 @@ export default function WardrobeStatsPage() {
 
   return (
     <div className="mx-auto max-w-[1200px] space-y-5">
-      <div className="space-y-3">
-        <WardrobeNav />
-        <div>
-          <h1 className="text-2xl font-bold md:text-3xl">Statistics</h1>
-          <p className="text-muted-foreground">What you actually wear — and what&apos;s just taking up space.</p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold md:text-3xl">Statistics</h1>
+        <p className="text-muted-foreground">What you actually wear — and what&apos;s just taking up space.</p>
       </div>
 
       {loading ? (

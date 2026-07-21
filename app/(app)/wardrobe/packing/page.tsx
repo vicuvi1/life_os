@@ -21,7 +21,6 @@ import {
 import { SkeletonCard } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { WardrobeNav } from "@/components/wardrobe/wardrobe-nav";
 import { PackingBuilderDialog } from "@/components/wardrobe/packing-builder-dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { cn } from "@/lib/utils";
@@ -110,19 +109,16 @@ export default function PackingPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
-      <div className="space-y-3">
-        <WardrobeNav />
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="flex items-center gap-2 text-2xl font-bold md:text-3xl">
-              <Luggage className="h-6 w-6 text-primary" /> Packing lists
-            </h1>
-            <p className="text-muted-foreground">Plan what to bring, then tick it off as you pack.</p>
-          </div>
-          <Button onClick={() => { setEditing(null); setBuilderOpen(true); }} disabled={loading || items.length === 0}>
-            <Plus className="h-4 w-4" /> New trip
-          </Button>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold md:text-3xl">
+            <Luggage className="h-6 w-6 text-primary" /> Packing lists
+          </h1>
+          <p className="text-muted-foreground">Plan what to bring, then tick it off as you pack.</p>
         </div>
+        <Button onClick={() => { setEditing(null); setBuilderOpen(true); }} disabled={loading || items.length === 0}>
+          <Plus className="h-4 w-4" /> New trip
+        </Button>
       </div>
 
       {loading ? (

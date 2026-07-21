@@ -45,7 +45,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { OutfitBuilderDialog } from "@/components/wardrobe/outfit-builder-dialog";
-import { WardrobeNav } from "@/components/wardrobe/wardrobe-nav";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { cn } from "@/lib/utils";
 import type { ClothingItem, Outfit } from "@/lib/types";
@@ -236,19 +235,16 @@ function OutfitsInner() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
-      <div className="space-y-3">
-        <WardrobeNav />
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="flex items-center gap-2 text-2xl font-bold md:text-3xl">
-              <Layers className="h-6 w-6 text-primary" /> Outfits
-            </h1>
-            <p className="text-muted-foreground">Saved combinations — templates are your reusable go-tos.</p>
-          </div>
-          <Button onClick={() => { setEditing(null); setBuilderOpen(true); }}>
-            <Plus className="h-4 w-4" /> New outfit
-          </Button>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold md:text-3xl">
+            <Layers className="h-6 w-6 text-primary" /> Outfits
+          </h1>
+          <p className="text-muted-foreground">Saved combinations — templates are your reusable go-tos.</p>
         </div>
+        <Button onClick={() => { setEditing(null); setBuilderOpen(true); }}>
+          <Plus className="h-4 w-4" /> New outfit
+        </Button>
       </div>
 
       {shared && (

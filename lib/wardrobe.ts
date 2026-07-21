@@ -325,6 +325,13 @@ export function currentSeason(date: Date = new Date()): string {
   return "Autumn";
 }
 
+/** The season whose clothes suit a given temperature (drives today's suggestion). */
+export function weatherSeason(temp: number): string {
+  if (temp >= 22) return "Summer";
+  if (temp <= 7) return "Winter";
+  return currentSeason();
+}
+
 /** Seasons actually tagged on active items, ordered by the standard calendar. */
 export function seasonsInUse(items: ClothingItem[]): string[] {
   const set = new Set<string>();

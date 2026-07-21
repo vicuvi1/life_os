@@ -10,7 +10,6 @@ import { getWardrobe, updateClothing, bulkUpdateClothingStatus } from "@/lib/fir
 import { STATUS_META, WARDROBE_STATUSES, statusCounts } from "@/lib/wardrobe";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { WardrobeNav } from "@/components/wardrobe/wardrobe-nav";
 import { ItemCard } from "@/components/wardrobe/item-card";
 import { cn } from "@/lib/utils";
 import type { ClothingItem, WardrobeStatus } from "@/lib/types";
@@ -94,14 +93,11 @@ function LaundryInner() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
-      <div className="space-y-3">
-        <WardrobeNav />
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold md:text-3xl">
-            <WashingMachine className="h-6 w-6 text-primary" /> Laundry
-          </h1>
-          <p className="text-muted-foreground">Track the wash cycle — select several items to move them together.</p>
-        </div>
+      <div>
+        <h1 className="flex items-center gap-2 text-2xl font-bold md:text-3xl">
+          <WashingMachine className="h-6 w-6 text-primary" /> Laundry
+        </h1>
+        <p className="text-muted-foreground">Track the wash cycle — select several items to move them together.</p>
       </div>
 
       {/* Tabs (filtered views over the same items — not separate lists) */}
