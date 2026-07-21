@@ -2058,3 +2058,85 @@ and a single Health Score that tells you if the day is on track.
   duplicate action covers single meals for now.
 - **Trends over time** (weekly protein/cost charts) — the day view ships first;
   analytics can layer on the same `nutritionLogs` data next.
+
+---
+
+## 🥫 Food Library — reusable foods with auto-cost
+
+**Purpose.** Stop re-typing the same nutrition and price numbers into every meal.
+Add a food once — chicken breast, oats, your protein powder — and reuse it
+everywhere, with cost worked out for you. Nothing here touches an external API;
+it's your own private library.
+
+**How it works.**
+- **Storage.** Foods live in the existing `nutritionLogs` collection with
+  `docType: "food"` (no new Firestore rule needed). The Workspace loads the day
+  *and* the whole library in a single query; the library page loads just foods.
+- **Per-100 model.** Nutrition (calories / protein / carbs / fat) is entered per
+  **100 g or 100 ml** — the packaging standard — and each food has a base unit
+  (g or ml). This makes every portion and price derive from one clean base.
+- **Auto-calculated cost.** Enter **purchase price** + **quantity purchased**
+  and the app shows **cost per gram/ml** and **cost per serving** live — you
+  never compute them by hand. Currency is per-food (defaults to your wallet
+  currency).
+- **Serving sizes.** Define unlimited portions — "100 g", "1 Egg", "250 ml",
+  "1 Slice", "1 Cup" — each mapped to how many base units it equals, so macros
+  and cost scale correctly per serving.
+- **Images** are compressed client-side to a small inline thumbnail (same
+  approach as the wardrobe — no paid Storage plan required).
+
+**Features.**
+- Unlimited custom foods: name, image, category, brand, notes.
+- Nutrition: calories, protein, carbs, fat (per 100 base units).
+- Pricing: purchase price, quantity, currency → auto cost/gram + cost/serving.
+- Multiple named serving sizes per food.
+- **Favorites**, **tags**, **categories**, full-text **search**, **filters**
+  (category · tag · favorites · archived), **duplicate**, **archive/restore**,
+  **delete**, and **custom drag-to-reorder** sorting (plus sort by name /
+  calories / cost / recent).
+- Everything is manually editable at any time.
+
+**How to use.** Nutrition → **Food Library** → **Add food**. Fill in what you
+know (all optional except a name), add serving sizes, and save. Star the ones
+you use daily so they surface first in the Meal Builder.
+
+---
+
+## 🧱 Meal Builder — build meals from foods, totals live
+
+**Purpose.** Turn a meal into a few taps: pull foods from your library, set how
+much, and watch calories / protein / carbs / fat / cost total up instantly. As
+few clicks as possible.
+
+**How it works.**
+- The meal editor now has a **Foods** section. A fast search surfaces favorites
+  and recents on an empty query, so most foods are one tap to add.
+- Each food line snapshots the food's per-100 macros + cost at add time, so a
+  meal's totals stay stable even if you later edit or delete the library food —
+  and rendering a day needs zero extra lookups.
+- Per line you can **change quantity** (steppers or exact entry), **change
+  serving size** (any of the food's portions), **duplicate**, **remove**, and
+  **drag to reorder**. Totals recompute on every change.
+- A meal with foods shows **live totals**; a meal without foods still supports
+  quick **manual** calories/protein/carbs/fat/cost (so nothing forces you into
+  the library for a one-off).
+- **Meals update the day automatically.** On every meal change the day's macros
+  are rolled up onto the per-day nutrition doc, and the Workspace **Daily
+  Summary** (Calories · Protein · Water · Food Cost · Health Score, now with a
+  carbs·fat readout) reflects it immediately.
+
+**Features.**
+- Add foods by searching the Food Library; unlimited foods per meal.
+- Change quantity, change serving size, duplicate, remove, reorder (drag & drop).
+- Meal notes.
+- Auto-calculated Calories, Protein, Carbs, Fat, and Cost — per line and per meal.
+- Meal cards on the Workspace list their foods and show the computed totals.
+
+**How to use.** Nutrition → **Add meal** → name it → search and tap foods →
+adjust quantity/serving → save. The Daily Summary updates on save.
+
+**Deferred.**
+- **Cross-currency conversion** — foods keep their own currency, but there's no
+  FX conversion (no external API); totals assume a single currency.
+- **Save a built meal back to a reusable template** — meals are per-day today;
+  the duplicate action covers repeats within a day.

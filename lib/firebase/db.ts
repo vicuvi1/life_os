@@ -46,6 +46,9 @@ import {
   type MealSlot,
   type NutritionLog,
   type NutritionMeal,
+  type MealFoodEntry,
+  type FoodItem,
+  type FoodServing,
   type Outfit,
   type PackingList,
   type Project,
@@ -939,7 +942,11 @@ function mapNutritionLog(
     breakfast: d.breakfast ?? false,
     lunch: d.lunch ?? false,
     dinner: d.dinner ?? false,
-    calories: d.calories ?? null,
+    calories: typeof d.calories === "number" ? d.calories : null,
+    protein: typeof d.protein === "number" ? d.protein : null,
+    carbs: typeof d.carbs === "number" ? d.carbs : null,
+    fat: typeof d.fat === "number" ? d.fat : null,
+    cost: typeof d.cost === "number" ? d.cost : null,
     notes: d.notes ?? null,
     createdAt: toMillis(d.createdAt),
   };
@@ -954,9 +961,29 @@ export async function getNutritionLogs(
   );
   const snap = await getDocs(q);
   return snap.docs
-    .filter((d) => d.data().docType !== "meal") // exclude Workspace meal docs
+    .filter((d) => { const t = d.data().docType; return t !== "meal" && t !== "food"; }) // per-day logs only
     .map(mapNutritionLog)
     .sort((a, b) => (a.date < b.date ? 1 : -1));
+}
+
+const numOrNull = (v: unknown): number | null => (typeof v === "number" ? v : null);
+
+function mapMealEntry(e: Record<string, unknown>, i: number): MealFoodEntry {
+  return {
+    id: typeof e.id === "string" ? e.id : `e${i}`,
+    foodId: typeof e.foodId === "string" ? e.foodId : "",
+    name: typeof e.name === "string" ? e.name : "Food",
+    unit: e.unit === "ml" ? "ml" : "g",
+    quantity: typeof e.quantity === "number" ? e.quantity : 1,
+    servingLabel: typeof e.servingLabel === "string" ? e.servingLabel : "",
+    servingGrams: typeof e.servingGrams === "number" ? e.servingGrams : 100,
+    calories: numOrNull(e.calories),
+    protein: numOrNull(e.protein),
+    carbs: numOrNull(e.carbs),
+    fat: numOrNull(e.fat),
+    costPerBase: numOrNull(e.costPerBase),
+    sortOrder: typeof e.sortOrder === "number" ? e.sortOrder : i,
+  };
 }
 
 function mapNutritionMeal(snap: QueryDocumentSnapshot<DocumentData>): NutritionMeal {
@@ -970,11 +997,48 @@ function mapNutritionMeal(snap: QueryDocumentSnapshot<DocumentData>): NutritionM
     color: d.color ?? null,
     time: d.time ?? null,
     notes: d.notes ?? null,
-    calories: typeof d.calories === "number" ? d.calories : null,
-    protein: typeof d.protein === "number" ? d.protein : null,
-    cost: typeof d.cost === "number" ? d.cost : null,
+    calories: numOrNull(d.calories),
+    protein: numOrNull(d.protein),
+    carbs: numOrNull(d.carbs),
+    fat: numOrNull(d.fat),
+    cost: numOrNull(d.cost),
+    items: Array.isArray(d.items) ? d.items.map((e, i) => mapMealEntry(e as Record<string, unknown>, i)).sort((a, b) => a.sortOrder - b.sortOrder) : [],
     sortOrder: d.sortOrder ?? 0,
     collapsed: d.collapsed === true,
+    createdAt: toMillis(d.createdAt),
+  };
+}
+
+function mapFood(snap: QueryDocumentSnapshot<DocumentData>): FoodItem {
+  const d = snap.data();
+  const servings: FoodServing[] = Array.isArray(d.servings)
+    ? d.servings.map((s: Record<string, unknown>, i: number) => ({
+        id: typeof s.id === "string" ? s.id : `s${i}`,
+        label: typeof s.label === "string" ? s.label : "",
+        grams: typeof s.grams === "number" ? s.grams : 0,
+      }))
+    : [];
+  return {
+    id: snap.id,
+    userId: d.userId,
+    name: d.name ?? "Food",
+    imageData: d.imageData ?? null,
+    category: d.category ?? null,
+    brand: d.brand ?? null,
+    notes: d.notes ?? null,
+    unit: d.unit === "ml" ? "ml" : "g",
+    calories: numOrNull(d.calories),
+    protein: numOrNull(d.protein),
+    carbs: numOrNull(d.carbs),
+    fat: numOrNull(d.fat),
+    purchasePrice: numOrNull(d.purchasePrice),
+    quantityPurchased: numOrNull(d.quantityPurchased),
+    currency: d.currency ?? null,
+    servings,
+    favorite: d.favorite === true,
+    tags: Array.isArray(d.tags) ? (d.tags as string[]) : [],
+    archived: d.archived === true,
+    sortOrder: d.sortOrder ?? 0,
     createdAt: toMillis(d.createdAt),
   };
 }
@@ -982,27 +1046,33 @@ function mapNutritionMeal(snap: QueryDocumentSnapshot<DocumentData>): NutritionM
 export interface NutritionDay {
   log: NutritionLog | null;
   meals: NutritionMeal[];
+  foods: FoodItem[];
 }
 
-/** One query for a day's Workspace: the water/summary doc + its custom meals. */
+/** One query for the Workspace: the day's water/summary doc + its meals + the
+ * whole (non-archived-aware) Food Library, all from `nutritionLogs`. */
 export async function getNutritionDay(userId: string, date: string): Promise<NutritionDay> {
   const q = query(collection(db, COLLECTIONS.nutritionLogs), where("userId", "==", userId));
   const snap = await getDocs(q);
   let log: NutritionLog | null = null;
   const meals: NutritionMeal[] = [];
+  const foods: FoodItem[] = [];
   for (const ds of snap.docs) {
     const d = ds.data();
     if (d.docType === "meal") {
       if (d.date === date) meals.push(mapNutritionMeal(ds));
+    } else if (d.docType === "food") {
+      foods.push(mapFood(ds));
     } else if (ds.id === `${userId}_${date}`) {
       log = mapNutritionLog(ds);
     }
   }
   meals.sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt);
-  return { log, meals };
+  foods.sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt);
+  return { log, meals, foods };
 }
 
-export type NutritionMealInput = Pick<NutritionMeal, "name" | "icon" | "color" | "time" | "notes" | "calories" | "protein" | "cost"> &
+export type NutritionMealInput = Pick<NutritionMeal, "name" | "icon" | "color" | "time" | "notes" | "calories" | "protein" | "carbs" | "fat" | "cost" | "items"> &
   Partial<Pick<NutritionMeal, "sortOrder" | "collapsed">>;
 
 export async function createNutritionMeal(userId: string, date: string, input: NutritionMealInput): Promise<string> {
@@ -1051,6 +1121,10 @@ export type NutritionLogInput = Pick<
   | "lunch"
   | "dinner"
   | "calories"
+  | "protein"
+  | "carbs"
+  | "fat"
+  | "cost"
   | "notes"
 >;
 
@@ -1071,6 +1145,64 @@ export async function deleteNutritionLog(
   date: string
 ): Promise<void> {
   await deleteDoc(doc(db, COLLECTIONS.nutritionLogs, `${userId}_${date}`));
+}
+
+// ---------------------------------------------------------------------------
+// Food Library — reusable foods (docType "food" in the nutritionLogs collection)
+// ---------------------------------------------------------------------------
+export type FoodInput = Pick<
+  FoodItem,
+  | "name" | "imageData" | "category" | "brand" | "notes" | "unit"
+  | "calories" | "protein" | "carbs" | "fat"
+  | "purchasePrice" | "quantityPurchased" | "currency"
+  | "servings" | "tags"
+> &
+  Partial<Pick<FoodItem, "favorite" | "archived" | "sortOrder">>;
+
+/** All foods in the user's library (both active and archived). */
+export async function getFoods(userId: string): Promise<FoodItem[]> {
+  const q = query(collection(db, COLLECTIONS.nutritionLogs), where("userId", "==", userId));
+  const snap = await getDocs(q);
+  return snap.docs
+    .filter((d) => d.data().docType === "food")
+    .map(mapFood)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt);
+}
+
+export async function createFood(userId: string, input: FoodInput): Promise<string> {
+  const ref = await addDoc(collection(db, COLLECTIONS.nutritionLogs), {
+    userId,
+    docType: "food",
+    favorite: false,
+    archived: false,
+    sortOrder: 0,
+    ...input,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export async function updateFood(id: string, input: Partial<FoodInput>): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.nutritionLogs, id), { ...input });
+}
+
+export async function deleteFood(id: string): Promise<void> {
+  await deleteDoc(doc(db, COLLECTIONS.nutritionLogs, id));
+}
+
+export async function setFoodFavorite(id: string, favorite: boolean): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.nutritionLogs, id), { favorite });
+}
+
+export async function setFoodArchived(id: string, archived: boolean): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.nutritionLogs, id), { archived });
+}
+
+/** Persist custom order (sortOrder = position) after a drag reorder. */
+export async function reorderFoods(ids: string[]): Promise<void> {
+  const batch = writeBatch(db);
+  ids.forEach((id, i) => batch.update(doc(db, COLLECTIONS.nutritionLogs, id), { sortOrder: i }));
+  await batch.commit();
 }
 
 // ---------------------------------------------------------------------------

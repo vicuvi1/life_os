@@ -220,7 +220,13 @@ export interface NutritionLog {
   breakfast: boolean;
   lunch: boolean;
   dinner: boolean;
-  calories: number | null; // optional total for the day
+  /** Aggregates rolled up from the day's meals so the dashboard/insights read
+   * one cheap doc instead of every meal. Kept in sync on any meal change. */
+  calories: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+  cost: number | null;
   notes: string | null;
   createdAt: number;
 }
@@ -304,12 +310,85 @@ export interface NutritionMeal {
   color: string | null; // hex accent
   time: string | null; // "HH:mm"
   notes: string | null;
-  /** Optional macros/cost — the goal isn't calorie counting, so all optional. */
+  /** Manual macros/cost — used when the meal has no linked foods. When `items`
+   * is non-empty these are ignored and totals come from the foods instead. */
   calories: number | null;
   protein: number | null;
+  carbs: number | null;
+  fat: number | null;
   cost: number | null;
+  /** Foods added from the Food Library (Meal Builder). Empty → manual macros. */
+  items: MealFoodEntry[];
   sortOrder: number;
   collapsed: boolean;
+  createdAt: number;
+}
+
+/**
+ * One food line inside a meal. Macros/cost are snapshotted from the Food Library
+ * at add time (per 100 base units) so a meal's totals stay stable even if the
+ * library food is later edited, archived, or deleted — and so rendering a day
+ * needs no extra food lookups.
+ */
+export interface MealFoodEntry {
+  id: string;
+  foodId: string;
+  name: string; // snapshot for display + fallback
+  unit: FoodUnit;
+  quantity: number; // number of servings, e.g. 2
+  servingLabel: string; // e.g. "1 Egg"
+  servingGrams: number; // base units per one serving
+  // Snapshot, per 100 base units:
+  calories: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+  costPerBase: number | null; // cost per single base unit (g/ml)
+  sortOrder: number;
+}
+
+/** Base measurement unit for a food's nutrition + pricing. */
+export type FoodUnit = "g" | "ml";
+
+/** A named portion of a food (e.g. "100 g", "1 Egg", "250 ml", "1 Slice"). */
+export interface FoodServing {
+  id: string;
+  label: string;
+  grams: number; // equivalent in base units (g/ml, treated 1:1)
+}
+
+/**
+ * A reusable food in the user's Food Library. Nutrition + pricing are entered
+ * per 100 base units (the packaging standard); servings define portions.
+ * Stored in `nutritionLogs` with docType "food" (auto id) so no new Firestore
+ * collection/rule is needed. Nothing depends on an external API.
+ */
+export interface FoodItem {
+  id: string;
+  userId: string;
+  // Basic
+  name: string;
+  imageData: string | null; // compressed data URI (Firestore-inline)
+  category: string | null;
+  brand: string | null;
+  notes: string | null;
+  // Nutrition — per 100 base units
+  unit: FoodUnit;
+  calories: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+  // Pricing
+  purchasePrice: number | null; // in `currency`
+  quantityPurchased: number | null; // in base units (g/ml)
+  currency: string | null; // currency code; null → user's default
+  // Portions
+  servings: FoodServing[];
+  // Organization
+  favorite: boolean;
+  tags: string[];
+  archived: boolean;
+  sortOrder: number;
   createdAt: number;
 }
 

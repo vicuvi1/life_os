@@ -2,7 +2,8 @@
 
 import { SkeletonCard } from "@/components/ui/skeleton";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Plus, Minus, GlassWater, Flame, Beef, Wallet, HeartPulse, Utensils } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ChevronLeft, ChevronRight, Plus, Minus, GlassWater, Flame, Beef, Wallet, HeartPulse, Utensils, Library } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
   getNutritionDay, upsertNutritionLog, updateNutritionMeal, createNutritionMeal,
@@ -12,6 +13,7 @@ import { toDateKey } from "@/lib/greeting";
 import { addDays } from "@/lib/habits";
 import { formatLongDate } from "@/lib/dates";
 import { DEFAULT_WATER_TARGET, DEFAULT_PROTEIN_TARGET, nutritionSummary, healthMeta } from "@/lib/nutrition";
+import { dayTotals } from "@/lib/food";
 import { resolveCurrency, formatAmount, type Currency } from "@/lib/currency";
 import { NumberField } from "@/components/ui/number-field";
 import { Button } from "@/components/ui/button";
@@ -24,9 +26,10 @@ import type { NutritionMeal } from "@/lib/types";
 
 export default function NutritionPage() {
   const { user } = useAuth();
+  const router = useRouter();
   const today = toDateKey(new Date());
   const [date, setDate] = useState(today);
-  const [data, setData] = useState<NutritionDay>({ log: null, meals: [] });
+  const [data, setData] = useState<NutritionDay>({ log: null, meals: [], foods: [] });
   const [waterUnit, setWaterUnit] = useState("glasses");
   const [proteinTarget, setProteinTarget] = useState(DEFAULT_PROTEIN_TARGET);
   const [currency, setCurrency] = useState<Currency | null>(null);
@@ -34,7 +37,7 @@ export default function NutritionPage() {
   const [dialog, setDialog] = useState<{ open: boolean; meal: NutritionMeal | null }>({ open: false, meal: null });
   const [dragId, setDragId] = useState<string | null>(null);
 
-  const load = useCallback(async (d: string, opts?: { quiet?: boolean }) => {
+  const load = useCallback(async (d: string, opts?: { quiet?: boolean; sync?: boolean }) => {
     if (!user) return;
     if (!opts?.quiet) setLoading(true);
     try {
@@ -43,6 +46,9 @@ export default function NutritionPage() {
       setWaterUnit(prefs.waterUnit);
       setProteinTarget(prefs.proteinTarget ?? DEFAULT_PROTEIN_TARGET);
       setCurrency(resolveCurrency(budget));
+      // Roll the day's meal macros up onto the per-day log doc so the dashboard
+      // and insights read live totals without loading every meal.
+      if (opts?.sync) void upsertNutritionLog(user.uid, d, dayTotals(day.meals)).catch(() => {});
     } finally {
       if (!opts?.quiet) setLoading(false);
     }
@@ -55,14 +61,14 @@ export default function NutritionPage() {
   const waterTarget = data.log?.waterTarget ?? DEFAULT_WATER_TARGET;
   const summary = useMemo(() => nutritionSummary(meals, water, waterTarget, proteinTarget), [meals, water, waterTarget, proteinTarget]);
   const hm = healthMeta(summary.healthScore);
-  const sym = currency?.symbol ?? "";
+  const cur = currency ?? resolveCurrency(null);
   const step = waterUnit === "liters" ? 0.25 : 1;
   const unitLabel = waterUnit === "liters" ? "L" : waterUnit === "oz" ? "oz" : "glasses";
 
   function setWater(next: number) {
     if (!user) return;
     const clamped = Math.max(0, Math.round(next * 100) / 100);
-    setData((prev) => ({ ...prev, log: { ...(prev.log ?? { id: `${user.uid}_${date}`, userId: user.uid, date, water: 0, waterTarget, breakfast: false, lunch: false, dinner: false, calories: null, notes: null, createdAt: 0 }), water: clamped } }));
+    setData((prev) => ({ ...prev, log: { ...(prev.log ?? { id: `${user.uid}_${date}`, userId: user.uid, date, water: 0, waterTarget, breakfast: false, lunch: false, dinner: false, calories: null, protein: null, carbs: null, fat: null, cost: null, notes: null, createdAt: 0 }), water: clamped } }));
     void upsertNutritionLog(user.uid, date, { water: clamped }).catch(() => void load(date, { quiet: true }));
   }
   function setTarget(next: number) {
@@ -81,12 +87,13 @@ export default function NutritionPage() {
   }
   async function duplicate(m: NutritionMeal) {
     if (!user) return;
-    await createNutritionMeal(user.uid, date, { name: `${m.name} (copy)`, icon: m.icon, color: m.color, time: m.time, notes: m.notes, calories: m.calories, protein: m.protein, cost: m.cost, sortOrder: meals.length });
-    await load(date, { quiet: true });
+    await createNutritionMeal(user.uid, date, { name: `${m.name} (copy)`, icon: m.icon, color: m.color, time: m.time, notes: m.notes, calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat, cost: m.cost, items: m.items, sortOrder: meals.length });
+    await load(date, { quiet: true, sync: true });
   }
   async function remove(m: NutritionMeal) {
     setData((prev) => ({ ...prev, meals: prev.meals.filter((x) => x.id !== m.id) }));
     await deleteNutritionMeal(m.id);
+    await load(date, { quiet: true, sync: true });
   }
   function dropOn(targetId: string) {
     if (!dragId || dragId === targetId) { setDragId(null); return; }
@@ -118,6 +125,7 @@ export default function NutritionPage() {
             <button type="button" onClick={() => setDate(today)} className="min-w-[140px] text-center text-sm font-medium">{formatLongDate(date)}</button>
             <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Next day" disabled={isToday} onClick={() => setDate((d) => addDays(d, 1))}><ChevronRight className="h-4 w-4" /></Button>
           </div>
+          <Button variant="outline" onClick={() => router.push("/nutrition/foods")}><Library className="h-4 w-4" /> Food Library</Button>
           <Button onClick={() => setDialog({ open: true, meal: null })}><Plus className="h-4 w-4" /> Add meal</Button>
         </div>
       </div>
@@ -128,7 +136,7 @@ export default function NutritionPage() {
         <>
           {/* Daily summary */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-            <SummaryTile icon={<Flame className="h-3.5 w-3.5" />} label="Calories" value={summary.calories > 0 ? String(summary.calories) : "—"} hint="kcal" />
+            <SummaryTile icon={<Flame className="h-3.5 w-3.5" />} label="Calories" value={summary.calories > 0 ? String(summary.calories) : "—"} hint={summary.carbs > 0 || summary.fat > 0 ? `${summary.carbs}C · ${summary.fat}F` : "kcal"} />
             <SummaryTile icon={<Beef className="h-3.5 w-3.5" />} label="Protein" value={summary.protein > 0 ? `${summary.protein}g` : "—"} hint={`goal ${proteinTarget}g`} />
             <SummaryTile icon={<GlassWater className="h-3.5 w-3.5" />} label="Water" value={`${water}${waterUnit === "liters" ? "L" : ""}`} hint={`of ${waterTarget}`} />
             <SummaryTile icon={<Wallet className="h-3.5 w-3.5" />} label="Food cost" value={summary.cost > 0 && currency ? formatAmount(summary.cost, currency) : "—"} hint="today" />
@@ -178,7 +186,7 @@ export default function NutritionPage() {
                   <MealCard
                     key={m.id}
                     meal={m}
-                    currencySymbol={sym}
+                    currency={cur}
                     dragging={dragId === m.id}
                     onToggleCollapse={() => toggleCollapse(m)}
                     onEdit={() => setDialog({ open: true, meal: m })}
@@ -203,7 +211,17 @@ export default function NutritionPage() {
       )}
 
       {user && (
-        <MealDialog open={dialog.open} onOpenChange={(o) => setDialog((s) => ({ ...s, open: o }))} userId={user.uid} date={date} meal={dialog.meal} currencySymbol={sym} onSaved={() => load(date, { quiet: true })} />
+        <MealDialog
+          open={dialog.open}
+          onOpenChange={(o) => setDialog((s) => ({ ...s, open: o }))}
+          userId={user.uid}
+          date={date}
+          meal={dialog.meal}
+          foods={data.foods}
+          currency={cur}
+          onManageFoods={() => router.push("/nutrition/foods")}
+          onSaved={() => load(date, { quiet: true, sync: true })}
+        />
       )}
     </div>
   );

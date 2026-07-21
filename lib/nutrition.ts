@@ -1,4 +1,5 @@
 import type { NutritionLog, NutritionMeal } from "@/lib/types";
+import { dayTotals } from "@/lib/food";
 
 export const DEFAULT_WATER_TARGET = 8;
 export const DEFAULT_PROTEIN_TARGET = 100; // grams/day
@@ -30,6 +31,8 @@ export const MEAL_TEMPLATES: MealTemplate[] = [
 export interface NutritionSummary {
   calories: number;
   protein: number;
+  carbs: number;
+  fat: number;
   cost: number;
   water: number;
   waterTarget: number;
@@ -61,17 +64,17 @@ export function nutritionSummary(
   waterTarget: number,
   proteinTarget: number
 ): NutritionSummary {
-  const calories = meals.reduce((s, m) => s + (m.calories ?? 0), 0);
-  const protein = meals.reduce((s, m) => s + (m.protein ?? 0), 0);
-  const cost = meals.reduce((s, m) => s + (m.cost ?? 0), 0);
+  const t = dayTotals(meals);
   return {
-    calories,
-    protein,
-    cost,
+    calories: t.calories,
+    protein: t.protein,
+    carbs: t.carbs,
+    fat: t.fat,
+    cost: t.cost,
     water,
     waterTarget,
     mealCount: meals.length,
-    healthScore: healthScore({ water, waterTarget, mealCount: meals.length, protein, proteinTarget }),
+    healthScore: healthScore({ water, waterTarget, mealCount: meals.length, protein: t.protein, proteinTarget }),
   };
 }
 
@@ -120,6 +123,10 @@ export function emptyNutrition(date: string): Omit<NutritionLog, "id" | "userId"
     lunch: false,
     dinner: false,
     calories: null,
+    protein: null,
+    carbs: null,
+    fat: null,
+    cost: null,
     notes: null,
   };
 }

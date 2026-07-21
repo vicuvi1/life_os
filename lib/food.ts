@@ -1,0 +1,210 @@
+import type { FoodItem, FoodServing, FoodUnit, MealFoodEntry, NutritionMeal } from "@/lib/types";
+
+// ---------------------------------------------------------------------------
+// Categories, units, serving defaults
+// ---------------------------------------------------------------------------
+export const FOOD_CATEGORIES = [
+  "Protein", "Dairy", "Grains", "Vegetables", "Fruit", "Fats & Oils",
+  "Nuts & Seeds", "Snacks", "Drinks", "Condiments", "Prepared", "Supplements", "Other",
+];
+
+export const FOOD_UNITS: FoodUnit[] = ["g", "ml"];
+
+/** A tiny id generator for embedded rows (servings, meal-food entries). */
+export function genId(): string {
+  try {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  } catch {
+    /* fall through */
+  }
+  return `id_${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
+}
+
+/** Every food starts with a 100-unit serving; users add more (1 Egg, 1 Cup…). */
+export function defaultServings(unit: FoodUnit): FoodServing[] {
+  return [{ id: genId(), label: unit === "ml" ? "100 ml" : "100 g", grams: 100 }];
+}
+
+// ---------------------------------------------------------------------------
+// Rounding
+// ---------------------------------------------------------------------------
+const r0 = (n: number) => Math.round(n);
+const r1 = (n: number) => Math.round(n * 10) / 10;
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
+export interface Macros { calories: number; protein: number; carbs: number; fat: number }
+
+/** Scale per-100-base nutrition to an arbitrary amount of base units. */
+export function macrosForGrams(
+  per100: Pick<FoodItem, "calories" | "protein" | "carbs" | "fat">,
+  grams: number
+): Macros {
+  const f = grams / 100;
+  return {
+    calories: (per100.calories ?? 0) * f,
+    protein: (per100.protein ?? 0) * f,
+    carbs: (per100.carbs ?? 0) * f,
+    fat: (per100.fat ?? 0) * f,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Pricing — auto-calculated, everything else manual
+// ---------------------------------------------------------------------------
+/** Cost of a single base unit (per gram / per ml). null if pricing incomplete. */
+export function costPerBase(food: Pick<FoodItem, "purchasePrice" | "quantityPurchased">): number | null {
+  if (food.purchasePrice == null || !food.quantityPurchased) return null;
+  return food.purchasePrice / food.quantityPurchased;
+}
+
+/** Cost of one serving. null if pricing incomplete. */
+export function costPerServing(
+  food: Pick<FoodItem, "purchasePrice" | "quantityPurchased">,
+  serving: Pick<FoodServing, "grams">
+): number | null {
+  const cpb = costPerBase(food);
+  return cpb == null ? null : cpb * serving.grams;
+}
+
+// ---------------------------------------------------------------------------
+// Meal-food entries (Meal Builder)
+// ---------------------------------------------------------------------------
+/** Total base units an entry represents (quantity × serving size). */
+export function entryGrams(e: Pick<MealFoodEntry, "quantity" | "servingGrams">): number {
+  return e.quantity * e.servingGrams;
+}
+
+export function entryMacros(e: MealFoodEntry): Macros {
+  return macrosForGrams(e, entryGrams(e));
+}
+
+export function entryCost(e: MealFoodEntry): number {
+  return (e.costPerBase ?? 0) * entryGrams(e);
+}
+
+/** Snapshot a library food into a meal line at add time. */
+export function foodToEntry(food: FoodItem, serving: FoodServing, quantity: number, sortOrder: number): MealFoodEntry {
+  return {
+    id: genId(),
+    foodId: food.id,
+    name: food.name,
+    unit: food.unit,
+    quantity,
+    servingLabel: serving.label,
+    servingGrams: serving.grams,
+    calories: food.calories,
+    protein: food.protein,
+    carbs: food.carbs,
+    fat: food.fat,
+    costPerBase: costPerBase(food),
+    sortOrder,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Meal + day totals (feed the meal cards, daily summary, dashboard)
+// ---------------------------------------------------------------------------
+export interface MealTotals { calories: number; protein: number; carbs: number; fat: number; cost: number; hasData: boolean }
+
+export function mealTotals(
+  meal: Pick<NutritionMeal, "items" | "calories" | "protein" | "carbs" | "fat" | "cost">
+): MealTotals {
+  if (meal.items && meal.items.length > 0) {
+    const t = meal.items.reduce(
+      (a, e) => {
+        const m = entryMacros(e);
+        a.calories += m.calories;
+        a.protein += m.protein;
+        a.carbs += m.carbs;
+        a.fat += m.fat;
+        a.cost += entryCost(e);
+        return a;
+      },
+      { calories: 0, protein: 0, carbs: 0, fat: 0, cost: 0 }
+    );
+    return { calories: r0(t.calories), protein: r1(t.protein), carbs: r1(t.carbs), fat: r1(t.fat), cost: r2(t.cost), hasData: true };
+  }
+  const hasData = meal.calories != null || meal.protein != null || meal.carbs != null || meal.fat != null || meal.cost != null;
+  return {
+    calories: r0(meal.calories ?? 0), protein: r1(meal.protein ?? 0), carbs: r1(meal.carbs ?? 0),
+    fat: r1(meal.fat ?? 0), cost: r2(meal.cost ?? 0), hasData,
+  };
+}
+
+export function dayTotals(meals: NutritionMeal[]): Omit<MealTotals, "hasData"> {
+  const t = meals.reduce(
+    (a, m) => {
+      const mt = mealTotals(m);
+      a.calories += mt.calories;
+      a.protein += mt.protein;
+      a.carbs += mt.carbs;
+      a.fat += mt.fat;
+      a.cost += mt.cost;
+      return a;
+    },
+    { calories: 0, protein: 0, carbs: 0, fat: 0, cost: 0 }
+  );
+  return { calories: r0(t.calories), protein: r1(t.protein), carbs: r1(t.carbs), fat: r1(t.fat), cost: r2(t.cost) };
+}
+
+// ---------------------------------------------------------------------------
+// Library search / filter / sort
+// ---------------------------------------------------------------------------
+export type FoodSort = "custom" | "name" | "calories" | "cost" | "recent";
+
+export const FOOD_SORTS: { value: FoodSort; label: string }[] = [
+  { value: "custom", label: "Custom order" },
+  { value: "name", label: "Name (A–Z)" },
+  { value: "calories", label: "Calories (high→low)" },
+  { value: "cost", label: "Cost / serving (low→high)" },
+  { value: "recent", label: "Recently added" },
+];
+
+export interface FoodFilter {
+  search: string;
+  category: string | null;
+  tags: string[];
+  favorites: boolean;
+  archived: boolean; // when false, hide archived; when true, show ONLY archived
+}
+
+export function allFoodTags(foods: FoodItem[]): string[] {
+  const set = new Set<string>();
+  for (const f of foods) for (const t of f.tags) set.add(t);
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+export function filterFoods(foods: FoodItem[], f: FoodFilter): FoodItem[] {
+  const q = f.search.trim().toLowerCase();
+  return foods.filter((food) => {
+    if (f.archived ? !food.archived : food.archived) return false;
+    if (f.favorites && !food.favorite) return false;
+    if (f.category && food.category !== f.category) return false;
+    if (f.tags.length && !f.tags.every((t) => food.tags.includes(t))) return false;
+    if (q) {
+      const hay = `${food.name} ${food.brand ?? ""} ${food.category ?? ""} ${food.tags.join(" ")}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+export function sortFoods(foods: FoodItem[], sort: FoodSort): FoodItem[] {
+  const list = [...foods];
+  switch (sort) {
+    case "name":
+      return list.sort((a, b) => a.name.localeCompare(b.name));
+    case "calories":
+      return list.sort((a, b) => (b.calories ?? -1) - (a.calories ?? -1));
+    case "cost":
+      return list.sort((a, b) => {
+        const ca = costPerServing(a, a.servings[0] ?? { grams: 100 });
+        const cb = costPerServing(b, b.servings[0] ?? { grams: 100 });
+        return (ca ?? Infinity) - (cb ?? Infinity);
+      });
+    case "recent":
+      return list.sort((a, b) => b.createdAt - a.createdAt);
+    default:
+      return list.sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt);
+  }
+}
