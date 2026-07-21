@@ -640,13 +640,48 @@ export interface NotifCondition {
   states: string[];
 }
 
+/** A visual block in the block-builder (Phase 2). Compiles down to `body`. */
+export type NotifBlockType =
+  | "text"
+  | "sleep_score"
+  | "streak"
+  | "recommendation"
+  | "goal_progress"
+  | "weather"
+  | "calendar"
+  | "progress_bar"
+  | "conditional";
+
+export interface NotifBlockCond {
+  variable: string;
+  operator: string; // "<" | ">" | "=" | "is set" | "is not set"
+  value: string;
+  then: string;
+  else: string;
+}
+
+export interface NotifBlock {
+  id: string;
+  type: NotifBlockType;
+  /** Text block content. */
+  text?: string;
+  /** Streak block: which streak. */
+  streak?: "sleep" | "habit";
+  /** Conditional block. */
+  cond?: NotifBlockCond;
+}
+
 /** A fully customizable notification: wording, buttons, timing. */
 export interface NotificationTemplate {
   id: string;
   userId: string;
   eventType: NotifEventType;
   enabled: boolean;
-  body: string; // contains {{variable}} placeholders
+  body: string; // contains {{variable}} placeholders (compiled from blocks when in block mode)
+  /** Which editor authored `body`. */
+  mode: "text" | "blocks";
+  /** Block-builder layout (compiles to `body`); empty when authored as plain text. */
+  blocks: NotifBlock[];
   buttons: NotifButton[];
   condition: NotifCondition;
   /** Which preset it started from (informational only). */

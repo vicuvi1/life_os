@@ -2,7 +2,7 @@
 // style presets, condition helpers. Pure/data-only so it's easy to test and
 // reuse across the editor, the live preview, and real sends.
 
-import type { NotifAction, NotifCondition, NotifEventType, NotificationTemplate, NotifButton } from "@/lib/types";
+import type { NotifAction, NotifBlock, NotifBlockType, NotifCondition, NotifEventType, NotificationTemplate, NotifButton } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Events
@@ -42,6 +42,7 @@ export const VARIABLE_GROUPS: { group: string; items: VariableDef[] }[] = [
       { key: "sleep_debt", label: "Sleep debt", sample: "1h 10m", fallback: "none" },
       { key: "consistency", label: "Consistency", sample: "91%", fallback: "—" },
       { key: "streak", label: "Sleep goal streak", sample: "12", fallback: "0" },
+      { key: "recommendation", label: "Today's recommendation", sample: "Aim for an earlier night tonight.", fallback: "Keep your routine steady." },
     ],
   },
   {
@@ -77,16 +78,105 @@ export const VARIABLE_GROUPS: { group: string; items: VariableDef[] }[] = [
 ];
 
 const ALL_VARS = VARIABLE_GROUPS.flatMap((g) => g.items);
-export const SAMPLE_VALUES: Record<string, string> = Object.fromEntries(ALL_VARS.map((v) => [v.key, v.sample]));
+export const SAMPLE_VALUES: Record<string, string> = {
+  ...Object.fromEntries(ALL_VARS.map((v) => [v.key, v.sample])),
+  // Widget-only variables (emitted by blocks, not shown in the picker).
+  sleep_bar: "███████░░░ 78%",
+};
 const FALLBACKS: Record<string, string> = Object.fromEntries(ALL_VARS.map((v) => [v.key, v.fallback]));
 
-/** Replace {{tokens}} with live values, falling back sensibly when a value is missing. */
+/** Comparison operators for conditional blocks (kept deliberately simple). */
+export const COND_OPERATORS = [
+  { key: "<", label: "is less than" },
+  { key: ">", label: "is greater than" },
+  { key: "=", label: "equals" },
+  { key: "is set", label: "is set" },
+  { key: "is not set", label: "is not set" },
+];
+
+function evalCond(raw: string | undefined, op: string, target: string): boolean {
+  const val = (raw ?? "").trim();
+  if (op === "is set") return val !== "";
+  if (op === "is not set") return val === "";
+  const num = parseFloat(val.replace(/[^0-9.-]/g, ""));
+  const t = parseFloat(target.replace(/[^0-9.-]/g, ""));
+  const bothNum = Number.isFinite(num) && Number.isFinite(t);
+  if (op === "<") return bothNum && num < t;
+  if (op === ">") return bothNum && num > t;
+  if (op === "=") return bothNum ? num === t : val.toLowerCase() === target.trim().toLowerCase();
+  return false;
+}
+
+/**
+ * Resolve a template body: first evaluate single-level conditionals
+ * `{{#if var op value}}A{{else}}B{{/if}}`, then substitute `{{tokens}}` with
+ * live values (sensible fallback when missing). Not a general expression language.
+ */
 export function resolveBody(body: string, values: Record<string, string>): string {
-  return body.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key: string) => {
+  const withCond = body.replace(
+    /\{\{#if\s+(\w+)\s*(<|>|=|is not set|is set)\s*([^}]*)\}\}([\s\S]*?)(?:\{\{else\}\}([\s\S]*?))?\{\{\/if\}\}/g,
+    (_m, key: string, op: string, rawVal: string, thenT: string, elseT: string | undefined) =>
+      evalCond(values[key], op, rawVal.trim()) ? thenT : elseT ?? ""
+  );
+  return withCond.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key: string) => {
     const v = values[key];
     if (v != null && String(v).trim() !== "") return String(v);
     return FALLBACKS[key] ?? "";
   });
+}
+
+// ---------------------------------------------------------------------------
+// Block builder (Phase 2) — an alternative editor that compiles to `body`.
+// ---------------------------------------------------------------------------
+export const BLOCK_META: Record<NotifBlockType, { label: string; icon: string }> = {
+  text: { label: "Text", icon: "✍️" },
+  sleep_score: { label: "Sleep score", icon: "😴" },
+  streak: { label: "Streak", icon: "🔥" },
+  recommendation: { label: "Recommendation", icon: "💡" },
+  goal_progress: { label: "Goal progress", icon: "🎯" },
+  progress_bar: { label: "Progress bar", icon: "📊" },
+  weather: { label: "Weather", icon: "🌤" },
+  calendar: { label: "Calendar event", icon: "📅" },
+  conditional: { label: "If / Else", icon: "🔀" },
+};
+export const BLOCK_ORDER: NotifBlockType[] = [
+  "text", "sleep_score", "streak", "recommendation", "goal_progress", "progress_bar", "weather", "calendar", "conditional",
+];
+
+/** Compile one block to its template-text fragment (with {{tokens}} / conditionals). */
+export function blockToText(b: NotifBlock): string {
+  switch (b.type) {
+    case "text": return b.text ?? "";
+    case "sleep_score": return "😴 Sleep score {{sleep_score}}/100";
+    case "streak": return b.streak === "habit" ? "🔥 Best habit streak: {{habit_streak}}" : "🔥 {{streak}}-night sleep streak";
+    case "recommendation": return "💡 {{recommendation}}";
+    case "goal_progress": return "🎯 {{duration}} / {{sleep_goal}}";
+    case "progress_bar": return "{{sleep_bar}}";
+    case "weather": return "🌤 {{weather}}, {{temperature}}";
+    case "calendar": return "📅 Next: {{next_event}}";
+    case "conditional": {
+      const c = b.cond;
+      if (!c || !c.variable) return "";
+      const val = c.operator === "is set" || c.operator === "is not set" ? "" : ` ${c.value}`;
+      return `{{#if ${c.variable} ${c.operator}${val}}}${c.then}{{else}}${c.else}{{/if}}`;
+    }
+    default: return "";
+  }
+}
+
+/** Compile a block list into a single body string. */
+export function compileBlocks(blocks: NotifBlock[]): string {
+  return blocks.map(blockToText).filter((s) => s.trim() !== "").join("\n");
+}
+
+export function defaultBlock(type: NotifBlockType, seq: number): NotifBlock {
+  return {
+    id: `blk-${seq}-${type}`,
+    type,
+    text: type === "text" ? "" : undefined,
+    streak: type === "streak" ? "sleep" : undefined,
+    cond: type === "conditional" ? { variable: "sleep_score", operator: "<", value: "70", then: "Take it easy today. 😴", else: "You're clear for a full day. 💪" } : undefined,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -200,6 +290,8 @@ export function defaultTemplate(userId: string, eventType: NotifEventType): Noti
     eventType,
     enabled: eventType === "sleep_logged_summary",
     body: PRESETS[eventType].Friendly,
+    mode: "text",
+    blocks: [],
     buttons: DEFAULT_BUTTONS[eventType].map((b) => ({ ...b })),
     condition: { ...DEFAULT_CONDITION[eventType], states: [...DEFAULT_CONDITION[eventType].states] },
     stylePreset: "Friendly",

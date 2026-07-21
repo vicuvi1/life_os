@@ -1953,6 +1953,8 @@ function mapNotifTemplate(snap: QueryDocumentSnapshot<DocumentData>): Notificati
     eventType: d.eventType,
     enabled: d.enabled === true,
     body: d.body ?? "",
+    mode: d.mode === "blocks" ? "blocks" : "text",
+    blocks: Array.isArray(d.blocks) ? d.blocks : [],
     buttons: Array.isArray(d.buttons) ? d.buttons : [],
     condition: d.condition ?? { timeMode: "absolute", reference: "wake_time", offsetMin: 0, time: "", days: "all", states: [] },
     stylePreset: d.stylePreset ?? "Custom",
@@ -1978,7 +1980,7 @@ export async function getNotifTemplates(userId: string): Promise<NotificationTem
   return snap.docs.filter((d) => d.data().docType === "notiftemplate").map(mapNotifTemplate);
 }
 
-export type NotifTemplateInput = Pick<NotificationTemplate, "eventType" | "enabled" | "body" | "buttons" | "condition" | "stylePreset">;
+export type NotifTemplateInput = Pick<NotificationTemplate, "eventType" | "enabled" | "body" | "mode" | "blocks" | "buttons" | "condition" | "stylePreset">;
 
 /** Upsert the template for an event type (deterministic id — one per event). */
 export async function upsertNotifTemplate(userId: string, input: NotifTemplateInput): Promise<void> {

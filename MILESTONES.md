@@ -1940,11 +1940,20 @@ and buttons.
   existing **Settings → AI providers** keys — no second credential flow.
 - **Export / Import** a template as JSON (share with a friend on Life OS).
 
+**Phase 2 (shipped).**
+- **If / Else conditional text** — a simple form (variable · operator · value ·
+  then-text · else-text) inserts a `{{#if var op value}}…{{else}}…{{/if}}` token
+  the resolver evaluates at send time. Operators kept simple (`<`, `>`, `=`,
+  `is set`, `is not set`) — not a scripting language.
+- **Drag-and-drop block builder** — a Text ⇄ Blocks toggle switches the same
+  template between raw text and a reorderable stack of blocks (Text, Sleep score,
+  Streak, Recommendation, Goal progress, Progress bar, Weather, Calendar event,
+  If/Else). Blocks **compile down to the same `body` string**, so send/preview/
+  history all stay on one path and the **one live preview** renders either mode.
+
 **Deferred.**
-- **Phase 2** — visual **IF/ELSE conditional text blocks** and a **drag-and-drop
-  block builder** (Text / Sleep Score / Progress Bar / Streak / … widgets) as an
-  alternative authoring mode over the same template data. Phase 1's text editor
-  is complete on its own; blocks are the next layer.
+- **AI Summary block** (an LLM-generated block) — the one Phase-2 block left out;
+  the text-level AI rewrite already covers AI wording.
 - **Public template marketplace** — out of scope for a single-user app (needs
   multi-user identity + moderation); Export/Import is the realistic "sharing".
 - Hands-free **scheduled** delivery for time-based events while the app is

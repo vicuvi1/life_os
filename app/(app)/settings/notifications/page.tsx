@@ -16,7 +16,9 @@ import { buildNotifValues } from "@/lib/notif-values";
 import {
   EVENT_ORDER, EVENT_META, VARIABLE_GROUPS, SAMPLE_VALUES, resolveBody, presetsFor, defaultTemplate,
   describeCondition, ACTION_META, ACTIONS, REFERENCE_OPTIONS, DAYS_OPTIONS, STATE_OPTIONS,
+  compileBlocks, blockToText, defaultBlock,
 } from "@/lib/notifications";
+import { NotifBlockEditor, ConditionalForm } from "@/components/settings/notif-block-editor";
 import { callAgentModel, PROVIDER_META } from "@/lib/ai";
 import { tgSend } from "@/lib/telegram";
 import { resolveFirstName } from "@/lib/greeting";
@@ -31,7 +33,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import type { AIProviderType, AIProviders, NotifAction, NotifButton, NotifCondition, NotifEventType, NotificationTemplate, NotifLogEntry, TelegramConfig } from "@/lib/types";
+import type { AIProviderType, AIProviders, NotifAction, NotifBlockCond, NotifButton, NotifCondition, NotifEventType, NotificationTemplate, NotifLogEntry, TelegramConfig } from "@/lib/types";
 
 type Tab = "preview" | "template" | "conditions";
 const TONES = ["Professional", "Friendly", "Funny", "Minimal", "Formal", "Military", "Stoic", "Gen Z"];
@@ -50,6 +52,7 @@ export default function NotificationBuilderPage() {
   const [savedFlash, setSavedFlash] = useState(false);
   const [sendState, setSendState] = useState<{ busy: boolean; msg?: string; ok?: boolean }>({ busy: false });
   const [aiOpen, setAiOpen] = useState(false);
+  const [ifElse, setIfElse] = useState<NotifBlockCond | null>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -77,7 +80,7 @@ export default function NotificationBuilderPage() {
 
   const persist = useCallback((et: NotifEventType, next: NotificationTemplate) => {
     if (!user) return;
-    const input: NotifTemplateInput = { eventType: et, enabled: next.enabled, body: next.body, buttons: next.buttons, condition: next.condition, stylePreset: next.stylePreset };
+    const input: NotifTemplateInput = { eventType: et, enabled: next.enabled, body: next.body, mode: next.mode, blocks: next.blocks, buttons: next.buttons, condition: next.condition, stylePreset: next.stylePreset };
     void upsertNotifTemplate(user.uid, input).then(flashSaved);
   }, [user]);
 
@@ -90,6 +93,29 @@ export default function NotificationBuilderPage() {
     });
   }
 
+  function switchMode(m: "text" | "blocks") {
+    if (m === tpl.mode) return;
+    if (m === "blocks") {
+      const blocks = tpl.blocks.length ? tpl.blocks : tpl.body.trim() ? [defaultBlock("text", Date.now())] : [];
+      if (blocks.length === 1 && blocks[0].type === "text" && !tpl.blocks.length) blocks[0].text = tpl.body;
+      patch({ mode: "blocks", blocks, body: compileBlocks(blocks) });
+    } else {
+      patch({ mode: "text" });
+    }
+  }
+  function handleBlocks(next: Parameters<typeof NotifBlockEditor>[0]["blocks"]) {
+    patch({ blocks: next, body: compileBlocks(next), mode: "blocks" });
+  }
+
+  function insertText(token: string) {
+    const ta = bodyRef.current;
+    if (!ta) { patch({ body: `${tpl.body}${token}` }, false); return; }
+    const start = ta.selectionStart ?? tpl.body.length;
+    const end = ta.selectionEnd ?? start;
+    const next = tpl.body.slice(0, start) + token + tpl.body.slice(end);
+    patch({ body: next }, false);
+    requestAnimationFrame(() => { ta.focus(); ta.selectionStart = ta.selectionEnd = start + token.length; });
+  }
   function insertVariable(key: string) {
     const ta = bodyRef.current;
     const token = `{{${key}}}`;
@@ -261,36 +287,55 @@ export default function NotificationBuilderPage() {
                   {EVENT_META[selected].eventDriven && (
                     <p className="rounded-lg border bg-muted/30 p-2.5 text-xs text-muted-foreground">This one sends automatically when you log a night&apos;s sleep.</p>
                   )}
-                  <div>
-                    <p className="mb-1.5 text-xs font-medium text-muted-foreground">Start from a style</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {presetsFor(selected).map((p) => (
-                        <button key={p.name} type="button" onClick={() => patch({ body: p.body, stylePreset: p.name })} className={cn("rounded-full border px-2.5 py-0.5 text-xs font-medium transition", tpl.stylePreset === p.name ? "border-primary bg-primary text-primary-foreground" : "border-input text-muted-foreground hover:bg-accent")}>{p.name}</button>
+
+                  {/* Authoring mode */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex gap-1 rounded-lg bg-muted p-0.5">
+                      {(["text", "blocks"] as const).map((m) => (
+                        <button key={m} type="button" onClick={() => switchMode(m)} className={cn("rounded-md px-3 py-1 text-xs font-medium capitalize transition", tpl.mode === m ? "bg-background shadow-sm" : "text-muted-foreground")}>{m === "text" ? "Text" : "Blocks"}</button>
                       ))}
                     </div>
-                  </div>
-
-                  <div>
-                    <div className="mb-1.5 flex items-center justify-between">
-                      <Label htmlFor="nb-body">Message</Label>
+                    {tpl.mode === "text" && (
                       <Button size="sm" variant="outline" className="h-7" onClick={() => setAiOpen(true)} disabled={!hasAnyKey} title={hasAnyKey ? "" : "Add an AI key in Settings"}><Sparkles className="h-3.5 w-3.5" /> Rewrite</Button>
-                    </div>
-                    <Textarea id="nb-body" ref={bodyRef} value={tpl.body} onChange={(e) => patch({ body: e.target.value }, false)} onBlur={() => persist(selected, tpl)} rows={4} className="font-mono text-sm" />
+                    )}
                   </div>
 
-                  <div>
-                    <p className="mb-1.5 text-xs font-medium text-muted-foreground">Insert a variable</p>
-                    <div className="space-y-2">
-                      {VARIABLE_GROUPS.map((g) => (
-                        <div key={g.group} className="flex flex-wrap items-center gap-1">
-                          <span className="mr-1 w-14 shrink-0 text-[10px] uppercase text-muted-foreground">{g.group}</span>
-                          {g.items.map((v) => (
-                            <button key={v.key} type="button" onClick={() => insertVariable(v.key)} title={`sample: ${v.sample}`} className="rounded border border-input px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground transition hover:border-primary/40 hover:text-foreground">{`{{${v.key}}}`}</button>
+                  {tpl.mode === "blocks" ? (
+                    <NotifBlockEditor blocks={tpl.blocks} onChange={handleBlocks} />
+                  ) : (
+                    <>
+                      <div>
+                        <p className="mb-1.5 text-xs font-medium text-muted-foreground">Start from a style</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {presetsFor(selected).map((p) => (
+                            <button key={p.name} type="button" onClick={() => patch({ body: p.body, stylePreset: p.name, mode: "text", blocks: [] })} className={cn("rounded-full border px-2.5 py-0.5 text-xs font-medium transition", tpl.stylePreset === p.name ? "border-primary bg-primary text-primary-foreground" : "border-input text-muted-foreground hover:bg-accent")}>{p.name}</button>
                           ))}
                         </div>
-                      ))}
-                    </div>
-                  </div>
+                      </div>
+
+                      <div>
+                        <div className="mb-1.5 flex items-center justify-between">
+                          <Label htmlFor="nb-body">Message</Label>
+                          <Button size="sm" variant="ghost" className="h-7 text-muted-foreground" onClick={() => setIfElse({ variable: "sleep_score", operator: "<", value: "70", then: "", else: "" })}>🔀 Insert if/else</Button>
+                        </div>
+                        <Textarea id="nb-body" ref={bodyRef} value={tpl.body} onChange={(e) => patch({ body: e.target.value }, false)} onBlur={() => persist(selected, tpl)} rows={5} className="font-mono text-sm" />
+                      </div>
+
+                      <div>
+                        <p className="mb-1.5 text-xs font-medium text-muted-foreground">Insert a variable</p>
+                        <div className="space-y-2">
+                          {VARIABLE_GROUPS.map((g) => (
+                            <div key={g.group} className="flex flex-wrap items-center gap-1">
+                              <span className="mr-1 w-14 shrink-0 text-[10px] uppercase text-muted-foreground">{g.group}</span>
+                              {g.items.map((v) => (
+                                <button key={v.key} type="button" onClick={() => insertVariable(v.key)} title={`sample: ${v.sample}`} className="rounded border border-input px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground transition hover:border-primary/40 hover:text-foreground">{`{{${v.key}}}`}</button>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
 
                   <ButtonEditor buttons={tpl.buttons} onChange={(b) => patch({ buttons: b })} />
                 </div>
@@ -304,7 +349,7 @@ export default function NotificationBuilderPage() {
             <div className="flex flex-wrap items-center gap-2 border-t px-4 py-2.5">
               <span className="text-[11px] text-muted-foreground">{describeCondition(tpl.condition)}</span>
               <div className="ml-auto flex items-center gap-1.5">
-                <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => patch({ body: presetsFor(selected)[0].body, stylePreset: "Friendly" })} title="Reset to Friendly preset"><RotateCcw className="h-3.5 w-3.5" /></Button>
+                <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => patch({ body: presetsFor(selected)[0].body, stylePreset: "Friendly", mode: "text", blocks: [] })} title="Reset to Friendly preset"><RotateCcw className="h-3.5 w-3.5" /></Button>
                 <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={exportTemplate} title="Export JSON"><Download className="h-3.5 w-3.5" /></Button>
                 <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => fileRef.current?.click()} title="Import JSON"><Upload className="h-3.5 w-3.5" /></Button>
                 <input ref={fileRef} type="file" accept="application/json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) importTemplate(f); e.target.value = ""; }} />
@@ -320,8 +365,22 @@ export default function NotificationBuilderPage() {
       </p>
 
       {tpl && (
-        <AiRewriteDialog open={aiOpen} onOpenChange={setAiOpen} body={tpl.body} providers={providers} onAccept={(b) => { patch({ body: b, stylePreset: "Custom" }); setAiOpen(false); }} />
+        <AiRewriteDialog open={aiOpen} onOpenChange={setAiOpen} body={tpl.body} providers={providers} onAccept={(b) => { patch({ body: b, stylePreset: "Custom", mode: "text", blocks: [] }); setAiOpen(false); }} />
       )}
+
+      <Dialog open={ifElse !== null} onOpenChange={(o) => !o && setIfElse(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Insert an if / else</DialogTitle>
+            <DialogDescription>Show different text depending on a value at send time.</DialogDescription>
+          </DialogHeader>
+          {ifElse && <ConditionalForm cond={ifElse} onChange={setIfElse} />}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIfElse(null)}>Cancel</Button>
+            <Button onClick={() => { if (ifElse) { insertText(blockToText({ id: "", type: "conditional", cond: ifElse })); setIfElse(null); } }}>Insert</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
