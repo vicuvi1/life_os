@@ -21,10 +21,16 @@ import {
   updateSleepEntry,
   deleteSleepEntry,
 } from "@/lib/firebase/db";
-import { durationHours, formatHours, qualityRating } from "@/lib/sleep";
+import { formatHours, qualityRating, parseHM } from "@/lib/sleep";
 import { tgSend } from "@/lib/telegram";
 import { formatLongDate } from "@/lib/dates";
+import { addDays } from "@/lib/habits";
+import { cn } from "@/lib/utils";
 import type { SleepKind, SleepLog } from "@/lib/types";
+
+function weekdayShort(dateKey: string): string {
+  return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date(`${dateKey}T00:00:00`).getDay()];
+}
 
 interface Props {
   open: boolean;
@@ -50,6 +56,9 @@ export function SleepLogDialog({ open, onOpenChange, userId, date, kind, entry, 
 
   const [bedtime, setBedtime] = useState("");
   const [wakeTime, setWakeTime] = useState("");
+  /** Whether bedtime is the night before the wake date (vs the same morning). */
+  const [bedPrevDay, setBedPrevDay] = useState(true);
+  const [bedDayTouched, setBedDayTouched] = useState(false);
   const [manualHours, setManualHours] = useState("");
   const [quality, setQuality] = useState(7);
   const [awakeMin, setAwakeMin] = useState(0);
@@ -64,6 +73,10 @@ export function SleepLogDialog({ open, onOpenChange, userId, date, kind, entry, 
     const seedWake = entry?.wakeTime ?? (!entry && kind === "sleep" ? defaultTimes?.wakeTime ?? "" : "");
     setBedtime(seedBed || "");
     setWakeTime(seedWake || "");
+    // Default: an evening/afternoon bedtime is the night before; a morning one is the same day.
+    const bh = parseHM(seedBed || "");
+    setBedPrevDay(bh == null ? true : bh >= 12 * 60);
+    setBedDayTouched(false);
     setManualHours(entry && !entry.bedtime && entry.hours ? String(entry.hours) : "");
     setQuality(entry?.quality || defaultQuality || 7);
     setAwakeMin(entry?.awakeMinutes ?? 0);
@@ -72,14 +85,31 @@ export function SleepLogDialog({ open, onOpenChange, userId, date, kind, entry, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, entry]);
 
-  const tib = useMemo(() => durationHours(bedtime || null, wakeTime || null), [bedtime, wakeTime]);
-  const hasTimes = tib != null;
+  const bedM = parseHM(bedtime);
+  const wakeM = parseHM(wakeTime);
+  const hasTimes = bedM != null && wakeM != null;
+  // Day-aware time in bed: bedtime may be the night before the wake date.
+  const tib = useMemo(() => {
+    if (bedM == null || wakeM == null) return null;
+    let mins = isNap ? wakeM - bedM : bedPrevDay ? 1440 - bedM + wakeM : wakeM - bedM;
+    if (mins <= 0) mins += 1440;
+    return Math.round((mins / 60) * 100) / 100;
+  }, [bedM, wakeM, isNap, bedPrevDay]);
   const hours = useMemo(() => {
-    if (hasTimes) return Math.max(0, Math.round((tib! - awakeMin / 60) * 100) / 100);
+    if (tib != null) return Math.max(0, Math.round((tib - awakeMin / 60) * 100) / 100);
     const n = Number(manualHours);
     return Number.isFinite(n) ? n : 0;
-  }, [hasTimes, tib, awakeMin, manualHours]);
+  }, [tib, awakeMin, manualHours]);
 
+  function handleBedtime(v: string) {
+    setBedtime(v);
+    if (!bedDayTouched) {
+      const h = parseHM(v);
+      setBedPrevDay(h == null ? true : h >= 12 * 60);
+    }
+  }
+
+  const bedDayDate = bedPrevDay ? addDays(date, -1) : date;
   const qr = qualityRating(quality);
 
   async function save() {
@@ -145,8 +175,27 @@ export function SleepLogDialog({ open, onOpenChange, userId, date, kind, entry, 
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>{isNap ? "Started" : "Bedtime"}</Label>
-              <TimeField value={bedtime} onChange={setBedtime} ariaLabel={isNap ? "Nap start" : "Bedtime"} />
+              <div className="flex items-center justify-between">
+                <Label>{isNap ? "Started" : "Bedtime"}</Label>
+                {!isNap && (
+                  <div className="flex overflow-hidden rounded-md border text-[10px]">
+                    {([["prev", "Night before"], ["same", "Same day"]] as const).map(([k, lbl]) => {
+                      const on = (k === "prev") === bedPrevDay;
+                      return (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => { setBedPrevDay(k === "prev"); setBedDayTouched(true); }}
+                          className={cn("px-1.5 py-0.5 transition", on ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent")}
+                        >
+                          {lbl}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <TimeField value={bedtime} onChange={handleBedtime} ariaLabel={isNap ? "Nap start" : "Bedtime"} />
             </div>
             <div className="space-y-1.5">
               <Label>{isNap ? "Ended" : "Wake up"}</Label>
@@ -155,12 +204,16 @@ export function SleepLogDialog({ open, onOpenChange, userId, date, kind, entry, 
           </div>
 
           {hasTimes ? (
-            <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-sm">
-              <span className="text-muted-foreground">Time in bed</span>
-              <span className="font-medium tabular-nums">{formatHours(tib!)}</span>
-              <span className="text-muted-foreground">·</span>
-              <span className="text-muted-foreground">Slept</span>
-              <span className="font-semibold tabular-nums">{formatHours(hours)}</span>
+            <div className="space-y-1.5 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>{weekdayShort(bedDayDate)} {bedtime}</span>
+                <span>→</span>
+                <span>{weekdayShort(date)} {wakeTime}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Time in bed <span className="font-medium tabular-nums text-foreground">{formatHours(tib!)}</span></span>
+                <span className="text-muted-foreground">Slept <span className="font-semibold tabular-nums text-foreground">{formatHours(hours)}</span></span>
+              </div>
             </div>
           ) : (
             <div className="space-y-1.5">
