@@ -290,6 +290,29 @@ export interface Budget {
   recurring?: RecurringRule[];
 }
 
+/**
+ * A customizable meal in the day's Nutrition Workspace. Unlimited per day, each
+ * fully user-defined. Stored in the `nutritionLogs` collection with docType
+ * "meal" (auto id), so the legacy per-day water/summary doc is untouched.
+ */
+export interface NutritionMeal {
+  id: string;
+  userId: string;
+  date: string; // YYYY-MM-DD
+  name: string;
+  icon: string; // emoji
+  color: string | null; // hex accent
+  time: string | null; // "HH:mm"
+  notes: string | null;
+  /** Optional macros/cost — the goal isn't calorie counting, so all optional. */
+  calories: number | null;
+  protein: number | null;
+  cost: number | null;
+  sortOrder: number;
+  collapsed: boolean;
+  createdAt: number;
+}
+
 /** A reusable meal in the user's library. */
 export interface Meal {
   id: string;
@@ -721,6 +744,8 @@ export interface UserPrefs {
   hiddenTrackers: string[];
   /** Nightly sleep goal in hours (used for Good/Low ratings). */
   sleepTarget: number;
+  /** Daily protein goal in grams (Nutrition Workspace). */
+  proteinTarget?: number | null;
   /** Target bedtime "HH:mm" (null = not set). */
   bedtimeTarget?: string | null;
   /** Target wake-up time "HH:mm" (null = not set). */

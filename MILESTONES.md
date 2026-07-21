@@ -1997,3 +1997,64 @@ secured serverless endpoint `/api/notifications/run` (Firebase Admin + Telegram)
 - Hands-free **scheduled** delivery for time-based events while the app is
   closed still needs the background sender (Vercel cron) noted earlier; "Send
   now" and the sleep-logged auto-send work today.
+
+---
+
+## 🍽️ Nutrition Workspace — foundation
+
+**Purpose.** Replace the old split of "Nutrition" and "Water" with a single
+**Nutrition Workspace**. The goal was never calorie counting — it's helping you
+eat *consistently*, stay hydrated, save money, and make fewer daily decisions.
+One page for the whole day: what you ate, what it cost, how much water you drank,
+and a single Health Score that tells you if the day is on track.
+
+**How it works.**
+- **One day, one query.** `getNutritionDay(uid, date)` reads the `nutritionLogs`
+  collection once and splits it into the per-day summary doc (water + targets,
+  id `uid_date`) and the day's **meals** (`docType: "meal"`). No new Firestore
+  collections or rules — meals live alongside the water doc, discriminated by
+  `docType`, sorted by `sortOrder` then `createdAt`.
+- **Unlimited custom meals.** There is *no* hardcoded Breakfast/Lunch/Dinner.
+  Every meal is a `NutritionMeal` you create with a **custom name, icon, colour,
+  time, notes** and optional **calories / protein / cost**. Quick-start
+  templates (Breakfast, Lunch, Dinner, Snack, Pre/Post Workout, Late Night,
+  Meal Prep) just pre-fill the editor — everything stays editable.
+- **Daily Summary** aggregates the meals + water client-side (`nutritionSummary`)
+  into five tiles: **Calories, Protein, Water, Food Cost, Health Score**.
+- **Health Score (0–100)** is deliberately *not* calorie-driven: hydration (50%),
+  eating consistently (30%), and protein-if-you-track-it (20%). Protein only
+  affects the score once you actually log some, so the score never punishes you
+  for not counting macros.
+- **Meals are cards** with collapse/expand (persisted), a ⋯ menu to **Edit /
+  Duplicate / Delete**, and **drag-and-drop reorder** (native HTML5 DnD →
+  `reorderNutritionMeals` batch-writes the new order). All meal edits and the
+  water controls are optimistic with a quiet reload on failure.
+- **Date navigation** lets you page back through previous days (forward stops at
+  today); the summary, water, and meals all follow the selected day.
+
+**Features.**
+- Single Nutrition Workspace (Nutrition + Water merged).
+- Daily Summary tiles: Calories · Protein · Water · Food Cost · Health Score ring.
+- Water tracker with unit-aware +/- (glasses / litres / oz), editable goal, and
+  a progress bar — still stored on the existing per-day log doc so the Dashboard
+  and Insights keep working unchanged.
+- Unlimited fully-customizable meals: name, icon (20 choices), colour (10
+  swatches), time, notes, calories, protein, cost.
+- Collapse/expand, duplicate, delete, and drag-and-drop reorder per meal.
+- Quick-start templates + an editable daily protein goal (saved to prefs).
+
+**How to use.**
+1. Open **Nutrition**. Tap **Add meal** (or a Quick-start chip), give it a name,
+   pick an icon/colour/time, add notes and any macros you care about, save.
+2. Log water with the +/- buttons; set your goal inline.
+3. Drag meals to reorder, tap a card to collapse it, use ⋯ to duplicate or edit.
+4. Watch the Health Score — hit your water goal and eat consistently to push it
+   into "Excellent".
+
+**Deferred.**
+- **Barcode / food database lookup** and photo logging — need an external food
+  API and image hosting.
+- **Recurring / templated days** (copy yesterday, meal-prep repeat) — the
+  duplicate action covers single meals for now.
+- **Trends over time** (weekly protein/cost charts) — the day view ships first;
+  analytics can layer on the same `nutritionLogs` data next.

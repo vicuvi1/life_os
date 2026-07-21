@@ -45,6 +45,7 @@ import {
   type MealPlanEntry,
   type MealSlot,
   type NutritionLog,
+  type NutritionMeal,
   type Outfit,
   type PackingList,
   type Project,
@@ -953,8 +954,83 @@ export async function getNutritionLogs(
   );
   const snap = await getDocs(q);
   return snap.docs
+    .filter((d) => d.data().docType !== "meal") // exclude Workspace meal docs
     .map(mapNutritionLog)
     .sort((a, b) => (a.date < b.date ? 1 : -1));
+}
+
+function mapNutritionMeal(snap: QueryDocumentSnapshot<DocumentData>): NutritionMeal {
+  const d = snap.data();
+  return {
+    id: snap.id,
+    userId: d.userId,
+    date: d.date,
+    name: d.name ?? "Meal",
+    icon: d.icon ?? "🍽️",
+    color: d.color ?? null,
+    time: d.time ?? null,
+    notes: d.notes ?? null,
+    calories: typeof d.calories === "number" ? d.calories : null,
+    protein: typeof d.protein === "number" ? d.protein : null,
+    cost: typeof d.cost === "number" ? d.cost : null,
+    sortOrder: d.sortOrder ?? 0,
+    collapsed: d.collapsed === true,
+    createdAt: toMillis(d.createdAt),
+  };
+}
+
+export interface NutritionDay {
+  log: NutritionLog | null;
+  meals: NutritionMeal[];
+}
+
+/** One query for a day's Workspace: the water/summary doc + its custom meals. */
+export async function getNutritionDay(userId: string, date: string): Promise<NutritionDay> {
+  const q = query(collection(db, COLLECTIONS.nutritionLogs), where("userId", "==", userId));
+  const snap = await getDocs(q);
+  let log: NutritionLog | null = null;
+  const meals: NutritionMeal[] = [];
+  for (const ds of snap.docs) {
+    const d = ds.data();
+    if (d.docType === "meal") {
+      if (d.date === date) meals.push(mapNutritionMeal(ds));
+    } else if (ds.id === `${userId}_${date}`) {
+      log = mapNutritionLog(ds);
+    }
+  }
+  meals.sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt);
+  return { log, meals };
+}
+
+export type NutritionMealInput = Pick<NutritionMeal, "name" | "icon" | "color" | "time" | "notes" | "calories" | "protein" | "cost"> &
+  Partial<Pick<NutritionMeal, "sortOrder" | "collapsed">>;
+
+export async function createNutritionMeal(userId: string, date: string, input: NutritionMealInput): Promise<string> {
+  const ref = await addDoc(collection(db, COLLECTIONS.nutritionLogs), {
+    userId,
+    docType: "meal",
+    date,
+    sortOrder: 0,
+    collapsed: false,
+    ...input,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export async function updateNutritionMeal(id: string, input: Partial<NutritionMealInput>): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.nutritionLogs, id), { ...input });
+}
+
+export async function deleteNutritionMeal(id: string): Promise<void> {
+  await deleteDoc(doc(db, COLLECTIONS.nutritionLogs, id));
+}
+
+/** Persist a new order (sortOrder = position) after a drag reorder. */
+export async function reorderNutritionMeals(ids: string[]): Promise<void> {
+  const batch = writeBatch(db);
+  ids.forEach((id, i) => batch.update(doc(db, COLLECTIONS.nutritionLogs, id), { sortOrder: i }));
+  await batch.commit();
 }
 
 export async function getNutritionLog(
@@ -2016,6 +2092,7 @@ export async function getPrefs(userId: string): Promise<UserPrefs> {
     waterUnit: d.waterUnit ?? "glasses",
     hiddenTrackers: Array.isArray(d.hiddenTrackers) ? d.hiddenTrackers : [],
     sleepTarget: d.sleepTarget ?? 8,
+    proteinTarget: d.proteinTarget ?? null,
     bedtimeTarget: d.bedtimeTarget ?? null,
     wakeTarget: d.wakeTarget ?? null,
     sleepRoutine: d.sleepRoutine && typeof d.sleepRoutine === "object" ? (d.sleepRoutine as SleepRoutine) : null,
@@ -2087,7 +2164,7 @@ export async function deleteDocsByIds(collectionName: string, ids: string[]): Pr
 export async function upsertPrefs(
   userId: string,
   input: Partial<
-    Pick<UserPrefs, "waterUnit" | "hiddenTrackers" | "sleepTarget" | "bedtimeTarget" | "wakeTarget" | "sleepRoutine" | "telegram" | "aiProviders" | "reviewScale">
+    Pick<UserPrefs, "waterUnit" | "hiddenTrackers" | "sleepTarget" | "proteinTarget" | "bedtimeTarget" | "wakeTarget" | "sleepRoutine" | "telegram" | "aiProviders" | "reviewScale">
   >
 ): Promise<void> {
   const ref = doc(db, COLLECTIONS.prefs, userId);
