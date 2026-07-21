@@ -13,15 +13,15 @@ export const MEAL_ICONS = ["🍳", "🥗", "🍽️", "🍎", "🥪", "🍜", "�
 
 export const MEAL_COLORS = ["#f59e0b", "#10b981", "#6366f1", "#ec4899", "#ef4444", "#14b8a6", "#a855f7", "#0ea5e9", "#84cc16", "#f97316"];
 
-/** Sensible name + icon for a new meal based on the time of day — so the common
- * path needs zero typing. Fully overridable. */
-export function mealDefaultsByTime(date = new Date()): { name: string; icon: string } {
+/** Sensible name + icon + colour for a new meal based on the time of day — so the
+ * common path needs zero typing. Fully overridable. */
+export function mealDefaultsByTime(date = new Date()): { name: string; icon: string; color: string } {
   const h = date.getHours();
-  if (h < 11) return { name: "Breakfast", icon: "🍳" };
-  if (h < 15) return { name: "Lunch", icon: "🥗" };
-  if (h < 18) return { name: "Snack", icon: "🍎" };
-  if (h < 22) return { name: "Dinner", icon: "🍽️" };
-  return { name: "Late night", icon: "🌙" };
+  if (h < 11) return { name: "Breakfast", icon: "🍳", color: "#8b5cf6" };
+  if (h < 15) return { name: "Lunch", icon: "🥗", color: "#f59e0b" };
+  if (h < 18) return { name: "Snack", icon: "🍎", color: "#ec4899" };
+  if (h < 22) return { name: "Dinner", icon: "🍽️", color: "#0ea5e9" };
+  return { name: "Late night", icon: "🌙", color: "#a855f7" };
 }
 
 export interface MealTemplate { name: string; icon: string; color: string; time: string }

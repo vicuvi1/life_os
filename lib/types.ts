@@ -872,6 +872,8 @@ export interface UserPrefs {
   sleepTarget: number;
   /** Daily protein goal in grams (Nutrition Workspace). */
   proteinTarget?: number | null;
+  /** Daily calorie goal (Nutrition Workspace). */
+  calorieTarget?: number | null;
   /** Weekly food budget (Nutrition analytics). */
   foodBudgetWeekly?: number | null;
   /** Target bedtime "HH:mm" (null = not set). */

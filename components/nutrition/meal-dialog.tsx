@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { TimeField } from "@/components/ui/time-field";
 import { FoodEntryBuilder } from "@/components/nutrition/food-entry-builder";
 import { createNutritionMeal, updateNutritionMeal, deleteNutritionMeal, type NutritionMealInput } from "@/lib/firebase/db";
-import { MEAL_ICONS, mealDefaultsByTime } from "@/lib/nutrition";
+import { MEAL_ICONS, MEAL_COLORS, mealDefaultsByTime } from "@/lib/nutrition";
 import { type Currency } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import type { NutritionMeal, MealFoodEntry, FoodItem } from "@/lib/types";
@@ -34,6 +34,7 @@ const numOrNull = (s: string) => (s.trim() === "" ? null : Math.max(0, Math.roun
 export function MealDialog({ open, onOpenChange, userId, date, meal, foods, currency, onSaved, onManageFoods }: Props) {
   const [name, setName] = useState("");
   const [icon, setIcon] = useState("🍽️");
+  const [color, setColor] = useState<string>(MEAL_COLORS[0]);
   const [time, setTime] = useState("");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<MealFoodEntry[]>([]);
@@ -47,6 +48,7 @@ export function MealDialog({ open, onOpenChange, userId, date, meal, foods, curr
     const d = mealDefaultsByTime();
     setName(meal?.name ?? d.name);
     setIcon(meal?.icon ?? d.icon);
+    setColor(meal?.color ?? d.color);
     setTime(meal?.time ?? "");
     setNotes(meal?.notes ?? "");
     setItems(meal?.items ? meal.items.map((e) => ({ ...e })) : []);
@@ -67,7 +69,7 @@ export function MealDialog({ open, onOpenChange, userId, date, meal, foods, curr
     const hasItems = items.length > 0;
     const useManual = !hasItems && showManual;
     const input: NutritionMealInput = {
-      name: name.trim() || mealDefaultsByTime().name, icon, color: null, time: time || null, notes: notes.trim() || null,
+      name: name.trim() || mealDefaultsByTime().name, icon, color, time: time || null, notes: notes.trim() || null,
       items: items.map((e, idx) => ({ ...e, sortOrder: idx })),
       calories: useManual ? numOrNull(manual.calories) : null,
       protein: useManual ? numOrNull(manual.protein) : null,
@@ -147,12 +149,22 @@ export function MealDialog({ open, onOpenChange, userId, date, meal, foods, curr
                     <TimeField value={time} onChange={setTime} ariaLabel="Meal time" />
                   </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Icon</Label>
-                  <div className="flex flex-wrap gap-1">
-                    {MEAL_ICONS.slice(0, 12).map((ic) => (
-                      <button key={ic} type="button" onClick={() => setIcon(ic)} className={cn("flex h-7 w-7 items-center justify-center rounded-lg border text-base transition", icon === ic ? "border-primary bg-primary/10" : "hover:bg-accent")}>{ic}</button>
-                    ))}
+                <div className="grid grid-cols-[1fr_auto] gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Icon</Label>
+                    <div className="flex flex-wrap gap-1">
+                      {MEAL_ICONS.slice(0, 10).map((ic) => (
+                        <button key={ic} type="button" onClick={() => setIcon(ic)} className={cn("flex h-7 w-7 items-center justify-center rounded-lg border text-base transition", icon === ic ? "border-primary bg-primary/10" : "hover:bg-accent")}>{ic}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Colour</Label>
+                    <div className="flex flex-wrap gap-1">
+                      {MEAL_COLORS.map((c) => (
+                        <button key={c} type="button" onClick={() => setColor(c)} aria-label={`Colour ${c}`} className={cn("h-6 w-6 rounded-full border border-black/10 transition dark:border-white/20", color === c ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : "hover:scale-110")} style={{ backgroundColor: c }} />
+                      ))}
+                    </div>
                   </div>
                 </div>
                 <div className="space-y-1.5">

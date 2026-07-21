@@ -2261,3 +2261,27 @@ meal is logged.
 - **Task-oriented navigation.** Tabs are now **🍽️ Today · 🥫 Foods · 📦 Pantry ·
   🛒 Shopping · 📖 Recipes · 📊 Insights** — places you go to do something, not
   database sections.
+
+---
+
+## 🍽️ Nutrition "Today" — command-center dashboard
+
+**Purpose.** A richer, at-a-glance home for the day that still keeps logging fast
+and everything editable.
+
+- **Greeting header** ("Good afternoon, Victor 👋") with a date stepper and one
+  **Add meal** button.
+- **Five metric cards** with progress bars and a plain-language "left" hint:
+  **Calories** (vs an editable daily goal), **Protein**, **Water** (with quick
+  +/-), **Food Cost** (today, vs weekly budget), and a **Health Score** with a
+  Good/Fair badge. Every goal is editable inline.
+- **Today's Meals** as rich rows — time, a coloured meal icon, the foods with
+  amounts, then **kcal · Protein · Carbs · Fat** columns and cost — sortable by
+  time or custom drag order.
+- **Right rail**: **Quick Add Food** (search + your recent/favourite foods, one
+  tap to log), **Pantry Overview** (what's on hand + expiry), and an inline
+  **Shopping List** (check off / add items).
+- **Recommended for you** — your saved recipes/templates with calories, protein
+  and cost, each one tap to **Add to today**.
+- Adds an editable **daily calorie goal**; meal colours return (auto-assigned by
+  time of day, fully editable). Everything stays reference-based and flexible.

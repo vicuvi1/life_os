@@ -2487,6 +2487,7 @@ export async function getPrefs(userId: string): Promise<UserPrefs> {
     hiddenTrackers: Array.isArray(d.hiddenTrackers) ? d.hiddenTrackers : [],
     sleepTarget: d.sleepTarget ?? 8,
     proteinTarget: d.proteinTarget ?? null,
+    calorieTarget: d.calorieTarget ?? null,
     foodBudgetWeekly: d.foodBudgetWeekly ?? null,
     bedtimeTarget: d.bedtimeTarget ?? null,
     wakeTarget: d.wakeTarget ?? null,
@@ -2559,7 +2560,7 @@ export async function deleteDocsByIds(collectionName: string, ids: string[]): Pr
 export async function upsertPrefs(
   userId: string,
   input: Partial<
-    Pick<UserPrefs, "waterUnit" | "hiddenTrackers" | "sleepTarget" | "proteinTarget" | "foodBudgetWeekly" | "bedtimeTarget" | "wakeTarget" | "sleepRoutine" | "telegram" | "aiProviders" | "reviewScale">
+    Pick<UserPrefs, "waterUnit" | "hiddenTrackers" | "sleepTarget" | "proteinTarget" | "calorieTarget" | "foodBudgetWeekly" | "bedtimeTarget" | "wakeTarget" | "sleepRoutine" | "telegram" | "aiProviders" | "reviewScale">
   >
 ): Promise<void> {
   const ref = doc(db, COLLECTIONS.prefs, userId);
