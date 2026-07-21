@@ -1131,3 +1131,44 @@ and the **transactions table now spans the full page width** on large screens
 instead of being squeezed into the left column. It drops to its own full-width row
 beneath the charts and the sidebar, using the space that used to sit empty on the
 right — so the grid is roomier and easier to read.
+
+---
+
+## Finance — Subscription Tracker & renewal alerts (Recurring v2)
+
+**What it is.** The primitive Recurring list grew into a proper **subscription
+tracker**: it knows *how often* each item repeats, *when it renews next*, *what it
+costs you per month and per year*, and it **warns you before a renewal hits** — and
+marks renewals right on the calendar.
+
+**How it works.**
+- **Frequencies.** Rules are now **weekly / monthly / yearly** (not just monthly).
+  The Manage dialog shows the right schedule field for each: a weekday for weekly,
+  a day-of-month for monthly, and a month + day for yearly.
+- **Next renewal + countdown.** Every rule shows its next renewal date and a
+  human countdown — **"in 3 days"**, **"tomorrow"**, **"today"** — turning amber
+  when it's within five days so nothing sneaks up on you.
+- **Overhead totals.** The card headlines your total recurring **cost per month**
+  and **per year** (weekly ×52/12 and yearly ÷12 are normalized in), so you can
+  see subscription creep at a glance.
+- **Renewal alerts.** Items due now show a **Post now** button (and a **Post all**
+  for the batch); anything renewing within three days also surfaces as an
+  **insight** at the top of the page.
+- **Service icons.** Names/categories are matched to fitting icons — TV for
+  streaming, music note for Spotify-likes, cloud for storage/SaaS, home for rent,
+  shield for insurance/VPN, dumbbell for the gym, and more — so the list reads at
+  a glance.
+- **Marks on the calendar.** The month **heatmap** now shows a small **sky dot** on
+  every day a subscription renews (with the names in the tooltip), and the
+  **Calendar view** lists your next renewals with dates and countdowns.
+- **Auto-post, smarter.** Auto-post still fills entries in on schedule, now keyed to
+  the exact renewal date and guarded per-period (`lastPosted`) so weekly, monthly,
+  and yearly rules each post exactly once per cycle.
+
+**How to use it.**
+1. Open **Recurring & subscriptions → Manage**, pick a **frequency**, set when it
+   renews, name it (e.g. "Netflix"), and save.
+2. Watch the **per-month / per-year** totals and each item's **renewal countdown**;
+   amber means it's coming up soon.
+3. Switch to the **Calendar** view (or glance at the heatmap dots) to see renewals
+   laid out on the month.

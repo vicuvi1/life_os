@@ -34,6 +34,17 @@ import {
   Repeat,
   Check,
   Trash2,
+  Tv,
+  Music,
+  Film,
+  Cloud,
+  Home,
+  Shield,
+  Wifi,
+  Smartphone,
+  Zap,
+  Newspaper,
+  CreditCard,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -66,6 +77,17 @@ import {
   ACCOUNT_LABEL,
   isTransfer,
 } from "@/lib/expenses";
+import {
+  isDue,
+  isPostedForCurrentPeriod,
+  nextRenewal,
+  currentPeriodDate,
+  dateKey as recurringDateKey,
+  daysUntil,
+  monthlyEquivalent,
+  renewalsInMonth,
+  RECURRING_FREQUENCY_ABBREV,
+} from "@/lib/recurring";
 import { entriesToCsv, downloadCsv } from "@/lib/export";
 import { resolveCurrency, formatAmount, formatAmountCompact } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
@@ -119,6 +141,33 @@ const CATEGORY_ICON: Record<string, LucideIcon> = {
   other: Tag,
 };
 const iconFor = (cat: string): LucideIcon => CATEGORY_ICON[cat] ?? Tag;
+
+// Best-effort "logo" for a recurring subscription, matched from its name/category.
+const SUB_ICON_RULES: { icon: LucideIcon; keys: string[] }[] = [
+  { icon: Tv, keys: ["netflix", "hbo", "disney", "hulu", "prime video", "stream", "tv", "movie", "cinema"] },
+  { icon: Music, keys: ["spotify", "music", "apple music", "tidal", "deezer", "soundcloud", "audible", "podcast"] },
+  { icon: Film, keys: ["youtube", "twitch", "video", "vimeo"] },
+  { icon: Cloud, keys: ["icloud", "dropbox", "drive", "storage", "backup", "aws", "azure", "cloud", "hosting", "domain", "vps", "server"] },
+  { icon: Home, keys: ["rent", "mortgage", "housing", "apartment", "landlord"] },
+  { icon: Shield, keys: ["insurance", "vpn", "antivirus", "security", "nordvpn"] },
+  { icon: Wifi, keys: ["internet", "wifi", "broadband", "fiber", "router"] },
+  { icon: Smartphone, keys: ["phone", "mobile", "sim", "cellular", "carrier", "telecom"] },
+  { icon: Zap, keys: ["electric", "utility", "gas", "water", "power", "energy", "heating"] },
+  { icon: Newspaper, keys: ["news", "magazine", "medium", "substack", "times"] },
+  { icon: Dumbbell, keys: ["gym", "fitness", "workout", "training", "yoga", "pilates"] },
+  { icon: GraduationCap, keys: ["course", "tuition", "udemy", "coursera", "class", "learning", "school"] },
+  { icon: CreditCard, keys: ["loan", "credit", "installment", "repayment"] },
+];
+function subscriptionIcon(rule: { note: string | null; category: string }): LucideIcon {
+  const hay = `${rule.note ?? ""} ${rule.category}`.toLowerCase();
+  for (const { icon, keys } of SUB_ICON_RULES) {
+    if (keys.some((k) => hay.includes(k))) return icon;
+  }
+  return iconFor(rule.category);
+}
+function renewalText(days: number): string {
+  return days <= 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;
+}
 
 type AccountFilter = "all" | AccountKey;
 
@@ -437,17 +486,32 @@ export default function FinancePage() {
       .sort((a, b) => b.spent / b.cap - a.spent / a.cap);
   }, [budget, monthExpenses]);
 
-  // Recurring rules (embedded on the budget doc) and which are due this month.
+  // Recurring rules (embedded on the budget doc) + subscription tracking.
   const recurring = useMemo<RecurringRule[]>(() => budget?.recurring ?? [], [budget]);
-  const nowMonthKey = monthKey(now.getFullYear(), now.getMonth());
-  const nowDim = daysInMonth(now.getFullYear(), now.getMonth());
-  const dueRecurring = useMemo(
-    () =>
-      recurring.filter(
-        (r) => r.active && r.lastPostedMonth !== nowMonthKey && Math.min(r.dayOfMonth, nowDim) <= now.getDate()
-      ),
-    [recurring, nowMonthKey, nowDim, now]
+  const activeRecurring = useMemo(() => recurring.filter((r) => r.active), [recurring]);
+  const dueRecurring = useMemo(() => recurring.filter((r) => isDue(r, now)), [recurring, now]);
+  // Monthly-equivalent overhead of active recurring expenses (subscriptions/bills).
+  const monthlyOverhead = useMemo(
+    () => activeRecurring.filter((r) => r.kind === "expense").reduce((s, r) => s + monthlyEquivalent(r), 0),
+    [activeRecurring]
   );
+  const upcomingRenewals = useMemo(
+    () =>
+      activeRecurring
+        .map((r) => {
+          const date = nextRenewal(r, now);
+          return { rule: r, date, days: daysUntil(date, now) };
+        })
+        .sort((a, b) => a.date.getTime() - b.date.getTime()),
+    [activeRecurring, now]
+  );
+  // Days in the displayed month that have a renewal, for the calendar heatmap.
+  const renewalMarks = useMemo(() => {
+    const byDayNum = renewalsInMonth(recurring, year, month);
+    const out = new Map<number, string[]>();
+    for (const [day, rules] of byDayNum) out.set(day, rules.map((r) => r.note || categoryLabel(r.category)));
+    return out;
+  }, [recurring, year, month]);
 
   // Bulk selection for clearing rows (table view).
   const selectedIds = useMemo(
@@ -534,6 +598,14 @@ export default function FinancePage() {
         text: `Large transaction alert: ${formatDisplayAmount(largeTransactions[0].amount)} on ${largeTransactions[0].date}.`, 
       });
     }
+    const soonRenewal = upcomingRenewals.find((u) => u.rule.kind === "expense" && u.days <= 3);
+    if (soonRenewal) {
+      out.push({
+        icon: Repeat,
+        tone: "warn",
+        text: `${soonRenewal.rule.note || categoryLabel(soonRenewal.rule.category)} renews ${renewalText(soonRenewal.days)} (${formatDisplayAmount(soonRenewal.rule.amount)}).`,
+      });
+    }
     if (isCurrentMonth) {
       out.push(
         netToday >= 0
@@ -543,7 +615,7 @@ export default function FinancePage() {
     }
     return out.slice(0, 4);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prev, spent, byCategory, savingsTarget, savingsProgress, daysToGoal, netToday, spentToday, isCurrentMonth, currency, duplicateGroups, largeTransactions]);
+  }, [prev, spent, byCategory, savingsTarget, savingsProgress, daysToGoal, netToday, spentToday, isCurrentMonth, currency, duplicateGroups, largeTransactions, upcomingRenewals]);
 
   const budgetStatus = useMemo(() => {
     if (budget?.monthlyTotal == null) return null;
@@ -674,17 +746,14 @@ export default function FinancePage() {
     async (toPost: RecurringRule[]) => {
       if (!user || toPost.length === 0) return;
       const ids = new Set(toPost.map((r) => r.id));
-      const drafts = toPost.map((rule) => {
-        const day = Math.min(rule.dayOfMonth, nowDim);
-        return {
-          kind: rule.kind,
-          amount: rule.amount,
-          account: rule.account,
-          category: rule.category,
-          note: rule.note,
-          date: `${nowMonthKey}-${String(day).padStart(2, "0")}`,
-        };
-      });
+      const drafts = toPost.map((rule) => ({
+        kind: rule.kind,
+        amount: rule.amount,
+        account: rule.account,
+        category: rule.category,
+        note: rule.note,
+        date: recurringDateKey(currentPeriodDate(rule, now)),
+      }));
       try {
         const created = await Promise.all(drafts.map((d) => createExpense(user.uid, d)));
         const stamp = Date.now();
@@ -692,18 +761,20 @@ export default function FinancePage() {
           ...p,
           ...created.map((id, i) => ({ id, userId: user.uid, createdAt: stamp + i, ...drafts[i] })),
         ]);
-        const updated = recurring.map((r) => (ids.has(r.id) ? { ...r, lastPostedMonth: nowMonthKey } : r));
+        const updated = recurring.map((r) =>
+          ids.has(r.id) ? { ...r, lastPosted: recurringDateKey(currentPeriodDate(r, now)) } : r
+        );
         setBudget((b) => (b ? { ...b, recurring: updated } : b));
         await setRecurringRules(user.uid, updated);
       } catch {
         await load({ quiet: true });
       }
     },
-    [user, nowDim, nowMonthKey, recurring, load]
+    [user, now, recurring, load]
   );
 
   // Auto-post any `autopost` rules that are due this month — once per mount,
-  // after the initial load. The lastPostedMonth stamp prevents double-posting.
+  // after the initial load. The lastPosted stamp prevents double-posting.
   const autopostRan = useRef(false);
   useEffect(() => {
     if (autopostRan.current) return;
@@ -1021,7 +1092,7 @@ export default function FinancePage() {
                 )}
                 {visibleWidgets.calendarHeatmap && (
                   <Panel title="Calendar heatmap" action={<span className="text-xs text-muted-foreground">{displayDays.length} days</span>}>
-                    <Heatmap year={year} month={month} byDay={byDay} todayKey={todayKey} />
+                    <Heatmap year={year} month={month} byDay={byDay} todayKey={todayKey} renewals={renewalMarks} />
                   </Panel>
                 )}
               </div>
@@ -1300,11 +1371,42 @@ export default function FinancePage() {
                         <div className="rounded-2xl border bg-background p-4">
                           <div className="flex items-center justify-between">
                             <p className="text-sm font-semibold">{monthLabel(year, month)}</p>
-                            <span className="text-xs text-muted-foreground">green = saved · red = spent</span>
+                            <span className="text-xs text-muted-foreground">green = saved · red = spent · ● renewal</span>
                           </div>
                           <div className="mt-4">
-                            <Heatmap year={year} month={month} byDay={byDay} todayKey={todayKey} />
+                            <Heatmap year={year} month={month} byDay={byDay} todayKey={todayKey} renewals={renewalMarks} />
                           </div>
+                        </div>
+                      )}
+                      {upcomingRenewals.length > 0 && (
+                        <div className="rounded-2xl border bg-background p-4">
+                          <p className="flex items-center gap-1.5 text-sm font-semibold">
+                            <Repeat className="h-4 w-4 text-sky-500" /> Upcoming renewals
+                          </p>
+                          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+                            {upcomingRenewals.slice(0, 6).map(({ rule, date, days }) => {
+                              const Icon = subscriptionIcon(rule);
+                              const color = categoryColor(rule.category);
+                              const soon = days <= 5;
+                              return (
+                                <li key={rule.id} className="flex items-center gap-2.5 rounded-xl border border-input px-3 py-2">
+                                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: `${color}22`, color }}>
+                                    <Icon className="h-4 w-4" />
+                                  </span>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-medium">{rule.note || categoryLabel(rule.category)}</p>
+                                    <p className="text-xs text-muted-foreground tabular-nums">
+                                      {rule.kind === "income" ? "+" : "−"}{formatDisplayAmount(rule.amount)}/{RECURRING_FREQUENCY_ABBREV[rule.frequency]}
+                                    </p>
+                                  </div>
+                                  <div className="shrink-0 text-right">
+                                    <p className={cn("text-xs font-medium", soon ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground")}>{renewalText(days)}</p>
+                                    <p className="text-[11px] text-muted-foreground">{formatDayLabel(recurringDateKey(date))}</p>
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
                         </div>
                       )}
                       {(() => {
@@ -1395,49 +1497,79 @@ export default function FinancePage() {
               <Card className="overflow-hidden">
                 <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
                   <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    <Repeat className="h-3.5 w-3.5" /> Recurring
+                    <Repeat className="h-3.5 w-3.5" /> Recurring & subscriptions
                   </span>
                   <Button variant="ghost" size="sm" onClick={() => setRecurringOpen(true)}>Manage</Button>
                 </div>
                 <div className="p-4">
-                  {recurring.filter((r) => r.active).length === 0 ? (
+                  {activeRecurring.length === 0 ? (
                     <div className="space-y-3 text-sm text-muted-foreground">
-                      <p>Add salary, rent, or subscriptions to auto-fill them each month.</p>
+                      <p>
+                        Track salary, rent, streaming, gym &amp; SaaS in one place — with next-renewal
+                        dates, renewal alerts, and your total monthly cost.
+                      </p>
                       <Button variant="secondary" size="sm" onClick={() => setRecurringOpen(true)}>
                         <Plus className="h-4 w-4" /> Add recurring
                       </Button>
                     </div>
                   ) : (
                     <div className="space-y-3">
+                      {/* Overhead summary */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="rounded-lg border bg-background/60 p-2.5">
+                          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Per month</p>
+                          <p className="mt-0.5 text-lg font-bold tabular-nums">{formatDisplayAmount(monthlyOverhead)}</p>
+                        </div>
+                        <div className="rounded-lg border bg-background/60 p-2.5">
+                          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Per year</p>
+                          <p className="mt-0.5 text-lg font-bold tabular-nums">{formatDisplayAmount(monthlyOverhead * 12)}</p>
+                        </div>
+                      </div>
+
                       {dueRecurring.length > 0 && (
                         <div className="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs">
-                          <span className="font-medium text-amber-600 dark:text-amber-400">{dueRecurring.length} due this month</span>
+                          <span className="font-medium text-amber-600 dark:text-amber-400">{dueRecurring.length} due now</span>
                           <Button size="sm" variant="secondary" className="h-7 px-2 text-xs" onClick={() => postRules(dueRecurring)}>Post all</Button>
                         </div>
                       )}
+
                       <ul className="space-y-2.5">
-                        {recurring.filter((r) => r.active).map((r) => {
-                          const posted = r.lastPostedMonth === nowMonthKey;
-                          const due = Math.min(r.dayOfMonth, nowDim) <= now.getDate();
-                          const Icon = iconFor(r.category);
+                        {activeRecurring.map((r) => {
+                          const Icon = subscriptionIcon(r);
+                          const color = categoryColor(r.category);
+                          const due = isDue(r, now);
+                          const posted = isPostedForCurrentPeriod(r, now);
+                          const nextR = nextRenewal(r, now);
+                          const inDays = daysUntil(nextR, now);
+                          const soon = !due && inDays <= 5;
                           return (
                             <li key={r.id} className="flex items-center gap-2.5">
-                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: `${categoryColor(r.category)}22`, color: categoryColor(r.category) }}>
+                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: `${color}22`, color }}>
                                 <Icon className="h-4 w-4" />
                               </span>
                               <div className="min-w-0 flex-1">
                                 <p className="truncate text-sm font-medium">{r.note || categoryLabel(r.category)}</p>
                                 <p className="text-xs text-muted-foreground tabular-nums">
-                                  Day {r.dayOfMonth} · {r.kind === "income" ? "+" : "−"}{formatDisplayAmount(r.amount)}
+                                  {r.kind === "income" ? "+" : "−"}{formatDisplayAmount(r.amount)}/{RECURRING_FREQUENCY_ABBREV[r.frequency]}
                                 </p>
                               </div>
-                              {posted ? (
-                                <span className="flex shrink-0 items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400"><Check className="h-3.5 w-3.5" /> Posted</span>
-                              ) : due ? (
-                                <Button size="sm" variant="ghost" className="h-7 shrink-0 px-2 text-xs" onClick={() => postRules([r])}>Post</Button>
-                              ) : (
-                                <span className="shrink-0 text-xs text-muted-foreground">upcoming</span>
-                              )}
+                              <div className="shrink-0 text-right">
+                                {due ? (
+                                  <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-amber-600 dark:text-amber-400" onClick={() => postRules([r])}>
+                                    Post now
+                                  </Button>
+                                ) : (
+                                  <>
+                                    <p className={cn("text-xs font-medium", soon ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground")}>
+                                      {renewalText(inDays)}
+                                    </p>
+                                    <p className="flex items-center justify-end gap-1 text-[11px] text-muted-foreground">
+                                      {posted && <Check className="h-3 w-3 text-emerald-500" />}
+                                      {formatDayLabel(recurringDateKey(nextR))}
+                                    </p>
+                                  </>
+                                )}
+                              </div>
                             </li>
                           );
                         })}
@@ -1762,8 +1894,9 @@ function TrendChart({ data, currency, highlight }: { data: { m: number; income: 
   );
 }
 
-function Heatmap({ year, month, byDay, todayKey }: {
+function Heatmap({ year, month, byDay, todayKey, renewals }: {
   year: number; month: number; byDay: Map<string, { income: Expense[]; expense: Expense[]; net: number }>; todayKey: string;
+  renewals?: Map<number, string[]>;
 }) {
   const dim = daysInMonth(year, month);
   const offset = (new Date(year, month, 1).getDay() + 6) % 7; // Mon-first
@@ -1773,6 +1906,7 @@ function Heatmap({ year, month, byDay, todayKey }: {
     if (b) maxAbs = Math.max(maxAbs, Math.abs(b.net));
   }
   const cells: (number | null)[] = [...Array(offset).fill(null), ...Array.from({ length: dim }, (_, i) => i + 1)];
+  const hasRenewals = renewals != null && renewals.size > 0;
   return (
     <div>
       <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-muted-foreground">
@@ -1787,12 +1921,16 @@ function Heatmap({ year, month, byDay, todayKey }: {
           const intensity = Math.min(1, 0.25 + (Math.abs(n) / maxAbs) * 0.75);
           const bg = n > 0 ? `rgba(16,185,129,${intensity})` : n < 0 ? `rgba(244,63,94,${intensity})` : undefined;
           const isToday = key === todayKey;
+          const dayRenewals = renewals?.get(day);
+          const title =
+            (n !== 0 ? `${formatDayLabel(key)}: ${n > 0 ? "+" : ""}${n}` : formatDayLabel(key)) +
+            (dayRenewals ? ` · Renews: ${dayRenewals.join(", ")}` : "");
           return (
             <div
               key={key}
-              title={n !== 0 ? `${formatDayLabel(key)}: ${n > 0 ? "+" : ""}${n}` : formatDayLabel(key)}
+              title={title}
               className={cn(
-                "flex aspect-square items-center justify-center rounded text-[11px] tabular-nums",
+                "relative flex aspect-square items-center justify-center rounded text-[11px] tabular-nums",
                 !bg && "bg-muted/40 text-muted-foreground",
                 bg && "font-medium text-white",
                 isToday && "ring-2 ring-primary"
@@ -1800,13 +1938,17 @@ function Heatmap({ year, month, byDay, todayKey }: {
               style={bg ? { backgroundColor: bg } : undefined}
             >
               {day}
+              {dayRenewals && (
+                <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-sky-400 ring-1 ring-background" />
+              )}
             </div>
           );
         })}
       </div>
-      <div className="mt-3 flex items-center justify-center gap-4 text-xs text-muted-foreground">
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" /> Saved more</span>
         <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-rose-500" /> Spent more</span>
+        {hasRenewals && <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-sky-400" /> Renewal</span>}
       </div>
     </div>
   );

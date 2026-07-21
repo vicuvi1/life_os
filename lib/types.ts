@@ -218,11 +218,15 @@ export interface Expense {
   createdAt: number;
 }
 
+/** How often a recurring rule repeats. */
+export type RecurringFrequency = "weekly" | "monthly" | "yearly";
+
 /**
  * A recurring money rule (salary, rent, subscription…). Stored embedded on the
- * user's {@link Budget} doc so no extra collection/security rule is needed. Each
- * month, on or after `dayOfMonth`, it can be posted as a real entry; `autopost`
- * rules post themselves, and `lastPostedMonth` guards against double-posting.
+ * user's {@link Budget} doc so no extra collection/security rule is needed. It
+ * repeats on its schedule (weekly weekday / monthly day / yearly month+day) and
+ * can be posted as a real entry; `autopost` rules post themselves, and
+ * `lastPosted` guards against double-posting within a period.
  */
 export interface RecurringRule {
   id: string;
@@ -231,10 +235,18 @@ export interface RecurringRule {
   account: AccountKey;
   category: string;
   note: string | null;
-  dayOfMonth: number; // 1-31 (clamped to the month's length when posting)
+  /** How often it repeats. */
+  frequency: RecurringFrequency;
+  /** Day of month, 1-31 (used by monthly + yearly; clamped to month length). */
+  dayOfMonth: number;
+  /** Month of year, 1-12 (yearly only). */
+  monthOfYear: number;
+  /** Weekday, 0=Sun … 6=Sat (weekly only). */
+  weekday: number;
   autopost: boolean;
   active: boolean;
-  lastPostedMonth: string | null; // "YYYY-MM" of the last month it was posted
+  /** "YYYY-MM-DD" of the last posted occurrence. */
+  lastPosted: string | null;
 }
 
 /** One budget config per user (doc id = userId). */

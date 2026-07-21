@@ -22,8 +22,13 @@ import {
   ACCOUNT_LABEL,
   categoryLabel,
 } from "@/lib/expenses";
+import {
+  RECURRING_FREQUENCIES,
+  RECURRING_FREQUENCY_LABEL,
+  scheduleSummary,
+} from "@/lib/recurring";
 import { cn } from "@/lib/utils";
-import type { AccountKey, EntryKind, RecurringRule } from "@/lib/types";
+import type { AccountKey, EntryKind, RecurringFrequency, RecurringRule } from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -34,6 +39,18 @@ interface Props {
 
 const DEFAULT_CATEGORY: Record<EntryKind, string> = { income: "salary", expense: "food" };
 
+const WEEKDAY_OPTIONS = [
+  { v: 1, l: "Mon" }, { v: 2, l: "Tue" }, { v: 3, l: "Wed" }, { v: 4, l: "Thu" },
+  { v: 5, l: "Fri" }, { v: 6, l: "Sat" }, { v: 0, l: "Sun" },
+];
+const MONTH_OPTIONS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+].map((l, i) => ({ v: i + 1, l }));
+
+const selectCls =
+  "h-10 rounded-lg border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
 function newId(): string {
   try {
     return crypto.randomUUID();
@@ -42,7 +59,45 @@ function newId(): string {
   }
 }
 
-/** Manage recurring money rules (add, edit day/amount, toggle auto-post, delete). */
+/** Adaptive schedule inputs — weekday / day / month+day depending on frequency. */
+function ScheduleFields({
+  frequency,
+  dayOfMonth,
+  monthOfYear,
+  weekday,
+  onChange,
+  height = "h-10",
+}: {
+  frequency: RecurringFrequency;
+  dayOfMonth: number;
+  monthOfYear: number;
+  weekday: number;
+  onChange: (patch: Partial<Pick<RecurringRule, "dayOfMonth" | "monthOfYear" | "weekday">>) => void;
+  height?: string;
+}) {
+  if (frequency === "weekly") {
+    return (
+      <select className={cn(selectCls, height, "w-full")} value={weekday} onChange={(e) => onChange({ weekday: Number(e.target.value) })} aria-label="Weekday">
+        {WEEKDAY_OPTIONS.map((w) => <option key={w.v} value={w.v}>{w.l}</option>)}
+      </select>
+    );
+  }
+  if (frequency === "yearly") {
+    return (
+      <div className="flex gap-2">
+        <select className={cn(selectCls, height, "flex-1")} value={monthOfYear} onChange={(e) => onChange({ monthOfYear: Number(e.target.value) })} aria-label="Month">
+          {MONTH_OPTIONS.map((m) => <option key={m.v} value={m.v}>{m.l}</option>)}
+        </select>
+        <Input type="number" min={1} max={31} value={dayOfMonth} onChange={(e) => onChange({ dayOfMonth: Math.min(31, Math.max(1, Math.round(Number(e.target.value) || 1))) })} className={cn(height, "w-16")} aria-label="Day" />
+      </div>
+    );
+  }
+  return (
+    <Input type="number" min={1} max={31} value={dayOfMonth} onChange={(e) => onChange({ dayOfMonth: Math.min(31, Math.max(1, Math.round(Number(e.target.value) || 1))) })} className={cn(height, "w-full")} aria-label="Day of month" />
+  );
+}
+
+/** Manage recurring money rules (add, edit schedule/amount, toggle, delete). */
 export function RecurringDialog({ open, onOpenChange, rules, onSave }: Props) {
   const [list, setList] = useState<RecurringRule[]>(rules);
 
@@ -52,7 +107,10 @@ export function RecurringDialog({ open, onOpenChange, rules, onSave }: Props) {
   const [account, setAccount] = useState<AccountKey>("wallet");
   const [category, setCategory] = useState<string>("food");
   const [note, setNote] = useState("");
-  const [dayOfMonth, setDayOfMonth] = useState("1");
+  const [frequency, setFrequency] = useState<RecurringFrequency>("monthly");
+  const [dayOfMonth, setDayOfMonth] = useState(1);
+  const [monthOfYear, setMonthOfYear] = useState(1);
+  const [weekday, setWeekday] = useState(1);
   const [autopost, setAutopost] = useState(true);
 
   useEffect(() => {
@@ -71,14 +129,16 @@ export function RecurringDialog({ open, onOpenChange, rules, onSave }: Props) {
     setAccount("wallet");
     setCategory("food");
     setNote("");
-    setDayOfMonth("1");
+    setFrequency("monthly");
+    setDayOfMonth(1);
+    setMonthOfYear(1);
+    setWeekday(1);
     setAutopost(true);
   }
 
   function addRule() {
     const amt = Number(amount);
     if (!amount || Number.isNaN(amt) || amt <= 0) return;
-    const day = Math.min(31, Math.max(1, Math.round(Number(dayOfMonth) || 1)));
     const rule: RecurringRule = {
       id: newId(),
       kind,
@@ -86,10 +146,13 @@ export function RecurringDialog({ open, onOpenChange, rules, onSave }: Props) {
       account,
       category,
       note: note.trim() || null,
-      dayOfMonth: day,
+      frequency,
+      dayOfMonth,
+      monthOfYear,
+      weekday,
       autopost,
       active: true,
-      lastPostedMonth: null,
+      lastPosted: null,
     };
     setList((l) => [...l, rule]);
     resetForm();
@@ -101,23 +164,19 @@ export function RecurringDialog({ open, onOpenChange, rules, onSave }: Props) {
   function remove(id: string) {
     setList((l) => l.filter((r) => r.id !== id));
   }
-
   function save() {
     onSave(list);
     onOpenChange(false);
   }
 
-  const selectCls =
-    "h-10 rounded-lg border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Recurring transactions</DialogTitle>
+          <DialogTitle>Recurring & subscriptions</DialogTitle>
           <DialogDescription>
-            Set up money that repeats every month — salary, rent, subscriptions. Auto-post
-            rules add themselves on their day each month; the rest wait for you to post them.
+            Track money that repeats — salary, rent, streaming, gym, SaaS. Pick a frequency and
+            when it renews. Auto-post rules add themselves on schedule; the rest wait for a tap.
           </DialogDescription>
         </DialogHeader>
 
@@ -133,11 +192,9 @@ export function RecurringDialog({ open, onOpenChange, rules, onSave }: Props) {
                 <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", r.kind === "income" ? "bg-emerald-500/15 text-emerald-500" : "bg-rose-500/15 text-rose-500")}>
                   {r.kind === "income" ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
                 </span>
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 basis-40">
                   <p className="truncate text-sm font-medium">{r.note || categoryLabel(r.category)}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {categoryLabel(r.category)} · {ACCOUNT_LABEL[r.account]} · day {r.dayOfMonth}
-                  </p>
+                  <p className="text-xs text-muted-foreground">{scheduleSummary(r)}</p>
                 </div>
                 <Input
                   type="number"
@@ -148,15 +205,19 @@ export function RecurringDialog({ open, onOpenChange, rules, onSave }: Props) {
                   className="h-9 w-24"
                   aria-label="Amount"
                 />
-                <Input
-                  type="number"
-                  min={1}
-                  max={31}
-                  value={r.dayOfMonth}
-                  onChange={(e) => patch(r.id, { dayOfMonth: Math.min(31, Math.max(1, Math.round(Number(e.target.value) || 1))) })}
-                  className="h-9 w-16"
-                  aria-label="Day of month"
-                />
+                <select className={cn(selectCls, "h-9 w-28")} value={r.frequency} onChange={(e) => patch(r.id, { frequency: e.target.value as RecurringFrequency })} aria-label="Frequency">
+                  {RECURRING_FREQUENCIES.map((f) => <option key={f} value={f}>{RECURRING_FREQUENCY_LABEL[f]}</option>)}
+                </select>
+                <div className="w-[150px]">
+                  <ScheduleFields
+                    frequency={r.frequency}
+                    dayOfMonth={r.dayOfMonth}
+                    monthOfYear={r.monthOfYear}
+                    weekday={r.weekday}
+                    onChange={(p) => patch(r.id, p)}
+                    height="h-9"
+                  />
+                </div>
                 <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <input type="checkbox" checked={r.autopost} onChange={(e) => patch(r.id, { autopost: e.target.checked })} className="h-4 w-4 rounded border-input" />
                   Auto
@@ -190,22 +251,38 @@ export function RecurringDialog({ open, onOpenChange, rules, onSave }: Props) {
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <div className="space-y-1">
-              <Label className="text-xs">Amount</Label>
-              <Input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="h-9" />
+              <Label className="text-xs">Frequency</Label>
+              <select className={cn(selectCls, "w-full")} value={frequency} onChange={(e) => setFrequency(e.target.value as RecurringFrequency)}>
+                {RECURRING_FREQUENCIES.map((f) => <option key={f} value={f}>{RECURRING_FREQUENCY_LABEL[f]}</option>)}
+              </select>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Day</Label>
-              <Input type="number" min={1} max={31} value={dayOfMonth} onChange={(e) => setDayOfMonth(e.target.value)} className="h-9" />
+              <Label className="text-xs">Amount</Label>
+              <Input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="h-10" />
             </div>
             <div className="space-y-1 col-span-2">
-              <Label className="text-xs">Note</Label>
-              <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Rent" className="h-9" />
+              <Label className="text-xs">{frequency === "weekly" ? "Renews on" : frequency === "yearly" ? "Renews (month / day)" : "Renews on day"}</Label>
+              <ScheduleFields
+                frequency={frequency}
+                dayOfMonth={dayOfMonth}
+                monthOfYear={monthOfYear}
+                weekday={weekday}
+                onChange={(p) => {
+                  if (p.dayOfMonth != null) setDayOfMonth(p.dayOfMonth);
+                  if (p.monthOfYear != null) setMonthOfYear(p.monthOfYear);
+                  if (p.weekday != null) setWeekday(p.weekday);
+                }}
+              />
             </div>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Name</Label>
+            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Netflix, Rent, Gym" className="h-10" />
           </div>
           <div className="flex items-center justify-between">
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
               <input type="checkbox" checked={autopost} onChange={(e) => setAutopost(e.target.checked)} className="h-4 w-4 rounded border-input" />
-              Auto-post each month
+              Auto-post on schedule
             </label>
             <Button type="button" variant="secondary" size="sm" onClick={addRule}>
               <Plus className="h-4 w-4" /> Add rule

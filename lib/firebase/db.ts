@@ -16,6 +16,7 @@ import {
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
+import { normalizeRecurringRule } from "@/lib/recurring";
 import {
   COLLECTIONS,
   type Budget,
@@ -912,7 +913,7 @@ export async function getBudget(userId: string): Promise<Budget | null> {
     byCategory: d.byCategory ?? {},
     openingBalances: d.openingBalances ?? {},
     savingsGoal: d.savingsGoal ?? null,
-    recurring: Array.isArray(d.recurring) ? (d.recurring as RecurringRule[]) : [],
+    recurring: Array.isArray(d.recurring) ? d.recurring.map(normalizeRecurringRule) : [],
   };
 }
 
