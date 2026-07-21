@@ -1053,3 +1053,43 @@ interactive surfaces.
    show them in full.
 3. Switch to **Cards** or **Calendar** in the view menu for a different lens on
    the same transactions; hover a card to duplicate or delete it.
+
+---
+
+## Finance — Phase 3: recurring transactions, category budgets & duplicate cleanup
+
+**What it is.** Three features that cut repetitive data entry and make the budget
+tools actionable: money that repeats every month now fills itself in, per-category
+caps show live progress, and look-alike transactions can be cleaned up in one place.
+
+**How it works.**
+- **Recurring transactions.** A new **Recurring** card in the sidebar (and a
+  full **Manage** dialog) lets you define money that repeats monthly — salary,
+  rent, subscriptions — each with an amount, account, category, day of month, and
+  an **auto-post** switch. Rules are stored embedded on your budget document, so
+  no new database setup is required.
+  - **Auto-post.** On the first load each month, any *auto-post* rule that has
+    reached its day is added automatically. A `lastPostedMonth` stamp guards
+    against posting the same rule twice, and posts are batched so their stamps
+    save together.
+  - **Manual post.** Rules that aren't auto-post (or that you want early) show a
+    **Post** button when due, plus a **Post all** action when several are due.
+    Posted rules show a ✓ for the month. Everything posts as a normal, editable
+    entry — nothing is hidden or locked.
+- **Per-category budget progress.** The per-category caps you set in Budget
+  settings now render as a **Category budgets** card: each category shows
+  this-month spend vs its cap with a progress bar that turns **amber at 80%** and
+  **red when over**. (The caps already existed; this surfaces them.)
+- **Duplicate cleanup.** The duplicate-detection insight is now actionable — a
+  **"N possible duplicates"** button on the Transactions panel opens a review
+  dialog that groups look-alike entries (same date, amount, category, and type)
+  and lets you delete the extras one by one.
+
+**How to use it.**
+1. Open the **Recurring** card → **Manage**, add your salary/rent/subscriptions,
+   set each one's day and whether it auto-posts, and **Save**. Auto-post rules
+   appear on their day each month; others show a **Post** button.
+2. Set per-category limits in **Settings ⚙** to get the **Category budgets**
+   progress card.
+3. If the Transactions panel shows **possible duplicates**, click it to review
+   and delete the extras.

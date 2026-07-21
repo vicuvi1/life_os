@@ -30,6 +30,7 @@ import {
   type MealSlot,
   type NutritionLog,
   type Project,
+  type RecurringRule,
   type Session,
   type ShoppingCheck,
   type SleepLog,
@@ -900,6 +901,7 @@ export async function getBudget(userId: string): Promise<Budget | null> {
     byCategory: d.byCategory ?? {},
     openingBalances: d.openingBalances ?? {},
     savingsGoal: d.savingsGoal ?? null,
+    recurring: Array.isArray(d.recurring) ? (d.recurring as RecurringRule[]) : [],
   };
 }
 
@@ -915,7 +917,26 @@ export async function upsertBudget(
   const ref = doc(db, COLLECTIONS.budgets, userId);
   // Full replace (no merge): the budget form always submits the complete
   // config, and merge would keep stale per-category caps the user cleared.
-  await setDoc(ref, { userId, ...input });
+  // Recurring rules aren't part of the budget form, so carry them through
+  // rather than wiping them on every budget save.
+  const snap = await getDoc(ref);
+  const recurring = snap.exists() && Array.isArray(snap.data().recurring)
+    ? snap.data().recurring
+    : [];
+  await setDoc(ref, { userId, ...input, recurring });
+}
+
+/**
+ * Persist just the recurring rules on the budget doc. Uses a merge write so it
+ * leaves the rest of the budget untouched (and creates the doc, stamped with
+ * userId, if it doesn't exist yet).
+ */
+export async function setRecurringRules(
+  userId: string,
+  recurring: RecurringRule[]
+): Promise<void> {
+  const ref = doc(db, COLLECTIONS.budgets, userId);
+  await setDoc(ref, { userId, recurring }, { merge: true });
 }
 
 // ---------------------------------------------------------------------------

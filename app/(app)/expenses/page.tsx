@@ -31,6 +31,8 @@ import {
   Tag,
   ArrowRightLeft,
   Copy,
+  Repeat,
+  Check,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -39,6 +41,7 @@ import {
   createExpense,
   updateExpense,
   deleteExpense,
+  setRecurringRules,
 } from "@/lib/firebase/db";
 import { toDateKey, resolveFirstName } from "@/lib/greeting";
 import {
@@ -82,8 +85,10 @@ import {
 import { ExpenseFormDialog } from "@/components/expenses/expense-form-dialog";
 import { BudgetFormDialog } from "@/components/expenses/budget-form-dialog";
 import { TransferDialog } from "@/components/expenses/transfer-dialog";
+import { RecurringDialog } from "@/components/expenses/recurring-dialog";
+import { DuplicatesDialog } from "@/components/expenses/duplicates-dialog";
 import { cn } from "@/lib/utils";
-import type { AccountKey, Budget, EntryKind, Expense } from "@/lib/types";
+import type { AccountKey, Budget, EntryKind, Expense, RecurringRule } from "@/lib/types";
 import type { LucideIcon } from "lucide-react";
 
 const MONTHS_SHORT = [
@@ -138,6 +143,8 @@ export default function FinancePage() {
   const [loading, setLoading] = useState(true);
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [recurringOpen, setRecurringOpen] = useState(false);
+  const [duplicatesOpen, setDuplicatesOpen] = useState(false);
   const [newAccount, setNewAccount] = useState<AccountKey>("wallet");
   const [filter, setFilter] = useState<AccountFilter>("all");
   const [amountView, setAmountView] = useState<"full" | "compact">("full");
@@ -415,6 +422,28 @@ export default function FinancePage() {
 
   const byCategory = useMemo(() => spendByCategory(visibleExpenses), [visibleExpenses]);
 
+  // Per-category budgets: cap (from the budget doc) vs this-month spend.
+  const categoryBudgets = useMemo(() => {
+    const caps = budget?.byCategory ?? {};
+    const spentMap = new Map(spendByCategory(monthExpenses).map((c) => [c.category, c.amount]));
+    return Object.entries(caps)
+      .filter(([, cap]) => typeof cap === "number" && (cap as number) > 0)
+      .map(([category, cap]) => ({ category, cap: cap as number, spent: spentMap.get(category) ?? 0 }))
+      .sort((a, b) => b.spent / b.cap - a.spent / a.cap);
+  }, [budget, monthExpenses]);
+
+  // Recurring rules (embedded on the budget doc) and which are due this month.
+  const recurring = useMemo<RecurringRule[]>(() => budget?.recurring ?? [], [budget]);
+  const nowMonthKey = monthKey(now.getFullYear(), now.getMonth());
+  const nowDim = daysInMonth(now.getFullYear(), now.getMonth());
+  const dueRecurring = useMemo(
+    () =>
+      recurring.filter(
+        (r) => r.active && r.lastPostedMonth !== nowMonthKey && Math.min(r.dayOfMonth, nowDim) <= now.getDate()
+      ),
+    [recurring, nowMonthKey, nowDim, now]
+  );
+
   const recent = useMemo(
     () =>
       [...visibleExpenses]
@@ -628,6 +657,66 @@ export default function FinancePage() {
       await load({ quiet: true });
     }
   }
+  const saveRecurring = useCallback(
+    async (rules: RecurringRule[]) => {
+      if (!user) return;
+      setBudget((b) =>
+        b
+          ? { ...b, recurring: rules }
+          : { userId: user.uid, currency: "MDL", monthlyTotal: null, byCategory: {}, openingBalances: {}, savingsGoal: null, recurring: rules }
+      );
+      try {
+        await setRecurringRules(user.uid, rules);
+      } catch {
+        await load({ quiet: true });
+      }
+    },
+    [user, load]
+  );
+  // Post one or more recurring rules into the current month in a single batch so
+  // their "posted this month" stamps are written together (no last-write-wins).
+  const postRules = useCallback(
+    async (toPost: RecurringRule[]) => {
+      if (!user || toPost.length === 0) return;
+      const ids = new Set(toPost.map((r) => r.id));
+      const drafts = toPost.map((rule) => {
+        const day = Math.min(rule.dayOfMonth, nowDim);
+        return {
+          kind: rule.kind,
+          amount: rule.amount,
+          account: rule.account,
+          category: rule.category,
+          note: rule.note,
+          date: `${nowMonthKey}-${String(day).padStart(2, "0")}`,
+        };
+      });
+      try {
+        const created = await Promise.all(drafts.map((d) => createExpense(user.uid, d)));
+        const stamp = Date.now();
+        setExpenses((p) => [
+          ...p,
+          ...created.map((id, i) => ({ id, userId: user.uid, createdAt: stamp + i, ...drafts[i] })),
+        ]);
+        const updated = recurring.map((r) => (ids.has(r.id) ? { ...r, lastPostedMonth: nowMonthKey } : r));
+        setBudget((b) => (b ? { ...b, recurring: updated } : b));
+        await setRecurringRules(user.uid, updated);
+      } catch {
+        await load({ quiet: true });
+      }
+    },
+    [user, nowDim, nowMonthKey, recurring, load]
+  );
+
+  // Auto-post any `autopost` rules that are due this month — once per mount,
+  // after the initial load. The lastPostedMonth stamp prevents double-posting.
+  const autopostRan = useRef(false);
+  useEffect(() => {
+    if (autopostRan.current) return;
+    if (loading || !user) return;
+    autopostRan.current = true;
+    const auto = dueRecurring.filter((r) => r.autopost);
+    if (auto.length > 0) void postRules(auto);
+  }, [loading, user, dueRecurring, postRules]);
   function exportCsv(scope: "month" | "all" | "view") {
     const data =
       scope === "month" ? monthExpenses : scope === "all" ? expenses : displayExpenses;
@@ -959,7 +1048,17 @@ export default function FinancePage() {
                 </Panel>
               </div>
 
-              <Panel title="Transactions" bodyClassName="p-0">
+              <Panel
+                title="Transactions"
+                bodyClassName="p-0"
+                action={
+                  duplicateGroups.length > 0 ? (
+                    <Button variant="ghost" size="sm" className="text-amber-600 dark:text-amber-400" onClick={() => setDuplicatesOpen(true)}>
+                      <Tag className="h-3.5 w-3.5" /> {duplicateGroups.length} possible duplicate{duplicateGroups.length === 1 ? "" : "s"}
+                    </Button>
+                  ) : undefined
+                }
+              >
                 <div className="space-y-4 border-b border-muted/20 bg-background/80 px-4 py-4">
                   <div className="grid gap-3 md:grid-cols-[160px_100px_160px_140px_1fr_120px_120px]">
                     <Input
@@ -1221,6 +1320,61 @@ export default function FinancePage() {
 
               <Card className="overflow-hidden">
                 <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
+                  <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <Repeat className="h-3.5 w-3.5" /> Recurring
+                  </span>
+                  <Button variant="ghost" size="sm" onClick={() => setRecurringOpen(true)}>Manage</Button>
+                </div>
+                <div className="p-4">
+                  {recurring.filter((r) => r.active).length === 0 ? (
+                    <div className="space-y-3 text-sm text-muted-foreground">
+                      <p>Add salary, rent, or subscriptions to auto-fill them each month.</p>
+                      <Button variant="secondary" size="sm" onClick={() => setRecurringOpen(true)}>
+                        <Plus className="h-4 w-4" /> Add recurring
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {dueRecurring.length > 0 && (
+                        <div className="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs">
+                          <span className="font-medium text-amber-600 dark:text-amber-400">{dueRecurring.length} due this month</span>
+                          <Button size="sm" variant="secondary" className="h-7 px-2 text-xs" onClick={() => postRules(dueRecurring)}>Post all</Button>
+                        </div>
+                      )}
+                      <ul className="space-y-2.5">
+                        {recurring.filter((r) => r.active).map((r) => {
+                          const posted = r.lastPostedMonth === nowMonthKey;
+                          const due = Math.min(r.dayOfMonth, nowDim) <= now.getDate();
+                          const Icon = iconFor(r.category);
+                          return (
+                            <li key={r.id} className="flex items-center gap-2.5">
+                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: `${categoryColor(r.category)}22`, color: categoryColor(r.category) }}>
+                                <Icon className="h-4 w-4" />
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium">{r.note || categoryLabel(r.category)}</p>
+                                <p className="text-xs text-muted-foreground tabular-nums">
+                                  Day {r.dayOfMonth} · {r.kind === "income" ? "+" : "−"}{formatDisplayAmount(r.amount)}
+                                </p>
+                              </div>
+                              {posted ? (
+                                <span className="flex shrink-0 items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400"><Check className="h-3.5 w-3.5" /> Posted</span>
+                              ) : due ? (
+                                <Button size="sm" variant="ghost" className="h-7 shrink-0 px-2 text-xs" onClick={() => postRules([r])}>Post</Button>
+                              ) : (
+                                <span className="shrink-0 text-xs text-muted-foreground">upcoming</span>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </Card>
+
+              <Card className="overflow-hidden">
+                <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
                   <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Savings goal</span>
                   {savingsTarget ? <span className="text-xs text-muted-foreground">{(savingsProgress ?? 0).toFixed(0)}%</span> : null}
                 </div>
@@ -1300,6 +1454,39 @@ export default function FinancePage() {
                   </div>
                 </Card>
               )}
+
+              {categoryBudgets.length > 0 && (
+                <Card className="overflow-hidden">
+                  <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Category budgets</span>
+                    <Button variant="ghost" size="sm" onClick={() => setBudgetOpen(true)}>Edit</Button>
+                  </div>
+                  <div className="space-y-3 p-4">
+                    {categoryBudgets.map(({ category, cap, spent }) => {
+                      const pct = cap > 0 ? Math.min(100, (spent / cap) * 100) : 0;
+                      const over = spent > cap;
+                      const near = !over && pct >= 80;
+                      const barCls = over ? "bg-rose-500" : near ? "bg-amber-500" : "bg-emerald-500";
+                      return (
+                        <div key={category}>
+                          <div className="mb-1 flex items-center justify-between text-sm">
+                            <span className="flex items-center gap-1.5">
+                              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: categoryColor(category) }} />
+                              {categoryLabel(category)}
+                            </span>
+                            <span className={cn("tabular-nums", over ? "font-semibold text-rose-500" : "text-muted-foreground")}>
+                              {formatDisplayAmount(spent)} / {formatDisplayAmount(cap)}
+                            </span>
+                          </div>
+                          <div className="h-2 overflow-hidden rounded-full bg-muted">
+                            <div className={cn("h-full rounded-full", barCls)} style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Card>
+              )}
             </aside>
           </div>
         </>
@@ -1323,6 +1510,19 @@ export default function FinancePage() {
             userId={user.uid}
             defaultDate={isCurrentMonth ? todayKey : `${mKey}-01`}
             onSaved={load}
+          />
+          <RecurringDialog
+            open={recurringOpen}
+            onOpenChange={setRecurringOpen}
+            rules={recurring}
+            onSave={saveRecurring}
+          />
+          <DuplicatesDialog
+            open={duplicatesOpen}
+            onOpenChange={setDuplicatesOpen}
+            groups={duplicateGroups}
+            format={formatDisplayAmount}
+            onDelete={removeEntry}
           />
         </>
       )}

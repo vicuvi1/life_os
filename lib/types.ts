@@ -218,6 +218,25 @@ export interface Expense {
   createdAt: number;
 }
 
+/**
+ * A recurring money rule (salary, rent, subscription…). Stored embedded on the
+ * user's {@link Budget} doc so no extra collection/security rule is needed. Each
+ * month, on or after `dayOfMonth`, it can be posted as a real entry; `autopost`
+ * rules post themselves, and `lastPostedMonth` guards against double-posting.
+ */
+export interface RecurringRule {
+  id: string;
+  kind: EntryKind;
+  amount: number;
+  account: AccountKey;
+  category: string;
+  note: string | null;
+  dayOfMonth: number; // 1-31 (clamped to the month's length when posting)
+  autopost: boolean;
+  active: boolean;
+  lastPostedMonth: string | null; // "YYYY-MM" of the last month it was posted
+}
+
 /** One budget config per user (doc id = userId). */
 export interface Budget {
   userId: string;
@@ -228,6 +247,8 @@ export interface Budget {
   openingBalances?: Partial<Record<AccountKey, number>>;
   /** Savings-goal target amount (progress is measured against net worth). */
   savingsGoal?: number | null;
+  /** Recurring money rules (salary/rent/subscriptions). */
+  recurring?: RecurringRule[];
 }
 
 /** A reusable meal in the user's library. */
