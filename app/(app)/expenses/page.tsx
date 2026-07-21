@@ -210,7 +210,6 @@ export default function FinancePage() {
     incomeExpense: true,
     calendarHeatmap: true,
     recentActivity: true,
-    monthlyTrend: true,
   });
   const [extraRows, setExtraRows] = useState<Record<string, number>>({});
   const [form, setForm] = useState<{ open: boolean; expense: Expense | null; kind: EntryKind }>({
@@ -289,7 +288,14 @@ export default function FinancePage() {
       const saved = window.localStorage.getItem("finance:visibleWidgets");
       if (saved) {
         const parsed = JSON.parse(saved) as Record<string, boolean>;
-        setVisibleWidgets((prev) => ({ ...prev, ...parsed }));
+        // Only merge known widget keys so removed widgets can't come back.
+        setVisibleWidgets((prev) => {
+          const next = { ...prev };
+          for (const k of Object.keys(prev)) {
+            if (typeof parsed[k] === "boolean") next[k] = parsed[k];
+          }
+          return next;
+        });
       }
     } catch {
       // ignore localStorage failures
@@ -464,15 +470,6 @@ export default function FinancePage() {
     return days.slice(0, upto).map((d) => dayBalances[`${mKey}-${String(d).padStart(2, "0")}`] ?? 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days, dayBalances, mKey, dim, isCurrentMonth]);
-
-  const monthly = useMemo(
-    () =>
-      Array.from({ length: 12 }, (_, m) => {
-        const me = expenses.filter((e) => inMonth(e.date, monthKey(year, m)) && inFilter(e));
-        return { m, income: totalEarned(me), expense: totalSpent(me) };
-      }),
-    [expenses, year, inFilter]
-  );
 
   const byCategory = useMemo(() => spendByCategory(visibleExpenses), [visibleExpenses]);
 
@@ -987,7 +984,7 @@ export default function FinancePage() {
             size="sm"
             onClick={() => setVisibleWidgets((prev) => ({ ...prev, [key]: !prev[key] }))}
           >
-            {key === "spendingOverview" ? "Spending" : key === "incomeExpense" ? "Income" : key === "calendarHeatmap" ? "Heatmap" : key === "recentActivity" ? "Recent" : "Trend"}
+            {key === "spendingOverview" ? "Spending" : key === "incomeExpense" ? "Income" : key === "calendarHeatmap" ? "Heatmap" : "Recent"}
           </Button>
         ))}
       </div>
@@ -1079,7 +1076,7 @@ export default function FinancePage() {
 
           <div className="grid gap-4 xl:grid-cols-[1.65fr_0.85fr]">
             <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.5fr_1fr_1fr]">
                 {visibleWidgets.spendingOverview && (
                   <Panel title="Spending overview">
                     <Donut data={byCategory} currency={currency} total={spent} formatAmountDisplay={formatDisplayAmount} />
@@ -1098,7 +1095,7 @@ export default function FinancePage() {
               </div>
 
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.4fr_0.6fr]">
-                <div className="grid gap-4 lg:grid-cols-2">
+                <div>
                   {visibleWidgets.recentActivity && (
                     <Panel title="Recent activity">
                       {recent.length === 0 ? (
@@ -1129,11 +1126,6 @@ export default function FinancePage() {
                           })}
                         </ul>
                       )}
-                    </Panel>
-                  )}
-                  {visibleWidgets.monthlyTrend && (
-                    <Panel title="Monthly trend">
-                      <TrendChart data={monthly} currency={currency} highlight={month} />
                     </Panel>
                   )}
                 </div>
@@ -1799,36 +1791,36 @@ function QuickAdd({ icon: Icon, label, cls, iconCls, onClick }: { icon: LucideIc
 
 function Donut({ data, currency, total, formatAmountDisplay }: { data: { category: string; amount: number }[]; currency: ReturnType<typeof resolveCurrency>; total: number; formatAmountDisplay: (amount: number) => string }) {
   if (total <= 0) {
-    return <div className="flex h-44 items-center justify-center text-sm text-muted-foreground">No expenses yet</div>;
+    return <div className="flex h-52 items-center justify-center text-sm text-muted-foreground">No expenses yet</div>;
   }
-  const r = 52, c = 2 * Math.PI * r;
+  const r = 62, c = 2 * Math.PI * r;
   let offset = 0;
   return (
-    <div className="flex items-center gap-5">
-      <svg viewBox="0 0 140 140" className="h-36 w-36 shrink-0">
+    <div className="flex flex-col items-center gap-5 sm:flex-row">
+      <svg viewBox="0 0 170 170" className="h-52 w-52 shrink-0">
         {data.map((d) => {
           const len = (d.amount / total) * c;
           const el = (
-            <circle key={d.category} cx={70} cy={70} r={r} fill="none" stroke={categoryColor(d.category)} strokeWidth={16}
-              strokeDasharray={`${len} ${c - len}`} strokeDashoffset={-offset} transform="rotate(-90 70 70)" />
+            <circle key={d.category} cx={85} cy={85} r={r} fill="none" stroke={categoryColor(d.category)} strokeWidth={22}
+              strokeDasharray={`${len} ${c - len}`} strokeDashoffset={-offset} transform="rotate(-90 85 85)" />
           );
           offset += len;
           return el;
         })}
-        <text x={70} y={66} textAnchor="middle" className="fill-muted-foreground text-[9px] uppercase">Total</text>
-        <text x={70} y={80} textAnchor="middle" className="fill-foreground text-[13px] font-semibold">{formatAmountDisplay(total)}</text>
+        <text x={85} y={80} textAnchor="middle" className="fill-muted-foreground text-[11px] uppercase tracking-wide">Total spent</text>
+        <text x={85} y={100} textAnchor="middle" className="fill-foreground text-[19px] font-bold">{formatAmountDisplay(total)}</text>
       </svg>
-      <ul className="min-w-0 flex-1 space-y-2 text-sm">
+      <ul className="w-full min-w-0 flex-1 space-y-2.5 text-[15px]">
         {data.slice(0, 6).map((d) => {
           const Icon = iconFor(d.category);
           return (
-            <li key={d.category} className="flex items-center gap-2">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded" style={{ backgroundColor: `${categoryColor(d.category)}22`, color: categoryColor(d.category) }}>
-                <Icon className="h-3.5 w-3.5" />
+            <li key={d.category} className="flex items-center gap-2.5">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: `${categoryColor(d.category)}22`, color: categoryColor(d.category) }}>
+                <Icon className="h-4 w-4" />
               </span>
-              <span className="min-w-0 flex-1 truncate">{categoryLabel(d.category)}</span>
-              <span className="shrink-0 tabular-nums text-muted-foreground">{formatAmountDisplay(d.amount)}</span>
-              <span className="w-9 shrink-0 text-right tabular-nums text-xs text-muted-foreground">{Math.round((d.amount / total) * 100)}%</span>
+              <span className="min-w-0 flex-1 truncate font-medium">{categoryLabel(d.category)}</span>
+              <span className="shrink-0 tabular-nums">{formatAmountDisplay(d.amount)}</span>
+              <span className="w-11 shrink-0 text-right tabular-nums text-sm text-muted-foreground">{Math.round((d.amount / total) * 100)}%</span>
             </li>
           );
         })}
@@ -1856,39 +1848,6 @@ function IncomeExpenseBars({ income, expense, net, currency, formatAmountDisplay
       <div className="mt-3 flex items-center justify-between border-t pt-3 text-sm">
         <span className="text-muted-foreground">Net amount</span>
         <span className={cn("font-semibold tabular-nums", net >= 0 ? "text-emerald-500" : "text-rose-500")}>{formatAmountDisplay(net)}</span>
-      </div>
-    </div>
-  );
-}
-
-function TrendChart({ data, currency, highlight }: { data: { m: number; income: number; expense: number }[]; currency: ReturnType<typeof resolveCurrency>; highlight: number }) {
-  const w = 320, h = 150, padX = 6, padY = 10;
-  const max = Math.max(1, ...data.map((d) => Math.max(d.income, d.expense)));
-  const x = (i: number) => padX + (i / 11) * (w - padX * 2);
-  const y = (v: number) => h - padY - (v / max) * (h - padY * 2);
-  const line = (key: "income" | "expense") => data.map((d, i) => `${x(i).toFixed(1)},${y(d[key]).toFixed(1)}`).join(" ");
-  const hasData = data.some((d) => d.income > 0 || d.expense > 0);
-  if (!hasData) return <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">No data this year</div>;
-  return (
-    <div>
-      <svg viewBox={`0 0 ${w} ${h}`} className="h-40 w-full">
-        <polyline points={line("income")} fill="none" stroke="#10b981" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-        <polyline points={line("expense")} fill="none" stroke="#f43f5e" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-        {data.map((d, i) => (
-          <g key={i}>
-            <circle cx={x(i)} cy={y(d.income)} r={i === highlight ? 3 : 2} fill="#10b981" />
-            <circle cx={x(i)} cy={y(d.expense)} r={i === highlight ? 3 : 2} fill="#f43f5e" />
-          </g>
-        ))}
-      </svg>
-      <div className="mt-1 flex justify-between px-1 text-[10px] text-muted-foreground">
-        {MONTHS_SHORT.map((m, i) => (
-          <span key={m} className={cn(i === highlight && "font-semibold text-foreground")}>{m[0]}</span>
-        ))}
-      </div>
-      <div className="mt-2 flex items-center justify-center gap-4 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Income</span>
-        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-rose-500" /> Expenses</span>
       </div>
     </div>
   );

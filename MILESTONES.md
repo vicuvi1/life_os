@@ -1172,3 +1172,13 @@ marks renewals right on the calendar.
    amber means it's coming up soon.
 3. Switch to the **Calendar** view (or glance at the heatmap dots) to see renewals
    laid out on the month.
+
+---
+
+## Finance — declutter: bigger Spending donut, no Monthly Trend
+
+**What it is.** A readability pass on the dashboard. The **Spending overview** donut
+is now noticeably larger — bigger ring, a bigger center total, and a full-size
+legend so category names (Food, Fitness, Health…) and amounts read clearly instead
+of truncating to single letters. Its panel was widened to give the legend room.
+The **Monthly Trend** chart was removed to cut clutter.
