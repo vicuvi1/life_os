@@ -2285,3 +2285,23 @@ and everything editable.
   and cost, each one tap to **Add to today**.
 - Adds an editable **daily calorie goal**; meal colours return (auto-assigned by
   time of day, fully editable). Everything stays reference-based and flexible.
+
+---
+
+## 🍽️ Nutrition "Today" — premium dashboard pass
+
+Visual + layout overhaul of the Today dashboard from design feedback:
+- **Wider canvas** (up to 1700px) so it uses the full screen.
+- **One "Today's Progress" card** merging Calories / Protein / Water / Health /
+  Food Cost with a large completion ring, replacing five separate boxes.
+- **Hero greeting** ("Good evening, Victor 👋") with today's goals and a
+  "you've completed X%" line as the focal point.
+- **Dominant timeline** — the meals column takes ~70%; Quick Add, Pantry and
+  Shopping move to a slimmer right rail.
+- **Softer surfaces** — low-contrast borders + subtle shadows (Linear/Notion
+  feel) and more generous vertical spacing.
+- **This-week charts** — Calories, Protein, Water and Spending sparklines for
+  visual feedback.
+- **Nicer empty state** and a **richer Quick Add** (Favorites + Recent foods,
+  one tap to a prefilled meal).
+- Goals stay editable inline; water is logged from the progress card.
