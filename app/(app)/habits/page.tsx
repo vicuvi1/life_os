@@ -580,6 +580,9 @@ export default function HabitsPage() {
                   <tbody>
                     {grid.map(({ habit, cells, tally }) => {
                       const color = habit.color ?? DEFAULT_HABIT_COLOR;
+                      const streak = streaksByHabit.get(habit.id)?.streak ?? 0;
+                      const best = streaksByHabit.get(habit.id)?.best ?? 0;
+                      const unit = (habit.frequency ?? "daily") === "weekly" ? "w" : "d";
                       return (
                         <tr key={habit.id} className={cn("group border-b last:border-0 hover:bg-accent/30", habit.archived && "opacity-50")}>
                           <td className="sticky left-0 z-10 bg-card px-3 py-2">
@@ -588,17 +591,21 @@ export default function HabitsPage() {
                                 {habit.emoji || <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />}
                               </span>
                               <div className="min-w-0">
-                                <p className="flex items-center gap-1.5 truncate text-sm font-medium">
+                                <div className="flex items-center gap-1.5">
                                   <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: DIFFICULTY_META[habit.difficulty].color }} title={`${DIFFICULTY_META[habit.difficulty].label} difficulty`} />
-                                  {habit.title}
-                                </p>
-                                {(habit.tags ?? []).length > 0 && (
-                                  <div className="flex flex-wrap gap-1">
-                                    {habit.tags.slice(0, 3).map((t) => (
-                                      <span key={t} className="rounded-full bg-secondary px-1.5 text-[10px] text-muted-foreground">{t}</span>
-                                    ))}
-                                  </div>
-                                )}
+                                  <span className="truncate text-sm font-medium">{habit.title}</span>
+                                </div>
+                                <div className="mt-0.5 flex items-center gap-2">
+                                  <span
+                                    className={cn("flex shrink-0 items-center gap-0.5 text-xs font-semibold", streak > 0 ? "text-orange-500" : "text-muted-foreground")}
+                                    title={`Current run without missing · best ${best}${unit}`}
+                                  >
+                                    <Flame className="h-3 w-3" /> {streak}{unit}
+                                  </span>
+                                  {(habit.tags ?? []).slice(0, 2).map((t) => (
+                                    <span key={t} className="rounded-full bg-secondary px-1.5 text-[10px] text-muted-foreground">{t}</span>
+                                  ))}
+                                </div>
                               </div>
                             </div>
                           </td>
