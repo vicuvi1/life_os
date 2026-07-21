@@ -17,12 +17,14 @@ import {
   MoreVertical,
   Pencil,
   Trash2,
+  BarChart3,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
   getHabits,
   getHabitLogs,
   toggleHabitLog,
+  createHabit,
   deleteHabit,
 } from "@/lib/firebase/db";
 import {
@@ -30,11 +32,15 @@ import {
   tallyStatuses,
   lastNDays,
   addDays,
+  doneDates,
+  currentStreak,
+  longestStreak,
   HABIT_CATEGORIES,
   HABIT_CATEGORY_LABEL,
   DEFAULT_HABIT_COLOR,
   type DayStatus,
 } from "@/lib/habits";
+import { HabitStatsDialog } from "@/components/habits/habit-stats-dialog";
 import { toDateKey } from "@/lib/greeting";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -81,6 +87,8 @@ export default function HabitsPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Habit | null>(null);
   const [deleting, setDeleting] = useState<Habit | null>(null);
+  const [statsHabit, setStatsHabit] = useState<Habit | null>(null);
+  const [quickName, setQuickName] = useState("");
 
   const [anchorEnd, setAnchorEnd] = useState(toDateKey(new Date()));
   const [showNumbers, setShowNumbers] = useState(false);
@@ -157,9 +165,26 @@ export default function HabitsPage() {
     return tallyStatuses(statuses).rate;
   }, [filteredHabits, logMap, prevKeys, today]);
 
-  const currentStreakMax = filteredHabits.reduce((m, h) => Math.max(m, h.streak ?? 0), 0);
-  const bestStreakMax = filteredHabits.reduce((m, h) => Math.max(m, h.bestStreak ?? 0), 0);
+  // Streaks computed live from logs (so toggling updates instantly, no refetch).
+  const streaksByHabit = useMemo(() => {
+    const m = new Map<string, { streak: number; best: number }>();
+    for (const h of habits) {
+      const done = doneDates(h, logsByHabit[h.id] ?? []);
+      m.set(h.id, { streak: currentStreak(new Set(done), today), best: longestStreak(done) });
+    }
+    return m;
+  }, [habits, logsByHabit, today]);
+  const currentStreakMax = filteredHabits.reduce((m, h) => Math.max(m, streaksByHabit.get(h.id)?.streak ?? 0), 0);
+  const bestStreakMax = filteredHabits.reduce((m, h) => Math.max(m, streaksByHabit.get(h.id)?.best ?? 0), 0);
   const trend = allTally.rate - prevRate;
+  const topStreak = useMemo(() => {
+    let top: { habit: Habit; streak: number } | null = null;
+    for (const h of filteredHabits) {
+      const s = streaksByHabit.get(h.id)?.streak ?? 0;
+      if (!top || s > top.streak) top = { habit: h, streak: s };
+    }
+    return top;
+  }, [filteredHabits, streaksByHabit]);
 
   const weekday = useMemo(() => {
     const acc = Array.from({ length: 7 }, () => ({ completed: 0, scheduled: 0 }));
@@ -173,27 +198,41 @@ export default function HabitsPage() {
     return acc;
   }, [grid]);
 
-  const heat = useMemo(() => {
-    const m = new Map<string, { completed: number; scheduled: number }>();
-    for (const k of keys) m.set(k, { completed: 0, scheduled: 0 });
-    for (const g of grid)
-      for (const c of g.cells) {
-        if (c.status === "none") continue;
-        const e = m.get(c.key)!;
-        e.scheduled++;
-        if (c.status === "completed") e.completed++;
-      }
-    return m;
-  }, [grid, keys]);
-
   const bestStreaks = useMemo(
-    () => [...habits].filter((h) => (h.bestStreak ?? 0) > 0).sort((a, b) => b.bestStreak - a.bestStreak).slice(0, 5),
-    [habits]
+    () =>
+      [...habits]
+        .map((h) => ({ habit: h, best: streaksByHabit.get(h.id)?.best ?? 0 }))
+        .filter((x) => x.best > 0)
+        .sort((a, b) => b.best - a.best)
+        .slice(0, 5),
+    [habits, streaksByHabit]
   );
+
+  // 365-day heatmap data (independent of the 4-week grid window).
+  const yearKeys = useMemo(() => lastNDays(today, 365), [today]);
+  const yearHeat = useMemo(() => {
+    const m = new Map<string, { completed: number; scheduled: number }>();
+    for (const k of yearKeys) m.set(k, { completed: 0, scheduled: 0 });
+    for (const h of filteredHabits) {
+      const createdKey = toDateKey(new Date(h.createdAt));
+      const perDate = logMap.get(h.id) ?? new Map<string, HabitLog>();
+      for (const k of yearKeys) {
+        const st = dayStatus(h, perDate.get(k), k, today, createdKey);
+        if (st === "none") continue;
+        const e = m.get(k)!;
+        e.scheduled++;
+        if (st === "completed") e.completed++;
+      }
+    }
+    return m;
+  }, [filteredHabits, logMap, yearKeys, today]);
 
   const doneToday = habits.filter((h) => (logMap.get(h.id)?.has(today) ?? false)).length;
 
-  async function toggleCell(habit: Habit, key: string, status: DayStatus) {
+  // Instant, flicker-free toggle: update local state synchronously and write to
+  // Firestore in the background (idempotent deterministic doc id). No refetch —
+  // streaks/KPIs are derived live from local logs, so nothing "blips".
+  function toggleCell(habit: Habit, key: string, status: DayStatus) {
     if (!user || key > today) return;
     const done = status !== "completed";
     const fullValue = (habit.targetType ?? "check") !== "check" ? habit.targetValue : null;
@@ -202,9 +241,22 @@ export default function HabitsPage() {
       if (done) logs.push({ id: `${habit.id}_${key}`, habitId: habit.id, userId: user.uid, completedDate: key, value: fullValue, createdAt: Date.now() });
       return { ...prev, [habit.id]: logs };
     });
+    void toggleHabitLog(user.uid, habit.id, key, done, fullValue).catch(() => {
+      void load(); // reconcile only if the write actually failed
+    });
+  }
+
+  async function quickAdd() {
+    const name = quickName.trim();
+    if (!user || !name) return;
+    setQuickName("");
     try {
-      await toggleHabitLog(user.uid, habit.id, key, done, fullValue);
-      setHabits(await getHabits(user.uid));
+      await createHabit(user.uid, {
+        title: name, description: null, emoji: null, tags: [],
+        frequency: "daily", category: "morning", color: DEFAULT_HABIT_COLOR,
+        targetType: "check", targetValue: null,
+      });
+      await load();
     } catch {
       await load();
     }
@@ -250,6 +302,17 @@ export default function HabitsPage() {
           )}
         </div>
       </div>
+
+      {!loading && topStreak && topStreak.streak >= 3 && (
+        <div className="flex items-center gap-2 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-4 py-2.5 text-sm">
+          <span className="text-lg">🔥</span>
+          <span>
+            <span className="font-semibold text-orange-500">{topStreak.streak}-day streak</span> on{" "}
+            {topStreak.habit.emoji ? `${topStreak.habit.emoji} ` : ""}
+            {topStreak.habit.title} — don&apos;t break it!
+          </span>
+        </div>
+      )}
 
       {loading ? (
         <div className="space-y-3">
@@ -374,6 +437,7 @@ export default function HabitsPage() {
                                   <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Habit menu"><MoreVertical className="h-4 w-4" /></Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => setStatsHabit(habit)}><BarChart3 className="h-4 w-4" /> Statistics</DropdownMenuItem>
                                   <DropdownMenuItem onClick={() => { setEditing(habit); setFormOpen(true); }}><Pencil className="h-4 w-4" /> Edit</DropdownMenuItem>
                                   <DropdownMenuItem onClick={() => setDeleting(habit)} className="text-destructive focus:text-destructive"><Trash2 className="h-4 w-4" /> Delete</DropdownMenuItem>
                                 </DropdownMenuContent>
@@ -387,6 +451,19 @@ export default function HabitsPage() {
                 </table>
               </div>
             )}
+            {/* Quick-add right where the habits are */}
+            <div className="flex items-center gap-2 border-t px-4 py-2.5">
+              <Plus className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <Input
+                value={quickName}
+                onChange={(e) => setQuickName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") quickAdd(); }}
+                placeholder="Add a habit and press Enter…"
+                className="h-9 flex-1"
+              />
+              <Button size="sm" onClick={quickAdd} disabled={!quickName.trim()}>Add</Button>
+              <Button size="sm" variant="ghost" onClick={openCreate}>More options</Button>
+            </div>
             <div className="flex flex-wrap items-center gap-4 border-t px-4 py-2.5 text-xs text-muted-foreground">
               <LegendDot cls="bg-emerald-500" label="Completed" />
               <LegendDot cls="bg-amber-500" label="Partial" />
@@ -396,8 +473,26 @@ export default function HabitsPage() {
             </div>
           </Card>
 
+          {/* 365-day activity — GitHub-style, full width */}
+          <Card className="overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-4 py-2.5">
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Last 365 days</span>
+              <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                Less
+                <span className="h-3 w-3 rounded-sm bg-muted/40" />
+                <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: "rgba(16,185,129,0.4)" }} />
+                <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: "rgba(16,185,129,0.7)" }} />
+                <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: "rgba(16,185,129,1)" }} />
+                More
+              </span>
+            </div>
+            <div className="p-4">
+              <YearHeatmap keys={yearKeys} heat={yearHeat} today={today} />
+            </div>
+          </Card>
+
           {/* Bottom widgets */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
             <Panel title="Weekly completion">
               <div className="flex h-32 items-end justify-between gap-1.5">
                 {[1, 2, 3, 4, 5, 6, 0].map((wd) => {
@@ -420,21 +515,17 @@ export default function HabitsPage() {
                 <p className="py-6 text-center text-sm text-muted-foreground">No streaks yet.</p>
               ) : (
                 <ul className="space-y-2.5">
-                  {bestStreaks.map((h) => (
+                  {bestStreaks.map(({ habit: h, best }) => (
                     <li key={h.id} className="flex items-center gap-2.5">
                       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-base" style={{ backgroundColor: `${h.color ?? DEFAULT_HABIT_COLOR}22` }}>
                         {h.emoji || <Flame className="h-4 w-4" style={{ color: h.color ?? DEFAULT_HABIT_COLOR }} />}
                       </span>
                       <span className="min-w-0 flex-1 truncate text-sm">{h.title}</span>
-                      <span className="flex shrink-0 items-center gap-1 text-sm font-semibold text-orange-500"><Flame className="h-3.5 w-3.5" /> {h.bestStreak}</span>
+                      <span className="flex shrink-0 items-center gap-1 text-sm font-semibold text-orange-500"><Flame className="h-3.5 w-3.5" /> {best}</span>
                     </li>
                   ))}
                 </ul>
               )}
-            </Panel>
-
-            <Panel title="Completion heatmap">
-              <Heatmap keys={keys} heat={heat} today={today} />
             </Panel>
 
             <Panel title="Summary">
@@ -452,6 +543,13 @@ export default function HabitsPage() {
       {user && (
         <HabitFormDialog open={formOpen} onOpenChange={setFormOpen} userId={user.uid} habit={editing} onSaved={load} />
       )}
+
+      <HabitStatsDialog
+        open={statsHabit !== null}
+        onOpenChange={(o) => { if (!o) setStatsHabit(null); }}
+        habit={statsHabit}
+        logs={statsHabit ? (logsByHabit[statsHabit.id] ?? []) : []}
+      />
 
       <ConfirmDialog
         open={Boolean(deleting)}
@@ -523,27 +621,37 @@ function StatusCell({ status, color, value, showNumber, disabled, onClick }: {
   );
 }
 
-function Heatmap({ keys, heat, today }: { keys: string[]; heat: Map<string, { completed: number; scheduled: number }>; today: string }) {
+function YearHeatmap({ keys, heat, today }: { keys: string[]; heat: Map<string, { completed: number; scheduled: number }>; today: string }) {
   if (keys.length === 0) return null;
-  const offset = (new Date(keys[0] + "T00:00:00").getDay() + 6) % 7; // Mon-first
+  // Pad the start so column 0 begins on a Monday, then chunk into week-columns.
+  const offset = (new Date(keys[0] + "T00:00:00").getDay() + 6) % 7;
   const cells: (string | null)[] = [...Array(offset).fill(null), ...keys];
+  const weeks: (string | null)[][] = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
   return (
-    <div className="grid grid-cols-7 gap-1">
-      {WEEK_HEADS.map((d) => <span key={d} className="text-center text-[9px] text-muted-foreground">{d[0]}</span>)}
-      {cells.map((k, i) => {
-        if (k == null) return <span key={`b${i}`} />;
-        const e = heat.get(k) ?? { completed: 0, scheduled: 0 };
-        const rate = e.scheduled > 0 ? e.completed / e.scheduled : 0;
-        const intensity = e.scheduled === 0 ? 0 : 0.2 + rate * 0.8;
-        return (
-          <div
-            key={k}
-            title={`${fmtDay(k).day} ${fmtDay(k).month}: ${e.completed}/${e.scheduled}`}
-            className={cn("aspect-square rounded-sm", e.scheduled === 0 && "bg-muted/40", k === today && "ring-1 ring-primary")}
-            style={e.scheduled > 0 ? { backgroundColor: `rgba(16,185,129,${intensity})` } : undefined}
-          />
-        );
-      })}
+    <div className="overflow-x-auto pb-1">
+      <div className="flex gap-[3px]">
+        {weeks.map((week, wi) => (
+          <div key={wi} className="flex flex-col gap-[3px]">
+            {Array.from({ length: 7 }, (_, di) => {
+              const k = week[di] ?? null;
+              if (k == null) return <span key={di} className="h-3 w-3" />;
+              const e = heat.get(k) ?? { completed: 0, scheduled: 0 };
+              const rate = e.scheduled > 0 ? e.completed / e.scheduled : 0;
+              const intensity = e.scheduled === 0 ? 0 : 0.18 + rate * 0.82;
+              const d = fmtDay(k);
+              return (
+                <div
+                  key={di}
+                  title={`${d.day} ${d.month}: ${e.completed}/${e.scheduled}`}
+                  className={cn("h-3 w-3 rounded-sm", e.scheduled === 0 && "bg-muted/40", k === today && "ring-1 ring-primary")}
+                  style={e.scheduled > 0 ? { backgroundColor: `rgba(16,185,129,${intensity})` } : undefined}
+                />
+              );
+            })}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

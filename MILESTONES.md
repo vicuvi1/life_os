@@ -1272,3 +1272,32 @@ habit so you can add and organize as many as you like.
 1. **Add habit** → give it a name, an emoji, some tags, and how it's measured.
 2. Tap cells in the grid to mark each day done; use ◀▶ to review earlier weeks.
 3. Watch the KPI row, streaks, heatmap, and summary update as you check in.
+
+---
+
+## Habits — instant toggle, inline add, 365-day heatmap & per-habit stats
+
+**What it is.** A polish + power pass on the tracker: check-ins are now instant
+(no reload/flicker), you can add a habit right where the grid is, there's a
+GitHub-style full-width year heatmap, per-habit statistics, and a streak nudge.
+
+**How it works.**
+- **Instant, flicker-free toggling.** Tapping a cell updates the grid immediately
+  and writes to Firestore in the background (idempotent per-day doc id). Streaks
+  and KPIs are now derived **live from your logs**, so nothing refetches or
+  "blips" after a tap.
+- **Inline add.** A quick-add row sits right under the grid — type a name, press
+  **Enter**, and the habit appears (with **More options** for emoji/tags/target).
+  The header **Add habit** button stays for the full form.
+- **365-day heatmap.** A full-width, GitHub-style year grid (53 weeks × 7 days)
+  shows a whole year of consistency at a glance, colored by daily completion, with
+  a less→more legend. It replaces the old small month heatmap.
+- **Per-habit statistics.** The ⋯ menu → **Statistics** opens a dialog with current
+  & longest & average streak, success %, missed %, total completions, and
+  completion **by weekday** and **by month**.
+- **Motivation.** When you're on a roll, a 🔥 banner calls out your longest active
+  streak so you don't break it.
+
+**How to use it.** Tap across the grid (instant); add habits from the row under the
+grid; open a habit's ⋯ → **Statistics** for its breakdown; scan the 365-day
+heatmap for your year at a glance.
