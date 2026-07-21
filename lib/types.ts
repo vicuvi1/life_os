@@ -398,6 +398,7 @@ export interface Recipe {
   name: string;
   imageData: string | null;
   notes: string | null;
+  prepMinutes: number | null; // optional prep/cook time
   items: MealFoodEntry[]; // references foods + quantities only
   collection: string | null; // folder / collection grouping
   tags: string[];

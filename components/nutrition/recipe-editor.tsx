@@ -33,6 +33,7 @@ export function RecipeEditor({ open, onOpenChange, userId, recipe, defaultKind =
   const [imageData, setImageData] = useState<string | null>(null);
   const [collection, setCollection] = useState("");
   const [tags, setTags] = useState("");
+  const [prep, setPrep] = useState("");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<MealFoodEntry[]>([]);
   const [busy, setBusy] = useState(false);
@@ -46,6 +47,7 @@ export function RecipeEditor({ open, onOpenChange, userId, recipe, defaultKind =
     setImageData(recipe?.imageData ?? null);
     setCollection(recipe?.collection ?? "");
     setTags(recipe?.tags?.length ? recipe.tags.join(", ") : "");
+    setPrep(recipe?.prepMinutes != null ? String(recipe.prepMinutes) : "");
     setNotes(recipe?.notes ?? "");
     setItems(recipe?.items ? recipe.items.map((e) => ({ ...e })) : []);
     setImgError(null);
@@ -63,6 +65,7 @@ export function RecipeEditor({ open, onOpenChange, userId, recipe, defaultKind =
     setBusy(true);
     const input: RecipeInput = {
       kind, name: name.trim(), imageData, notes: notes.trim() || null,
+      prepMinutes: prep.trim() === "" ? null : Math.max(0, Math.round(Number(prep))) || (Number(prep) === 0 ? 0 : null),
       items: items.map((e, idx) => ({ ...e, sortOrder: idx })),
       collection: collection.trim() || null,
       tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
@@ -113,7 +116,7 @@ export function RecipeEditor({ open, onOpenChange, userId, recipe, defaultKind =
           {imageData && <button type="button" onClick={() => setImageData(null)} className="text-xs text-muted-foreground underline">Remove image</button>}
           {imgError && <p className="text-xs text-rose-500">{imgError}</p>}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-[1fr_1fr_110px] gap-3">
             <div className="space-y-1.5">
               <Label>Collection</Label>
               <Input value={collection} onChange={(e) => setCollection(e.target.value)} placeholder="e.g. Cheap dinners" list="recipe-collections" />
@@ -121,7 +124,11 @@ export function RecipeEditor({ open, onOpenChange, userId, recipe, defaultKind =
             </div>
             <div className="space-y-1.5">
               <Label>Tags</Label>
-              <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="high-protein, quick" />
+              <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="high-protein" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Prep (min)</Label>
+              <Input type="number" min={0} value={prep} onChange={(e) => setPrep(e.target.value)} placeholder="—" />
             </div>
           </div>
 

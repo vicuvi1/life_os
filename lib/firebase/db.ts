@@ -1400,6 +1400,7 @@ function mapRecipe(snap: QueryDocumentSnapshot<DocumentData>): Recipe {
     name: d.name ?? "Recipe",
     imageData: d.imageData ?? null,
     notes: d.notes ?? null,
+    prepMinutes: numOrNull(d.prepMinutes),
     items: Array.isArray(d.items) ? d.items.map((e, i) => mapMealEntry(e as Record<string, unknown>, i)).sort((a, b) => a.sortOrder - b.sortOrder) : [],
     collection: d.collection ?? null,
     tags: Array.isArray(d.tags) ? (d.tags as string[]) : [],
@@ -1410,7 +1411,7 @@ function mapRecipe(snap: QueryDocumentSnapshot<DocumentData>): Recipe {
   };
 }
 
-export type RecipeInput = Pick<Recipe, "kind" | "name" | "imageData" | "notes" | "items" | "collection" | "tags"> &
+export type RecipeInput = Pick<Recipe, "kind" | "name" | "imageData" | "notes" | "prepMinutes" | "items" | "collection" | "tags"> &
   Partial<Pick<Recipe, "favorite" | "archived" | "sortOrder">>;
 
 export async function getRecipes(userId: string): Promise<Recipe[]> {

@@ -23,6 +23,8 @@ interface Props {
   userId: string;
   date: string;
   meal?: NutritionMeal | null;
+  /** Pre-selected foods for a NEW meal (e.g. from Quick Add Food). */
+  seedItems?: MealFoodEntry[];
   foods: FoodItem[];
   currency: Currency;
   onSaved: () => void;
@@ -31,7 +33,7 @@ interface Props {
 
 const numOrNull = (s: string) => (s.trim() === "" ? null : Math.max(0, Math.round(Number(s) * 100) / 100) || (Number(s) === 0 ? 0 : null));
 
-export function MealDialog({ open, onOpenChange, userId, date, meal, foods, currency, onSaved, onManageFoods }: Props) {
+export function MealDialog({ open, onOpenChange, userId, date, meal, seedItems, foods, currency, onSaved, onManageFoods }: Props) {
   const [name, setName] = useState("");
   const [icon, setIcon] = useState("🍽️");
   const [color, setColor] = useState<string>(MEAL_COLORS[0]);
@@ -51,7 +53,7 @@ export function MealDialog({ open, onOpenChange, userId, date, meal, foods, curr
     setColor(meal?.color ?? d.color);
     setTime(meal?.time ?? "");
     setNotes(meal?.notes ?? "");
-    setItems(meal?.items ? meal.items.map((e) => ({ ...e })) : []);
+    setItems(meal ? meal.items.map((e) => ({ ...e })) : (seedItems ? seedItems.map((e) => ({ ...e })) : []));
     setManual({
       calories: meal?.calories != null ? String(meal.calories) : "",
       protein: meal?.protein != null ? String(meal.protein) : "",
@@ -62,7 +64,7 @@ export function MealDialog({ open, onOpenChange, userId, date, meal, foods, curr
     const hasManual = !!meal && !meal.items.length && (meal.calories != null || meal.protein != null || meal.cost != null);
     setShowManual(hasManual);
     setShowDetails(!!meal && (!!meal.notes || !!meal.time));
-  }, [open, meal]);
+  }, [open, meal, seedItems]);
 
   async function save() {
     setSaving(true);

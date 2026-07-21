@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft, ChevronRight, Plus, Minus, GlassWater, Beef, Flame, Wallet, HeartPulse,
-  Search, Package, Utensils, CalendarDays,
+  Search, Package, Utensils, CalendarDays, Clock,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -30,7 +30,7 @@ import { NutritionNav } from "@/components/nutrition/nutrition-nav";
 import { MealRow } from "@/components/nutrition/meal-row";
 import { MealDialog } from "@/components/nutrition/meal-dialog";
 import { cn } from "@/lib/utils";
-import type { NutritionMeal, Recipe, FoodItem, ShoppingItem } from "@/lib/types";
+import type { NutritionMeal, Recipe, FoodItem, ShoppingItem, MealFoodEntry } from "@/lib/types";
 
 const DEFAULT_CAL_TARGET = 2000;
 const fmt = (n: number) => n.toLocaleString("en-US");
@@ -49,7 +49,7 @@ export default function NutritionPage() {
   const [water, setWaterState] = useState(0);
   const [waterTarget, setWaterTargetState] = useState(DEFAULT_WATER_TARGET);
   const [loading, setLoading] = useState(true);
-  const [dialog, setDialog] = useState<{ open: boolean; meal: NutritionMeal | null }>({ open: false, meal: null });
+  const [dialog, setDialog] = useState<{ open: boolean; meal: NutritionMeal | null; seed?: MealFoodEntry[] }>({ open: false, meal: null });
   const [dragId, setDragId] = useState<string | null>(null);
   const [mealSort, setMealSort] = useState<"time" | "custom">("time");
   const [foodQuery, setFoodQuery] = useState("");
@@ -145,11 +145,9 @@ export default function NutritionPage() {
     else { setWaterTargetState(n); void upsertNutritionLog(user.uid, date, { waterTarget: n }).catch(() => void load({ quiet: true })); }
   }
 
-  async function addQuickFood(f: FoodItem) {
-    if (!user) return;
+  function addQuickFood(f: FoodItem) {
     const serving = f.servings[0] ?? { id: genId(), label: `100 ${f.unit}`, grams: 100 };
-    await createNutritionMeal(user.uid, date, { name: f.name, icon: "🍽️", color: "#6366f1", time: null, notes: null, items: [foodToEntry(f, serving, 1, 0)], calories: null, protein: null, carbs: null, fat: null, cost: null });
-    await load({ quiet: true, sync: true });
+    setDialog({ open: true, meal: null, seed: [foodToEntry(f, serving, 1, 0)] });
   }
   async function quickLogRecipe(r: Recipe) {
     if (!user) return;
@@ -305,11 +303,14 @@ export default function NutritionPage() {
                       const rt = recipeTotals(r, foodMap);
                       return (
                         <Card key={r.id} className="flex flex-col overflow-hidden">
-                          <div className="flex h-20 items-center justify-center bg-muted text-3xl">
+                          <div className="relative flex h-20 items-center justify-center bg-muted text-3xl">
                             {r.imageData ? (
                               // eslint-disable-next-line @next/next/no-img-element
                               <img src={r.imageData} alt="" className="h-full w-full object-cover" />
                             ) : (r.kind === "template" ? "🍽️" : "🥘")}
+                            {r.prepMinutes != null && (
+                              <span className="absolute left-1.5 top-1.5 flex items-center gap-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white"><Clock className="h-3 w-3" /> {r.prepMinutes} min</span>
+                            )}
                           </div>
                           <div className="flex flex-1 flex-col gap-1.5 p-2.5">
                             <p className="truncate text-sm font-medium">{r.name}</p>
@@ -406,7 +407,7 @@ export default function NutritionPage() {
       )}
 
       {user && (
-        <MealDialog open={dialog.open} onOpenChange={(o) => setDialog((s) => ({ ...s, open: o }))} userId={user.uid} date={date} meal={dialog.meal} foods={all?.foods ?? []} currency={cur} onManageFoods={() => router.push("/nutrition/foods")} onSaved={() => load({ quiet: true, sync: true })} />
+        <MealDialog open={dialog.open} onOpenChange={(o) => setDialog((s) => ({ ...s, open: o }))} userId={user.uid} date={date} meal={dialog.meal} seedItems={dialog.seed} foods={all?.foods ?? []} currency={cur} onManageFoods={() => router.push("/nutrition/foods")} onSaved={() => load({ quiet: true, sync: true })} />
       )}
     </div>
   );

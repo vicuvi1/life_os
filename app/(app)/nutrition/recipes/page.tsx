@@ -95,7 +95,7 @@ export default function RecipesPage() {
   }
   async function duplicate(r: Recipe) {
     if (!user) return;
-    await createRecipe(user.uid, { kind: r.kind, name: `${r.name} (copy)`, imageData: r.imageData, notes: r.notes, items: r.items, collection: r.collection, tags: r.tags, favorite: false, sortOrder: recipes.length });
+    await createRecipe(user.uid, { kind: r.kind, name: `${r.name} (copy)`, imageData: r.imageData, notes: r.notes, prepMinutes: r.prepMinutes, items: r.items, collection: r.collection, tags: r.tags, favorite: false, sortOrder: recipes.length });
     await load({ quiet: true });
   }
   async function logToday(r: Recipe) {
@@ -217,7 +217,7 @@ export default function RecipesPage() {
                       </DropdownMenu>
                     </div>
                     <p className="mt-1 text-xs tabular-nums text-muted-foreground">
-                      {r.items.length} food{r.items.length === 1 ? "" : "s"} · {t.calories} kcal · {t.protein}P · {formatAmount(t.cost, cur)}
+                      {r.prepMinutes != null ? `${r.prepMinutes} min · ` : ""}{r.items.length} food{r.items.length === 1 ? "" : "s"} · {t.calories} kcal · {t.protein}P · {formatAmount(t.cost, cur)}
                     </p>
                   </div>
                 </div>
