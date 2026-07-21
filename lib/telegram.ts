@@ -44,13 +44,23 @@ export async function tgDetectChatId(
   }
 }
 
-/** Send an HTML message to a chat. Best-effort; returns ok/error. */
-export async function tgSend(token: string, chatId: string, text: string): Promise<TgResult> {
+/**
+ * Send an HTML message to a chat. Best-effort; returns ok/error. Optional
+ * `buttons` become a real inline keyboard (URL buttons — no webhook needed).
+ */
+export async function tgSend(
+  token: string,
+  chatId: string,
+  text: string,
+  buttons?: { text: string; url: string }[]
+): Promise<TgResult> {
   try {
+    const body: Record<string, unknown> = { chat_id: chatId, text, parse_mode: "HTML", disable_web_page_preview: true };
+    if (buttons && buttons.length) body.reply_markup = { inline_keyboard: buttons.map((b) => [{ text: b.text, url: b.url }]) };
     const r = await fetch(`${API}/bot${token.trim()}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML", disable_web_page_preview: true }),
+      body: JSON.stringify(body),
     });
     const j = await r.json();
     return j.ok ? { ok: true } : { ok: false, error: j.description || "Send failed" };

@@ -1965,11 +1965,35 @@ secured serverless endpoint `/api/notifications/run` (Firebase Admin + Telegram)
   no-ops, so it never affects the app until you configure it (see `.env.example`).
   The `sleep_logged_summary` template still fires instantly client-side on log.
 
+**Editor UX pass (shipped).**
+- **Always-on live preview** — the Telegram-style bubble sits beside the editor
+  and updates as you type (no more editing blind); Send-now lives there too.
+- **Test scenarios** — a dropdown swaps the preview data (Sample · Good sleep ·
+  Average · Poor · No sleep · Weekend · Vacation) so you can see exactly how
+  conditionals and variables render in each case.
+- **Variable inspector** — tapping a variable inserts it *and* shows its
+  description, an example value, and which templates use it.
+- **Today's notifications timeline** — a strip of when each enabled time-based
+  notification will fire (from its condition + your targets).
+- **More blocks** — added Recovery, Quote, and Divider to the block builder.
+- **History actions** — every logged send can be **resent** or jumped to its
+  template to **edit**.
+- **Real buttons** — messages now carry actual Telegram inline **URL buttons**
+  (Open app / routine / sleep). Callback actions (snooze/dismiss) still show in
+  the preview but need a bot webhook to be tappable — left out honestly.
+
 **Deferred.**
-- **AI Summary block** (an LLM-generated block) — the one Phase-2 block left out;
-  the text-level AI rewrite already covers AI wording.
-- **Public template marketplace** — out of scope for a single-user app (needs
-  multi-user identity + moderation); Export/Import is the realistic "sharing".
+- **AI Summary block** — the text-level AI rewrite already covers AI wording.
+- **Notification analytics** (open / ignored rates) — genuinely can't be
+  measured client-side; it needs a Telegram bot **webhook** capturing message
+  reads / inline-button callbacks (a persistent server), which this setup
+  doesn't have. Delivered/failed is tracked; open-rate is not faked.
+- **Duplicate template & version history** — need a multi-template-per-event +
+  versioned model (bigger refactor); export/import covers copying for now.
+- **Rich button workflows** (action → after-success → …) and **snooze/dismiss**
+  — need the same bot webhook to receive callbacks.
+- **Image block** — needs `sendPhoto` + image hosting.
+- **Public template marketplace** — out of scope for a single-user app.
 - Hands-free **scheduled** delivery for time-based events while the app is
   closed still needs the background sender (Vercel cron) noted earlier; "Send
   now" and the sleep-logged auto-send work today.

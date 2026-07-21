@@ -4,7 +4,7 @@ import { SkeletonCard } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Bell, Send, Sparkles, Plus, Trash2, Download, Upload, ChevronLeft, Loader2, Check, RotateCcw, History,
+  Bell, Send, Sparkles, Plus, Trash2, Download, Upload, ChevronLeft, Loader2, Check, RotateCcw, History, Pencil, Clock,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -16,7 +16,7 @@ import { buildNotifValues } from "@/lib/notif-values";
 import {
   EVENT_ORDER, EVENT_META, VARIABLE_GROUPS, SAMPLE_VALUES, resolveBody, presetsFor, defaultTemplate,
   describeCondition, ACTION_META, ACTIONS, REFERENCE_OPTIONS, DAYS_OPTIONS, STATE_OPTIONS,
-  compileBlocks, blockToText, defaultBlock,
+  compileBlocks, blockToText, defaultBlock, SCENARIOS, scenarioValues, type VariableDef,
 } from "@/lib/notifications";
 import { NotifBlockEditor, ConditionalForm } from "@/components/settings/notif-block-editor";
 import { callAgentModel, PROVIDER_META } from "@/lib/ai";
@@ -35,8 +35,15 @@ import {
 import { cn } from "@/lib/utils";
 import type { AIProviderType, AIProviders, NotifAction, NotifBlockCond, NotifButton, NotifCondition, NotifEventType, NotificationTemplate, NotifLogEntry, TelegramConfig } from "@/lib/types";
 
-type Tab = "preview" | "template" | "conditions";
+type Tab = "template" | "conditions";
 const TONES = ["Professional", "Friendly", "Funny", "Minimal", "Formal", "Military", "Stoic", "Gen Z"];
+
+/** Map a button action to an in-app URL (for real Telegram url-buttons). */
+function actionUrl(action: string, origin: string): string | null {
+  if (action === "open_app") return origin || null;
+  if (action === "start_routine" || action === "log_sleep") return origin ? `${origin}/sleep` : null;
+  return null; // snooze / dismiss need callback buttons (a bot webhook) — omitted
+}
 
 export default function NotificationBuilderPage() {
   const { user } = useAuth();
@@ -53,6 +60,10 @@ export default function NotificationBuilderPage() {
   const [sendState, setSendState] = useState<{ busy: boolean; msg?: string; ok?: boolean }>({ busy: false });
   const [aiOpen, setAiOpen] = useState(false);
   const [ifElse, setIfElse] = useState<NotifBlockCond | null>(null);
+  const [scenario, setScenario] = useState("sample");
+  const [inspected, setInspected] = useState<VariableDef | null>(null);
+  const [bedtimeTarget, setBedtimeTarget] = useState<string | null>(null);
+  const [wakeTarget, setWakeTarget] = useState<string | null>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -66,6 +77,8 @@ export default function NotificationBuilderPage() {
       setTemplates(map);
       setProviders(prefs.aiProviders ?? {});
       setTelegram(prefs.telegram ?? null);
+      setBedtimeTarget(prefs.bedtimeTarget ?? null);
+      setWakeTarget(prefs.wakeTarget ?? null);
       setLog(hist);
     } finally {
       setLoading(false);
@@ -116,15 +129,16 @@ export default function NotificationBuilderPage() {
     patch({ body: next }, false);
     requestAnimationFrame(() => { ta.focus(); ta.selectionStart = ta.selectionEnd = start + token.length; });
   }
-  function insertVariable(key: string) {
-    const ta = bodyRef.current;
-    const token = `{{${key}}}`;
-    if (!ta) { patch({ body: `${tpl.body}${token}` }, false); return; }
-    const start = ta.selectionStart ?? tpl.body.length;
-    const end = ta.selectionEnd ?? start;
-    const next = tpl.body.slice(0, start) + token + tpl.body.slice(end);
-    patch({ body: next }, false);
-    requestAnimationFrame(() => { ta.focus(); ta.selectionStart = ta.selectionEnd = start + token.length; });
+  function insertVariable(v: VariableDef) {
+    insertText(`{{${v.key}}}`);
+    setInspected(v);
+  }
+
+  function sendButtons(): { text: string; url: string }[] {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    return tpl.buttons
+      .map((b) => ({ text: b.label, url: actionUrl(b.action, origin) }))
+      .filter((b): b is { text: string; url: string } => Boolean(b.url));
   }
 
   async function loadLiveValues(): Promise<Record<string, string>> {
@@ -142,10 +156,49 @@ export default function NotificationBuilderPage() {
     setSendState({ busy: true });
     const values = await loadLiveValues();
     const text = resolveBody(tpl.body, values);
-    const r = await tgSend(telegram.botToken, telegram.chatId, text);
+    const r = await tgSend(telegram.botToken, telegram.chatId, text, sendButtons());
     await addNotifLog(user.uid, { eventType: tpl.eventType, body: text, status: r.ok ? "delivered" : "failed" });
     setSendState({ busy: false, ok: r.ok, msg: r.ok ? "Sent — check Telegram." : r.error ?? "Failed." });
     setLog(await getNotifLog(user.uid));
+  }
+
+  async function resend(entry: NotifLogEntry) {
+    if (!user || !telegram?.botToken || !telegram.chatId) return;
+    const r = await tgSend(telegram.botToken, telegram.chatId, entry.body);
+    await addNotifLog(user.uid, { eventType: entry.eventType, body: entry.body, status: r.ok ? "delivered" : "failed" });
+    setLog(await getNotifLog(user.uid));
+  }
+
+  // Today's scheduled fires (enabled, time-based templates) for the timeline.
+  const timeline = useMemo(() => {
+    const items: { time: string; min: number; label: string; icon: string; note?: string }[] = [];
+    for (const et of EVENT_ORDER) {
+      const t = templates[et];
+      if (!t?.enabled || EVENT_META[et].eventDriven) continue;
+      const c = t.condition;
+      let min: number | null = null;
+      if (c.timeMode === "relative") {
+        const base = (c.reference === "bedtime" ? bedtimeTarget : wakeTarget) ?? "";
+        const m = /^(\d{1,2}):(\d{2})$/.exec(base);
+        if (m) min = ((Number(m[1]) * 60 + Number(m[2]) + c.offsetMin) % 1440 + 1440) % 1440;
+      } else {
+        const m = /^(\d{1,2}):(\d{2})$/.exec(c.time);
+        if (m) min = Number(m[1]) * 60 + Number(m[2]);
+      }
+      const note = c.days === "weekdays" ? "weekdays" : c.days === "weekends" ? "weekends" : undefined;
+      items.push({
+        time: min == null ? "needs a target time" : `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`,
+        min: min ?? 9999,
+        label: EVENT_META[et].label,
+        icon: EVENT_META[et].icon,
+        note,
+      });
+    }
+    return items.sort((a, b) => a.min - b.min);
+  }, [templates, bedtimeTarget, wakeTarget]);
+
+  function usedIn(key: string): string[] {
+    return EVENT_ORDER.filter((et) => templates[et]?.body.includes(`{{${key}}}`)).map((et) => EVENT_META[et].label);
   }
 
   function exportTemplate() {
@@ -225,13 +278,38 @@ export default function NotificationBuilderPage() {
                     <p className="truncate text-xs text-muted-foreground">{l.body}</p>
                   </div>
                   <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium", l.status === "delivered" ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-rose-500/15 text-rose-600 dark:text-rose-400")}>{l.status}</span>
-                  <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{new Date(l.createdAt).toLocaleString()}</span>
+                  <span className="hidden shrink-0 text-[11px] tabular-nums text-muted-foreground sm:block">{new Date(l.createdAt).toLocaleString()}</span>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground" aria-label="Resend" title="Resend" onClick={() => resend(l)}><RotateCcw className="h-3.5 w-3.5" /></Button>
+                  {EVENT_META[l.eventType as NotifEventType] && (
+                    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground" aria-label="Edit template" title="Edit template" onClick={() => { setSelected(l.eventType as NotifEventType); setView("templates"); }}><Pencil className="h-3.5 w-3.5" /></Button>
+                  )}
                 </div>
               ))}
             </div>
           )}
         </Card>
       ) : (
+        <>
+          {/* Today's timeline */}
+          <Card className="overflow-hidden">
+            <div className="border-b bg-muted/30 px-4 py-2.5"><span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><Clock className="h-3.5 w-3.5" /> Today&apos;s notifications</span></div>
+            {timeline.length === 0 ? (
+              <p className="px-4 py-4 text-center text-sm text-muted-foreground">No time-based notifications enabled. Turn one on and set its time in Conditions.</p>
+            ) : (
+              <div className="flex gap-4 overflow-x-auto p-4">
+                {timeline.map((t, i) => (
+                  <div key={i} className="flex shrink-0 items-center gap-3">
+                    <div>
+                      <p className="text-sm font-semibold tabular-nums">{t.time}</p>
+                      <p className="flex items-center gap-1 text-xs text-muted-foreground">{t.icon} {t.label}{t.note ? ` · ${t.note}` : ""}</p>
+                    </div>
+                    {i < timeline.length - 1 && <span className="text-muted-foreground/30">→</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
         <div className="grid gap-4 md:grid-cols-[220px_1fr]">
           {/* Event list */}
           <div className="space-y-1.5">
@@ -265,85 +343,97 @@ export default function NotificationBuilderPage() {
 
             {/* Tabs */}
             <div className="flex gap-1 border-b px-4 pt-2">
-              {(["preview", "template", "conditions"] as Tab[]).map((t) => (
+              {(["template", "conditions"] as Tab[]).map((t) => (
                 <button key={t} type="button" onClick={() => setTab(t)} className={cn("rounded-t-md px-3 py-1.5 text-xs font-medium capitalize transition", tab === t ? "border-b-2 border-primary text-foreground" : "text-muted-foreground hover:text-foreground")}>{t}</button>
               ))}
             </div>
 
-            <div className="p-4">
-              {tab === "preview" && (
-                <div className="space-y-3">
-                  <PhonePreview body={resolveBody(tpl.body, SAMPLE_VALUES)} buttons={tpl.buttons} />
-                  <p className="text-center text-[11px] text-muted-foreground">Preview uses sample data.</p>
-                  <div className="flex items-center justify-center gap-2">
-                    <Button size="sm" onClick={sendNow} disabled={sendState.busy}>{sendState.busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Send now (live)</Button>
-                  </div>
-                  {sendState.msg && <p className={cn("text-center text-xs", sendState.ok ? "text-emerald-600 dark:text-emerald-400" : "text-destructive")}>{sendState.msg}</p>}
-                </div>
-              )}
-
-              {tab === "template" && (
-                <div className="space-y-4">
-                  {EVENT_META[selected].eventDriven && (
-                    <p className="rounded-lg border bg-muted/30 p-2.5 text-xs text-muted-foreground">This one sends automatically when you log a night&apos;s sleep.</p>
-                  )}
-
-                  {/* Authoring mode */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex gap-1 rounded-lg bg-muted p-0.5">
-                      {(["text", "blocks"] as const).map((m) => (
-                        <button key={m} type="button" onClick={() => switchMode(m)} className={cn("rounded-md px-3 py-1 text-xs font-medium capitalize transition", tpl.mode === m ? "bg-background shadow-sm" : "text-muted-foreground")}>{m === "text" ? "Text" : "Blocks"}</button>
-                      ))}
-                    </div>
-                    {tpl.mode === "text" && (
-                      <Button size="sm" variant="outline" className="h-7" onClick={() => setAiOpen(true)} disabled={!hasAnyKey} title={hasAnyKey ? "" : "Add an AI key in Settings"}><Sparkles className="h-3.5 w-3.5" /> Rewrite</Button>
+            <div className="grid lg:grid-cols-[1fr_300px]">
+              {/* Left: editor */}
+              <div className="space-y-4 p-4">
+                {tab === "template" && (
+                  <>
+                    {EVENT_META[selected].eventDriven && (
+                      <p className="rounded-lg border bg-muted/30 p-2.5 text-xs text-muted-foreground">This one sends automatically when you log a night&apos;s sleep.</p>
                     )}
-                  </div>
-
-                  {tpl.mode === "blocks" ? (
-                    <NotifBlockEditor blocks={tpl.blocks} onChange={handleBlocks} />
-                  ) : (
-                    <>
-                      <div>
-                        <p className="mb-1.5 text-xs font-medium text-muted-foreground">Start from a style</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {presetsFor(selected).map((p) => (
-                            <button key={p.name} type="button" onClick={() => patch({ body: p.body, stylePreset: p.name, mode: "text", blocks: [] })} className={cn("rounded-full border px-2.5 py-0.5 text-xs font-medium transition", tpl.stylePreset === p.name ? "border-primary bg-primary text-primary-foreground" : "border-input text-muted-foreground hover:bg-accent")}>{p.name}</button>
-                          ))}
-                        </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex gap-1 rounded-lg bg-muted p-0.5">
+                        {(["text", "blocks"] as const).map((m) => (
+                          <button key={m} type="button" onClick={() => switchMode(m)} className={cn("rounded-md px-3 py-1 text-xs font-medium capitalize transition", tpl.mode === m ? "bg-background shadow-sm" : "text-muted-foreground")}>{m === "text" ? "Text" : "Blocks"}</button>
+                        ))}
                       </div>
+                      {tpl.mode === "text" && (
+                        <Button size="sm" variant="outline" className="h-7" onClick={() => setAiOpen(true)} disabled={!hasAnyKey} title={hasAnyKey ? "" : "Add an AI key in Settings"}><Sparkles className="h-3.5 w-3.5" /> Rewrite</Button>
+                      )}
+                    </div>
 
-                      <div>
-                        <div className="mb-1.5 flex items-center justify-between">
-                          <Label htmlFor="nb-body">Message</Label>
-                          <Button size="sm" variant="ghost" className="h-7 text-muted-foreground" onClick={() => setIfElse({ variable: "sleep_score", operator: "<", value: "70", then: "", else: "" })}>🔀 Insert if/else</Button>
+                    {tpl.mode === "blocks" ? (
+                      <NotifBlockEditor blocks={tpl.blocks} onChange={handleBlocks} />
+                    ) : (
+                      <>
+                        <div>
+                          <p className="mb-1.5 text-xs font-medium text-muted-foreground">Start from a style</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {presetsFor(selected).map((p) => (
+                              <button key={p.name} type="button" onClick={() => patch({ body: p.body, stylePreset: p.name, mode: "text", blocks: [] })} className={cn("rounded-full border px-2.5 py-0.5 text-xs font-medium transition", tpl.stylePreset === p.name ? "border-primary bg-primary text-primary-foreground" : "border-input text-muted-foreground hover:bg-accent")}>{p.name}</button>
+                            ))}
+                          </div>
                         </div>
-                        <Textarea id="nb-body" ref={bodyRef} value={tpl.body} onChange={(e) => patch({ body: e.target.value }, false)} onBlur={() => persist(selected, tpl)} rows={5} className="font-mono text-sm" />
-                      </div>
 
-                      <div>
-                        <p className="mb-1.5 text-xs font-medium text-muted-foreground">Insert a variable</p>
-                        <div className="space-y-2">
-                          {VARIABLE_GROUPS.map((g) => (
-                            <div key={g.group} className="flex flex-wrap items-center gap-1">
-                              <span className="mr-1 w-14 shrink-0 text-[10px] uppercase text-muted-foreground">{g.group}</span>
-                              {g.items.map((v) => (
-                                <button key={v.key} type="button" onClick={() => insertVariable(v.key)} title={`sample: ${v.sample}`} className="rounded border border-input px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground transition hover:border-primary/40 hover:text-foreground">{`{{${v.key}}}`}</button>
-                              ))}
+                        <div>
+                          <div className="mb-1.5 flex items-center justify-between">
+                            <Label htmlFor="nb-body">Message</Label>
+                            <Button size="sm" variant="ghost" className="h-7 text-muted-foreground" onClick={() => setIfElse({ variable: "sleep_score", operator: "<", value: "70", then: "", else: "" })}>🔀 Insert if/else</Button>
+                          </div>
+                          <Textarea id="nb-body" ref={bodyRef} value={tpl.body} onChange={(e) => patch({ body: e.target.value }, false)} onBlur={() => persist(selected, tpl)} rows={5} className="font-mono text-sm" />
+                        </div>
+
+                        <div>
+                          <p className="mb-1.5 text-xs font-medium text-muted-foreground">Insert a variable (tap to add &amp; inspect)</p>
+                          <div className="space-y-2">
+                            {VARIABLE_GROUPS.map((g) => (
+                              <div key={g.group} className="flex flex-wrap items-center gap-1">
+                                <span className="mr-1 w-14 shrink-0 text-[10px] uppercase text-muted-foreground">{g.group}</span>
+                                {g.items.map((v) => (
+                                  <button key={v.key} type="button" onClick={() => insertVariable(v)} className={cn("rounded border px-1.5 py-0.5 font-mono text-[11px] transition", inspected?.key === v.key ? "border-primary bg-primary/10 text-foreground" : "border-input text-muted-foreground hover:border-primary/40 hover:text-foreground")}>{`{{${v.key}}}`}</button>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                          {inspected && (
+                            <div className="mt-2 rounded-lg border bg-muted/20 p-2.5 text-xs">
+                              <p className="font-mono text-primary">{`{{${inspected.key}}}`}</p>
+                              <p className="mt-1 text-muted-foreground">{inspected.desc}</p>
+                              <p className="mt-1"><span className="text-muted-foreground">Example: </span><span className="font-medium">{inspected.sample}</span></p>
+                              <p className="mt-0.5"><span className="text-muted-foreground">Used in: </span>{usedIn(inspected.key).length ? usedIn(inspected.key).join(", ") : "not used yet"}</p>
                             </div>
-                          ))}
+                          )}
                         </div>
-                      </div>
-                    </>
-                  )}
+                      </>
+                    )}
 
-                  <ButtonEditor buttons={tpl.buttons} onChange={(b) => patch({ buttons: b })} />
+                    <ButtonEditor buttons={tpl.buttons} onChange={(b) => patch({ buttons: b })} />
+                  </>
+                )}
+
+                {tab === "conditions" && (
+                  <ConditionEditor eventDriven={Boolean(EVENT_META[selected].eventDriven)} condition={tpl.condition} onChange={(c) => patch({ condition: c })} />
+                )}
+              </div>
+
+              {/* Right: always-on live preview */}
+              <div className="space-y-3 border-t bg-muted/10 p-4 lg:border-l lg:border-t-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Live preview</span>
+                  <Select value={scenario} onValueChange={setScenario}>
+                    <SelectTrigger className="h-7 w-[140px] text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>{SCENARIOS.map((s) => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}</SelectContent>
+                  </Select>
                 </div>
-              )}
-
-              {tab === "conditions" && (
-                <ConditionEditor eventDriven={Boolean(EVENT_META[selected].eventDriven)} condition={tpl.condition} onChange={(c) => patch({ condition: c })} />
-              )}
+                <PhonePreview body={resolveBody(tpl.body, scenarioValues(scenario))} buttons={tpl.buttons} />
+                <Button size="sm" className="w-full" onClick={sendNow} disabled={sendState.busy}>{sendState.busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Send now (live)</Button>
+                {sendState.msg && <p className={cn("text-center text-xs", sendState.ok ? "text-emerald-600 dark:text-emerald-400" : "text-destructive")}>{sendState.msg}</p>}
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 border-t px-4 py-2.5">
@@ -357,6 +447,7 @@ export default function NotificationBuilderPage() {
             </div>
           </Card>
         </div>
+        </>
       )}
 
       <p className="rounded-lg border bg-muted/30 p-2.5 text-xs text-muted-foreground">

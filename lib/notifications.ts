@@ -26,56 +26,73 @@ export const EVENT_META: Record<NotifEventType, { label: string; icon: string; d
 // ---------------------------------------------------------------------------
 // Variables
 // ---------------------------------------------------------------------------
-export interface VariableDef { key: string; label: string; sample: string; fallback: string }
+export interface VariableDef { key: string; label: string; sample: string; fallback: string; desc: string }
 
 export const VARIABLE_GROUPS: { group: string; items: VariableDef[] }[] = [
   {
     group: "Sleep",
     items: [
-      { key: "sleep_score", label: "Sleep score", sample: "82", fallback: "—" },
-      { key: "duration", label: "Sleep duration", sample: "7h 45m", fallback: "—" },
-      { key: "bedtime", label: "Bedtime", sample: "22:41", fallback: "your usual time" },
-      { key: "wake_time", label: "Wake time", sample: "06:29", fallback: "—" },
-      { key: "recovery", label: "Recovery", sample: "Excellent", fallback: "—" },
-      { key: "energy", label: "Energy", sample: "88%", fallback: "—" },
-      { key: "sleep_goal", label: "Sleep goal", sample: "8h", fallback: "your goal" },
-      { key: "sleep_debt", label: "Sleep debt", sample: "1h 10m", fallback: "none" },
-      { key: "consistency", label: "Consistency", sample: "91%", fallback: "—" },
-      { key: "streak", label: "Sleep goal streak", sample: "12", fallback: "0" },
-      { key: "recommendation", label: "Today's recommendation", sample: "Aim for an earlier night tonight.", fallback: "Keep your routine steady." },
+      { key: "sleep_score", label: "Sleep score", sample: "82", fallback: "—", desc: "Latest calculated sleep score (0-100)." },
+      { key: "duration", label: "Sleep duration", sample: "7h 45m", fallback: "—", desc: "How long you actually slept last night." },
+      { key: "bedtime", label: "Bedtime", sample: "22:41", fallback: "your usual time", desc: "The clock time you went to bed." },
+      { key: "wake_time", label: "Wake time", sample: "06:29", fallback: "—", desc: "The clock time you woke up." },
+      { key: "recovery", label: "Recovery", sample: "Excellent", fallback: "—", desc: "Recovery rating adjusted for recent sleep debt." },
+      { key: "energy", label: "Energy", sample: "88%", fallback: "—", desc: "Predicted energy for today." },
+      { key: "sleep_goal", label: "Sleep goal", sample: "8h", fallback: "your goal", desc: "Your nightly target duration." },
+      { key: "sleep_debt", label: "Sleep debt", sample: "1h 10m", fallback: "none", desc: "Net shortfall vs goal over the last 7 nights." },
+      { key: "consistency", label: "Consistency", sample: "91%", fallback: "—", desc: "How steady your bedtime and wake time are." },
+      { key: "streak", label: "Sleep goal streak", sample: "12", fallback: "0", desc: "Consecutive nights that hit your goal." },
+      { key: "recommendation", label: "Today's recommendation", sample: "Aim for an earlier night tonight.", fallback: "Keep your routine steady.", desc: "The top personalised tip for today." },
     ],
   },
   {
     group: "Habits",
     items: [
-      { key: "remaining_habits", label: "Habits left today", sample: "3", fallback: "0" },
-      { key: "habit_streak", label: "Best habit streak", sample: "9", fallback: "0" },
+      { key: "remaining_habits", label: "Habits left today", sample: "3", fallback: "0", desc: "Habits not yet completed today." },
+      { key: "habit_streak", label: "Best habit streak", sample: "9", fallback: "0", desc: "Your longest active habit streak." },
     ],
   },
   {
     group: "Calendar",
     items: [
-      { key: "next_event", label: "Next event", sample: "Standup at 10:00", fallback: "nothing scheduled" },
-      { key: "meetings_today", label: "Sessions today", sample: "2", fallback: "0" },
+      { key: "next_event", label: "Next event", sample: "Standup at 10:00", fallback: "nothing scheduled", desc: "Your next planned session today." },
+      { key: "meetings_today", label: "Sessions today", sample: "2", fallback: "0", desc: "How many sessions are planned today." },
     ],
   },
   {
     group: "Weather",
     items: [
-      { key: "weather", label: "Conditions", sample: "Partly cloudy", fallback: "—" },
-      { key: "temperature", label: "Temperature", sample: "18°C", fallback: "—" },
+      { key: "weather", label: "Conditions", sample: "Partly cloudy", fallback: "—", desc: "Current weather conditions (Chișinău)." },
+      { key: "temperature", label: "Temperature", sample: "18°C", fallback: "—", desc: "Current temperature." },
     ],
   },
   {
     group: "Time",
     items: [
-      { key: "time", label: "Current time", sample: "07:15", fallback: "" },
-      { key: "date", label: "Date", sample: "Jul 21", fallback: "" },
-      { key: "weekday", label: "Weekday", sample: "Tuesday", fallback: "" },
+      { key: "time", label: "Current time", sample: "07:15", fallback: "", desc: "The time the notification is sent." },
+      { key: "date", label: "Date", sample: "Jul 21", fallback: "", desc: "Today's date." },
+      { key: "weekday", label: "Weekday", sample: "Tuesday", fallback: "", desc: "The day of the week." },
     ],
   },
-  { group: "General", items: [{ key: "name", label: "Your name", sample: "Victor", fallback: "there" }] },
+  { group: "General", items: [{ key: "name", label: "Your name", sample: "Victor", fallback: "there", desc: "Your first name." }] },
 ];
+
+/** Preview scenarios — swap the sample data to test how a template renders. */
+export const SCENARIOS: { key: string; label: string; values: Record<string, string> }[] = [
+  { key: "sample", label: "Sample data", values: {} },
+  { key: "good", label: "Good sleep", values: { sleep_score: "94", duration: "8h 20m", bedtime: "22:15", wake_time: "06:35", recovery: "Excellent", energy: "95%", sleep_debt: "none", consistency: "96%", streak: "14", sleep_bar: "█████████░ 96%", recommendation: "You're clear for a full workout and deep work." } },
+  { key: "average", label: "Average", values: { sleep_score: "74", duration: "7h 05m", bedtime: "23:20", wake_time: "06:40", recovery: "Good", energy: "78%", sleep_debt: "40m", consistency: "82%", streak: "4", sleep_bar: "███████░░░ 71%", recommendation: "Solid enough — hold your bedtime steady tonight." } },
+  { key: "poor", label: "Poor sleep", values: { sleep_score: "48", duration: "5h 20m", bedtime: "01:10", wake_time: "06:30", recovery: "Poor", energy: "41%", sleep_debt: "3h 40m", consistency: "58%", streak: "0", sleep_bar: "█████░░░░░ 53%", recommendation: "Skip hard training and get to bed early tonight." } },
+  { key: "none", label: "No sleep logged", values: { sleep_score: "", duration: "", bedtime: "", wake_time: "", recovery: "", energy: "", sleep_debt: "", consistency: "", streak: "0", sleep_bar: "", recommendation: "" } },
+  { key: "weekend", label: "Weekend", values: { weekday: "Saturday", date: "Jul 26", meetings_today: "0", next_event: "", remaining_habits: "2" } },
+  { key: "vacation", label: "Vacation", values: { weekday: "Friday", meetings_today: "0", next_event: "", remaining_habits: "0", sleep_score: "88", duration: "9h 05m", recovery: "Excellent", energy: "92%" } },
+];
+
+/** Merge a scenario's overrides over the base sample values. */
+export function scenarioValues(key: string): Record<string, string> {
+  const s = SCENARIOS.find((x) => x.key === key);
+  return { ...SAMPLE_VALUES, ...(s?.values ?? {}) };
+}
 
 const ALL_VARS = VARIABLE_GROUPS.flatMap((g) => g.items);
 export const SAMPLE_VALUES: Record<string, string> = {
@@ -132,15 +149,18 @@ export const BLOCK_META: Record<NotifBlockType, { label: string; icon: string }>
   text: { label: "Text", icon: "✍️" },
   sleep_score: { label: "Sleep score", icon: "😴" },
   streak: { label: "Streak", icon: "🔥" },
+  recovery: { label: "Recovery", icon: "🔋" },
   recommendation: { label: "Recommendation", icon: "💡" },
   goal_progress: { label: "Goal progress", icon: "🎯" },
   progress_bar: { label: "Progress bar", icon: "📊" },
   weather: { label: "Weather", icon: "🌤" },
   calendar: { label: "Calendar event", icon: "📅" },
+  quote: { label: "Quote", icon: "❝" },
+  divider: { label: "Divider", icon: "➖" },
   conditional: { label: "If / Else", icon: "🔀" },
 };
 export const BLOCK_ORDER: NotifBlockType[] = [
-  "text", "sleep_score", "streak", "recommendation", "goal_progress", "progress_bar", "weather", "calendar", "conditional",
+  "text", "sleep_score", "streak", "recovery", "recommendation", "goal_progress", "progress_bar", "weather", "calendar", "quote", "divider", "conditional",
 ];
 
 /** Compile one block to its template-text fragment (with {{tokens}} / conditionals). */
@@ -150,10 +170,13 @@ export function blockToText(b: NotifBlock): string {
     case "sleep_score": return "😴 Sleep score {{sleep_score}}/100";
     case "streak": return b.streak === "habit" ? "🔥 Best habit streak: {{habit_streak}}" : "🔥 {{streak}}-night sleep streak";
     case "recommendation": return "💡 {{recommendation}}";
+    case "recovery": return "🔋 Recovery: {{recovery}} · energy {{energy}}";
     case "goal_progress": return "🎯 {{duration}} / {{sleep_goal}}";
     case "progress_bar": return "{{sleep_bar}}";
     case "weather": return "🌤 {{weather}}, {{temperature}}";
     case "calendar": return "📅 Next: {{next_event}}";
+    case "quote": return b.text ? `“${b.text}”` : "";
+    case "divider": return "━━━━━━━━━━";
     case "conditional": {
       const c = b.cond;
       if (!c || !c.variable) return "";
@@ -173,7 +196,7 @@ export function defaultBlock(type: NotifBlockType, seq: number): NotifBlock {
   return {
     id: `blk-${seq}-${type}`,
     type,
-    text: type === "text" ? "" : undefined,
+    text: type === "text" ? "" : type === "quote" ? "Sleep is the best meditation." : undefined,
     streak: type === "streak" ? "sleep" : undefined,
     cond: type === "conditional" ? { variable: "sleep_score", operator: "<", value: "70", then: "Take it easy today. 😴", else: "You're clear for a full day. 💪" } : undefined,
   };

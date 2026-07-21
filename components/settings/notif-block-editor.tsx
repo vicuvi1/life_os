@@ -85,6 +85,9 @@ function BlockSettings({ block, onChange }: { block: NotifBlock; onChange: (patc
   if (block.type === "text") {
     return <Textarea value={block.text ?? ""} onChange={(e) => onChange({ text: e.target.value })} rows={2} placeholder="Text — {{variables}} allowed" className="text-sm" />;
   }
+  if (block.type === "quote") {
+    return <Textarea value={block.text ?? ""} onChange={(e) => onChange({ text: e.target.value })} rows={2} placeholder="A quote to include" className="text-sm italic" />;
+  }
   if (block.type === "streak") {
     return (
       <Select value={block.streak ?? "sleep"} onValueChange={(v) => onChange({ streak: v as "sleep" | "habit" })}>
@@ -101,11 +104,13 @@ function BlockSettings({ block, onChange }: { block: NotifBlock; onChange: (patc
   }
   const hint: Record<string, string> = {
     sleep_score: "Shows: 😴 Sleep score {{sleep_score}}/100",
+    recovery: "Shows: 🔋 Recovery + energy",
     recommendation: "Shows today's recommendation",
     goal_progress: "Shows: 🎯 {{duration}} / {{sleep_goal}}",
     progress_bar: "Shows a sleep-vs-goal bar",
     weather: "Shows: 🌤 {{weather}}, {{temperature}}",
     calendar: "Shows: 📅 Next: {{next_event}}",
+    divider: "Inserts a divider line ━━━",
   };
   return <p className="text-xs text-muted-foreground">{hint[block.type] ?? "Auto-filled from your data."}</p>;
 }

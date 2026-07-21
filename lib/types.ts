@@ -650,6 +650,9 @@ export type NotifBlockType =
   | "weather"
   | "calendar"
   | "progress_bar"
+  | "recovery"
+  | "quote"
+  | "divider"
   | "conditional";
 
 export interface NotifBlockCond {
