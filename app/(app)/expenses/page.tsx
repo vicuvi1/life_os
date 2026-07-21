@@ -64,6 +64,7 @@ import { entriesToCsv, downloadCsv } from "@/lib/export";
 import { resolveCurrency, formatAmount, formatAmountCompact } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -136,6 +137,16 @@ export default function FinancePage() {
   const [newAccount, setNewAccount] = useState<AccountKey>("wallet");
   const [filter, setFilter] = useState<AccountFilter>("all");
   const [amountView, setAmountView] = useState<"full" | "compact">("full");
+  const [viewMode, setViewMode] = useState<"table" | "cards" | "calendar">("table");
+  const [rangeFilter, setRangeFilter] = useState<"month" | "last30" | "all">("month");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [visibleWidgets, setVisibleWidgets] = useState<Record<string, boolean>>({
+    spendingOverview: true,
+    incomeExpense: true,
+    calendarHeatmap: true,
+    recentActivity: true,
+    monthlyTrend: true,
+  });
   const [extraRows, setExtraRows] = useState<Record<string, number>>({});
   const [form, setForm] = useState<{ open: boolean; expense: Expense | null; kind: EntryKind }>({
     open: false,
@@ -164,7 +175,15 @@ export default function FinancePage() {
   const currency = resolveCurrency(budget);
   const mKey = monthKey(year, month);
   const todayKey = toDateKey(now);
-
+  const [quickEntry, setQuickEntry] = useState({
+    date: todayKey,
+    kind: "expense" as EntryKind,
+    account: "wallet" as AccountKey,
+    category: DEFAULT_CATEGORY["expense"],
+    note: "",
+    amount: null as number | null,
+  });
+ 
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem("finance:amountView");
@@ -184,6 +203,44 @@ export default function FinancePage() {
     }
   }, [amountView]);
 
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("finance:viewMode");
+      if (saved === "table" || saved === "cards" || saved === "calendar") {
+        setViewMode(saved);
+      }
+    } catch {
+      // ignore localStorage failures
+    }
+    try {
+      const saved = window.localStorage.getItem("finance:rangeFilter");
+      if (saved === "month" || saved === "last30" || saved === "all") {
+        setRangeFilter(saved);
+      }
+    } catch {
+      // ignore localStorage failures
+    }
+    try {
+      const saved = window.localStorage.getItem("finance:visibleWidgets");
+      if (saved) {
+        const parsed = JSON.parse(saved) as Record<string, boolean>;
+        setVisibleWidgets((prev) => ({ ...prev, ...parsed }));
+      }
+    } catch {
+      // ignore localStorage failures
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("finance:viewMode", viewMode);
+      window.localStorage.setItem("finance:rangeFilter", rangeFilter);
+      window.localStorage.setItem("finance:visibleWidgets", JSON.stringify(visibleWidgets));
+    } catch {
+      // ignore localStorage failures
+    }
+  }, [viewMode, rangeFilter, visibleWidgets]);
+
   const formatDisplayAmount = useCallback(
     (amount: number) => (amountView === "compact" ? formatAmountCompact(amount, currency) : formatAmount(amount, currency)),
     [amountView, currency]
@@ -199,19 +256,43 @@ export default function FinancePage() {
     [expenses, mKey, inFilter]
   );
 
-  const earned = useMemo(() => totalEarned(monthExpenses), [monthExpenses]);
-  const spent = useMemo(() => totalSpent(monthExpenses), [monthExpenses]);
+  const displayExpenses = useMemo(() => {
+    const base = expenses.filter(inFilter);
+    const rangeStart = rangeFilter === "last30" ? new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29) : null;
+    const rangeEnd = rangeFilter === "last30" ? now : null;
+    const ranged = base.filter((e) => {
+      if (rangeFilter === "month") return inMonth(e.date, mKey);
+      if (rangeFilter === "last30") {
+        const date = new Date(`${e.date}T00:00:00`);
+        return rangeStart && rangeEnd ? date >= rangeStart && date <= rangeEnd : true;
+      }
+      return true;
+    });
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return ranged;
+    return ranged.filter((e) => {
+      const text = [e.note, e.category, e.account, e.kind, e.date].join(" ").toLowerCase();
+      return text.includes(query) || formatAmount(e.amount, currency).includes(query);
+    });
+  }, [expenses, inFilter, rangeFilter, mKey, now, searchQuery, currency]);
+
+  const visibleExpenses = displayExpenses;
+  
+  const earned = useMemo(() => totalEarned(visibleExpenses), [visibleExpenses]);
+  const spent = useMemo(() => totalSpent(visibleExpenses), [visibleExpenses]);
   const net = earned - spent;
   const savingsRate = earned > 0 ? (net / earned) * 100 : 0;
 
   const spentToday = useMemo(
-    () => totalSpent(monthExpenses.filter((e) => e.date === todayKey)),
-    [monthExpenses, todayKey]
+    () => totalSpent(visibleExpenses.filter((e) => e.date === todayKey)),
+    [visibleExpenses, todayKey]
   );
   const netToday = useMemo(
-    () => netTotal(monthExpenses.filter((e) => e.date === todayKey)),
-    [monthExpenses, todayKey]
+    () => netTotal(visibleExpenses.filter((e) => e.date === todayKey)),
+    [visibleExpenses, todayKey]
   );
+
+  const rangeLabel = rangeFilter === "month" ? monthLabel(year, month) : rangeFilter === "last30" ? "Last 30 days" : "All entries";
 
   const prev = useMemo(() => {
     const pm = month === 0 ? 11 : month - 1;
@@ -222,7 +303,7 @@ export default function FinancePage() {
 
   const byDay = useMemo(() => {
     const m = new Map<string, { income: Expense[]; expense: Expense[]; net: number }>();
-    for (const e of monthExpenses) {
+    for (const e of displayExpenses) {
       const b = m.get(e.date) ?? { income: [], expense: [], net: 0 };
       (e.kind === "income" ? b.income : b.expense).push(e);
       b.net += e.kind === "income" ? e.amount : -e.amount;
@@ -233,7 +314,7 @@ export default function FinancePage() {
       b.expense.sort((a, c) => a.createdAt - c.createdAt);
     }
     return m;
-  }, [monthExpenses]);
+  }, [displayExpenses]);
 
   const openingTotal = useMemo(
     () => ACCOUNTS.reduce((s, a) => s + (budget?.openingBalances?.[a] ?? 0), 0),
@@ -245,7 +326,20 @@ export default function FinancePage() {
 
   const dim = daysInMonth(year, month);
   const days = useMemo(() => Array.from({ length: dim }, (_, i) => i + 1), [dim]);
-
+ 
+  const displayDays = useMemo(() => {
+    if (rangeFilter === "month") {
+      return days.map((day) => `${mKey}-${String(day).padStart(2, "0")}`);
+    }
+    if (rangeFilter === "last30") {
+      return Array.from({ length: 30 }, (_, i) => {
+        const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29 + i);
+        return toDateKey(date);
+      });
+    }
+    return Array.from(new Set(displayExpenses.map((e) => e.date))).sort();
+  }, [displayExpenses, rangeFilter, days, mKey, now]);
+ 
   const { startBalance, dayBalances } = useMemo(() => {
     const firstOfMonth = `${mKey}-01`;
     let base = openingTotal;
@@ -281,16 +375,34 @@ export default function FinancePage() {
     [expenses, year, inFilter]
   );
 
-  const byCategory = useMemo(() => spendByCategory(monthExpenses), [monthExpenses]);
+  const byCategory = useMemo(() => spendByCategory(visibleExpenses), [visibleExpenses]);
 
   const recent = useMemo(
     () =>
-      [...expenses]
-        .filter(inFilter)
+      [...visibleExpenses]
         .sort((a, b) => b.createdAt - a.createdAt || (a.date < b.date ? 1 : -1))
         .slice(0, 6),
-    [expenses, inFilter]
+    [visibleExpenses]
   );
+
+  const duplicateGroups = useMemo(() => {
+    const groups = new Map<string, Expense[]>();
+    for (const entry of visibleExpenses) {
+      const key = `${entry.date}:${entry.amount}:${entry.category}:${entry.kind}`;
+      const list = groups.get(key) ?? [];
+      list.push(entry);
+      groups.set(key, list);
+    }
+    return Array.from(groups.values()).filter((items) => items.length > 1);
+  }, [visibleExpenses]);
+
+  const largeTransactions = useMemo(
+    () => visibleExpenses.filter((entry) => entry.amount >= 1000).slice().sort((a, b) => b.amount - a.amount).slice(0, 3),
+    [visibleExpenses]
+  );
+
+  const quickCategories = quickEntry.kind === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+  const quickCategoryLabels = quickEntry.kind === "income" ? INCOME_CATEGORY_LABEL : EXPENSE_CATEGORY_LABEL;
 
   const savingsTarget = budget?.savingsGoal ?? null;
   const savingsProgress =
@@ -329,6 +441,20 @@ export default function FinancePage() {
       else
         out.push({ icon: Target, tone: "warn", text: `You're not saving this month — add income or trim spending to reach your goal.` });
     }
+    if (duplicateGroups.length > 0) {
+      out.push({
+        icon: Tag,
+        tone: "warn",
+        text: `Detected ${duplicateGroups.length} duplicate transaction groups in this view.`,
+      });
+    }
+    if (largeTransactions.length > 0) {
+      out.push({
+        icon: ArrowRightLeft,
+        tone: "info",
+        text: `Large transaction alert: ${formatDisplayAmount(largeTransactions[0].amount)} on ${largeTransactions[0].date}.`, 
+      });
+    }
     if (isCurrentMonth) {
       out.push(
         netToday >= 0
@@ -338,7 +464,7 @@ export default function FinancePage() {
     }
     return out.slice(0, 4);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prev, spent, byCategory, savingsTarget, savingsProgress, daysToGoal, netToday, spentToday, isCurrentMonth, currency]);
+  }, [prev, spent, byCategory, savingsTarget, savingsProgress, daysToGoal, netToday, spentToday, isCurrentMonth, currency, duplicateGroups, largeTransactions]);
 
   const budgetStatus = useMemo(() => {
     if (budget?.monthlyTotal == null) return null;
@@ -429,10 +555,13 @@ export default function FinancePage() {
   function addLine(dateKey: string) {
     setExtraRows((p) => ({ ...p, [dateKey]: (p[dateKey] ?? 0) + 1 }));
   }
-  function exportCsv(scope: "month" | "all") {
-    const data = scope === "month" ? monthExpenses : expenses;
+  function exportCsv(scope: "month" | "all" | "view") {
+    const data =
+      scope === "month" ? monthExpenses : scope === "all" ? expenses : displayExpenses;
     if (data.length === 0) return;
-    downloadCsv(scope === "month" ? `finance-${mKey}.csv` : "finance-all.csv", entriesToCsv(data));
+    const fileName =
+      scope === "month" ? `finance-${mKey}.csv` : scope === "all" ? "finance-all.csv" : `finance-${rangeFilter}.csv`;
+    downloadCsv(fileName, entriesToCsv(data));
   }
   function openAdd(kind: EntryKind) {
     setForm({ open: true, expense: null, kind });
@@ -446,13 +575,15 @@ export default function FinancePage() {
 
   const rows = useMemo(() => {
     const out: {
-      dateKey: string; day: number; weekday: string;
+      dateKey: string; day: number; month: string; weekday: string;
       firstOfDay: boolean; lastOfDay: boolean;
       entry?: Expense; kind: EntryKind | null;
     }[] = [];
-    for (const day of days) {
-      const dateKey = `${mKey}-${String(day).padStart(2, "0")}`;
-      const weekday = WEEKDAYS_SHORT[new Date(year, month, day).getDay()];
+    for (const dateKey of displayDays) {
+      const date = new Date(`${dateKey}T00:00:00`);
+      const day = date.getDate();
+      const weekday = WEEKDAYS_SHORT[date.getDay()];
+      const monthName = MONTHS_SHORT[date.getMonth()];
       const b = byDay.get(dateKey) ?? { income: [], expense: [], net: 0 };
       const items: { entry: Expense; kind: EntryKind }[] = [
         ...b.income.map((e) => ({ entry: e, kind: "income" as EntryKind })),
@@ -463,14 +594,19 @@ export default function FinancePage() {
       for (let i = 0; i < total; i++) {
         const rec = items[i];
         out.push({
-          dateKey, day, weekday,
-          firstOfDay: i === 0, lastOfDay: i === total - 1,
-          entry: rec?.entry, kind: rec?.kind ?? null,
+          dateKey,
+          day,
+          month: monthName,
+          weekday,
+          firstOfDay: i === 0,
+          lastOfDay: i === total - 1,
+          entry: rec?.entry,
+          kind: rec?.kind ?? null,
         });
       }
     }
     return out;
-  }, [days, byDay, extraRows, mKey, year, month]);
+  }, [displayDays, byDay, extraRows]);
 
   const firstName = resolveFirstName(displayName, user?.email ?? null);
 
@@ -483,19 +619,46 @@ export default function FinancePage() {
             {greeting()}, {firstName}! <span className="align-middle">👋</span>
           </h1>
           <p className="text-muted-foreground">
-            Here&apos;s your financial overview for {monthLabel(year, month)}.
+            Here&apos;s your financial overview for {rangeLabel}.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center rounded-lg border">
-            <Button variant="ghost" size="icon" aria-label="Previous month" onClick={prevMonth} className="h-9 w-9">
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="min-w-[96px] text-center text-sm font-medium">{monthLabel(year, month)}</span>
-            <Button variant="ghost" size="icon" aria-label="Next month" onClick={nextMonth} className="h-9 w-9">
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+          <div className="flex items-center rounded-lg border bg-background px-2 py-1 text-sm font-medium text-muted-foreground">
+            <span>{rangeLabel}</span>
           </div>
+          {rangeFilter === "month" && (
+            <div className="flex items-center rounded-lg border">
+              <Button variant="ghost" size="icon" aria-label="Previous month" onClick={prevMonth} className="h-9 w-9">
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="min-w-[96px] text-center text-sm font-medium">{monthLabel(year, month)}</span>
+              <Button variant="ghost" size="icon" aria-label="Next month" onClick={nextMonth} className="h-9 w-9">
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+          <Select value={rangeFilter} onValueChange={(v) => setRangeFilter(v as "month" | "last30" | "all")}> 
+            <SelectTrigger className="h-9 w-[132px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="month">This month</SelectItem>
+              <SelectItem value="last30">Last 30 days</SelectItem>
+              <SelectItem value="all">All entries</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
+            placeholder="Search transactions"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            className="h-9 w-[220px]"
+          />
+          <Select value={viewMode} onValueChange={(v) => setViewMode(v as "table" | "cards" | "calendar")}> 
+            <SelectTrigger className="h-9 w-[144px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="table">Table view</SelectItem>
+              <SelectItem value="cards">Card view</SelectItem>
+              <SelectItem value="calendar">Calendar view</SelectItem>
+            </SelectContent>
+          </Select>
           <Select value={filter} onValueChange={(v) => setFilter(v as AccountFilter)}>
             <SelectTrigger className="h-9 w-[132px]"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -516,6 +679,7 @@ export default function FinancePage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => exportCsv("month")}>This month (CSV)</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportCsv("view")}>Current view (CSV)</DropdownMenuItem>
               <DropdownMenuItem onClick={() => exportCsv("all")}>All time (CSV)</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -527,7 +691,20 @@ export default function FinancePage() {
           </Button>
         </div>
       </div>
-
+ 
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border bg-surface p-3 text-sm text-muted-foreground">
+        {Object.entries(visibleWidgets).map(([key, visible]) => (
+          <Button
+            key={key}
+            variant={visible ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => setVisibleWidgets((prev) => ({ ...prev, [key]: !prev[key] }))}
+          >
+            {key === "spendingOverview" ? "Spending" : key === "incomeExpense" ? "Income" : key === "calendarHeatmap" ? "Heatmap" : key === "recentActivity" ? "Recent" : "Trend"}
+          </Button>
+        ))}
+      </div>
+ 
       {loading ? (
         <SkeletonCard lines={12} />
       ) : (
@@ -612,53 +789,62 @@ export default function FinancePage() {
           <div className="grid gap-4 xl:grid-cols-[1.65fr_0.85fr]">
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-                <Panel title="Spending overview" action={<Button variant="ghost" size="sm">View full report</Button>}>
-                  <Donut data={byCategory} currency={currency} total={spent} formatAmountDisplay={formatDisplayAmount} />
-                </Panel>
-                <Panel title="Income vs expenses" action={<Button variant="ghost" size="sm" onClick={() => exportCsv("month")}>Export</Button>}>
-                  <IncomeExpenseBars income={earned} expense={spent} net={net} currency={currency} formatAmountDisplay={formatDisplayAmount} />
-                </Panel>
-                <Panel title="Calendar heatmap" action={<span className="text-xs text-muted-foreground">{days.length} days</span>}>
-                  <Heatmap year={year} month={month} byDay={byDay} todayKey={todayKey} />
-                </Panel>
+                {visibleWidgets.spendingOverview && (
+                  <Panel title="Spending overview" action={<Button variant="ghost" size="sm">View full report</Button>}>
+                    <Donut data={byCategory} currency={currency} total={spent} formatAmountDisplay={formatDisplayAmount} />
+                  </Panel>
+                )}
+                {visibleWidgets.incomeExpense && (
+                  <Panel title="Income vs expenses" action={<Button variant="ghost" size="sm" onClick={() => exportCsv("month")}>Export</Button>}>
+                    <IncomeExpenseBars income={earned} expense={spent} net={net} currency={currency} formatAmountDisplay={formatDisplayAmount} />
+                  </Panel>
+                )}
+                {visibleWidgets.calendarHeatmap && (
+                  <Panel title="Calendar heatmap" action={<span className="text-xs text-muted-foreground">{displayDays.length} days</span>}>
+                    <Heatmap year={year} month={month} byDay={byDay} todayKey={todayKey} />
+                  </Panel>
+                )}
               </div>
 
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.4fr_0.6fr]">
                 <div className="grid gap-4 lg:grid-cols-2">
-                  <Panel title="Recent activity">
-                    {recent.length === 0 ? (
-                      <p className="py-8 text-center text-sm text-muted-foreground">No transactions yet.</p>
-                    ) : (
-                      <ul className="divide-y">
-                        {recent.map((e) => {
-                          const Icon = iconFor(e.category);
-                          return (
-                            <li key={e.id} className="flex items-center gap-3 py-2.5">
-                              <span
-                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-                                style={{ backgroundColor: `${categoryColor(e.category)}22`, color: categoryColor(e.category) }}
-                              >
-                                <Icon className="h-4 w-4" />
-                              </span>
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-medium">{e.note || categoryLabel(e.category)}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  {formatDayLabel(e.date)} · {ACCOUNT_LABEL[e.account]}
-                                </p>
-                              </div>
-                              <span className={cn("shrink-0 text-sm font-semibold tabular-nums", e.kind === "income" ? "text-emerald-500" : "text-rose-500")}>
-                                {e.kind === "income" ? "+" : "−"}{formatDisplayAmount(e.amount)}
-                              </span>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </Panel>
-
-                  <Panel title="Monthly trend">
-                    <TrendChart data={monthly} currency={currency} highlight={month} />
-                  </Panel>
+                  {visibleWidgets.recentActivity && (
+                    <Panel title="Recent activity">
+                      {recent.length === 0 ? (
+                        <p className="py-8 text-center text-sm text-muted-foreground">No transactions yet.</p>
+                      ) : (
+                        <ul className="divide-y">
+                          {recent.map((e) => {
+                            const Icon = iconFor(e.category);
+                            return (
+                              <li key={e.id} className="flex items-center gap-3 py-2.5">
+                                <span
+                                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                                  style={{ backgroundColor: `${categoryColor(e.category)}22`, color: categoryColor(e.category) }}
+                                >
+                                  <Icon className="h-4 w-4" />
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-medium">{e.note || categoryLabel(e.category)}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {formatDayLabel(e.date)} · {ACCOUNT_LABEL[e.account]}
+                                  </p>
+                                </div>
+                                <span className={cn("shrink-0 text-sm font-semibold tabular-nums", e.kind === "income" ? "text-emerald-500" : "text-rose-500")}> 
+                                  {e.kind === "income" ? "+" : "−"}{formatDisplayAmount(e.amount)}
+                                </span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </Panel>
+                  )}
+                  {visibleWidgets.monthlyTrend && (
+                    <Panel title="Monthly trend">
+                      <TrendChart data={monthly} currency={currency} highlight={month} />
+                    </Panel>
+                  )}
                 </div>
 
                 <Panel title="Quick add">
@@ -678,78 +864,204 @@ export default function FinancePage() {
               </div>
 
               <Panel title="Transactions" bodyClassName="p-0">
-                <div className="max-h-[680px] overflow-y-auto">
-                  <div className="overflow-x-auto min-w-full">
-                    <table className="w-full min-w-[980px] table-fixed border-collapse text-sm">
-                    <colgroup>
-                      <col className="w-[86px]" /><col className="w-[54px]" /><col className="w-[102px]" />
-                      <col className="w-[180px]" /><col className="w-[220px]" /><col className="w-[116px]" />
-                      <col className="w-[116px]" /><col className="w-[128px]" /><col className="w-[42px]" />
-                    </colgroup>
-                    <thead>
-                      <tr className="border-b bg-muted/40 text-left text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        <th className="px-3 py-3">Date</th><th className="px-2 py-3">Day</th><th className="px-3 py-3">Type</th>
-                        <th className="px-3 py-3">Category</th><th className="px-3 py-3">Description</th>
-                        <th className="px-3 py-3 text-right text-emerald-600 dark:text-emerald-400">Income</th>
-                        <th className="px-3 py-3 text-right text-rose-600 dark:text-rose-400">Expense</th>
-                        <th className="px-3 py-3 text-right">Balance</th><th className="px-2 py-3" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((r, idx) => {
-                        const isToday = r.dateKey === todayKey;
-                        const isWeekend = r.weekday === "Sat" || r.weekday === "Sun";
-                        return (
-                          <tr key={`${r.dateKey}-${idx}`} className={cn("group border-b last:border-0", isWeekend && "bg-muted/20", isToday && "bg-primary/5", "hover:bg-accent/40")}>
-                            <td className="px-3 py-2 align-middle">{r.firstOfDay && <span className="tabular-nums font-medium">{r.day} {MONTHS_SHORT[month]}</span>}</td>
-                            <td className="px-2 py-2 align-middle">{r.firstOfDay && <span className="text-sm text-muted-foreground">{r.weekday}</span>}</td>
-                            <td className="px-3 py-2 align-middle">
-                              {r.entry ? (
-                                <span className={cn("inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase", r.kind === "income" ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-rose-500/15 text-rose-600 dark:text-rose-400")}>{r.kind}</span>
-                              ) : (r.firstOfDay && <span className="text-muted-foreground/40">—</span>)}
-                            </td>
-                            <td className="px-3 py-2 align-middle">{r.entry && <CategorySelect entry={r.entry} kind={r.kind as EntryKind} onChange={(c) => commitCategory(r.entry!, c)} />}</td>
-                            <td className="px-3 py-2 align-middle">{r.entry && <NoteInput entry={r.entry} onCommit={(t) => commitNote(r.entry!, t)} />}</td>
-                            <td className="px-3 py-2 text-right align-middle">
-                              {r.kind === "income" || r.kind === null ? (
-                                <AmountInput value={r.entry?.amount ?? null} tone="income" onCommit={(num) => commitAmount(r.dateKey, "income", r.entry, num)} />
-                              ) : <span className="pr-2 text-muted-foreground/30">–</span>}
-                            </td>
-                            <td className="px-3 py-2 text-right align-middle">
-                              {r.kind === "expense" || r.kind === null ? (
-                                <AmountInput value={r.entry?.amount ?? null} tone="expense" onCommit={(num) => commitAmount(r.dateKey, "expense", r.entry, num)} />
-                              ) : <span className="pr-2 text-muted-foreground/30">–</span>}
-                            </td>
-                            <td className={cn("px-3 py-2 text-right align-middle tabular-nums", r.lastOfDay ? (dayBalances[r.dateKey] < 0 ? "text-destructive" : "text-muted-foreground") : "text-transparent")}>
-                              {r.lastOfDay ? formatDisplayAmount(dayBalances[r.dateKey] ?? 0) : ""}
-                            </td>
-                            <td className="px-1 py-1 text-center align-middle">
-                              {r.entry ? (
-                                <div className="flex items-center justify-center gap-1">
-                                  <button onClick={() => removeEntry(r.entry!)} aria-label="Delete entry" className="rounded p-1 text-muted-foreground/40 transition hover:bg-destructive/10 hover:text-destructive"><X className="h-3.5 w-3.5" /></button>
-                                  {r.lastOfDay && (
-                                    <button onClick={() => addLine(r.dateKey)} aria-label="Add entry" className="rounded p-1 text-muted-foreground/40 transition hover:bg-accent hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button>
-                                  )}
-                                </div>
-                              ) : (r.lastOfDay && (
-                                <button onClick={() => addLine(r.dateKey)} aria-label="Add entry" className="rounded p-1 text-muted-foreground/40 transition hover:bg-accent hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button>
-                              ))}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                    <tfoot>
-                      <tr className="border-t-2 bg-muted/40 font-semibold">
-                        <td className="px-2 py-2.5" colSpan={5}>Total</td>
-                        <td className="px-2 py-2.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{formatDisplayAmount(earned)}</td>
-                        <td className="px-2 py-2.5 text-right tabular-nums text-rose-600 dark:text-rose-400">{formatDisplayAmount(spent)}</td>
-                        <td className="px-2 py-2.5 text-right tabular-nums">{formatDisplayAmount(endBalance)}</td>
-                        <td />
-                      </tr>
-                    </tfoot>
-                  </table>
+                <div className="space-y-4 border-b border-muted/20 bg-background/80 px-4 py-4">
+                  <div className="grid gap-3 md:grid-cols-[160px_100px_160px_140px_1fr_120px_120px]">
+                    <Input
+                      type="date"
+                      value={quickEntry.date}
+                      onChange={(event) => setQuickEntry((prev) => ({ ...prev, date: event.target.value }))}
+                      className="h-10"
+                    />
+                    <select
+                      className="h-10 rounded-lg border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      value={quickEntry.kind}
+                      onChange={(event) => setQuickEntry((prev) => ({ ...prev, kind: event.target.value as EntryKind, category: DEFAULT_CATEGORY[event.target.value as EntryKind] }))}
+                    >
+                      <option value="income">Income</option>
+                      <option value="expense">Expense</option>
+                    </select>
+                    <select
+                      className="h-10 rounded-lg border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      value={quickEntry.category}
+                      onChange={(event) => setQuickEntry((prev) => ({ ...prev, category: event.target.value }))}
+                    >
+                      {quickCategories.map((cat) => (
+                        <option key={cat} value={cat}>{quickCategoryLabels[cat as keyof typeof quickCategoryLabels]}</option>
+                      ))}
+                    </select>
+                    <select
+                      className="h-10 rounded-lg border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      value={quickEntry.account}
+                      onChange={(event) => setQuickEntry((prev) => ({ ...prev, account: event.target.value as AccountKey }))}
+                    >
+                      {ACCOUNTS.map((a) => (
+                        <option key={a} value={a}>{ACCOUNT_LABEL[a]}</option>
+                      ))}
+                    </select>
+                    <Input
+                      placeholder="Description"
+                      value={quickEntry.note}
+                      onChange={(event) => setQuickEntry((prev) => ({ ...prev, note: event.target.value }))}
+                      className="h-10"
+                    />
+                    <Input
+                      type="number"
+                      placeholder="Amount"
+                      value={quickEntry.amount ?? ""}
+                      onChange={(event) => setQuickEntry((prev) => ({ ...prev, amount: event.target.value ? Number(event.target.value) : null }))}
+                      className="h-10"
+                    />
+                    <Button
+                      className="h-10"
+                      onClick={async () => {
+                        if (!user || quickEntry.amount == null || quickEntry.amount <= 0) return;
+                        const draft = {
+                          kind: quickEntry.kind,
+                          amount: quickEntry.amount,
+                          account: quickEntry.account,
+                          category: quickEntry.category,
+                          note: quickEntry.note.trim() || null,
+                          date: quickEntry.date,
+                        };
+                        try {
+                          const id = await createExpense(user.uid, draft);
+                          setExpenses((p) => [...p, { id, userId: user.uid, createdAt: Date.now(), ...draft }] as Expense[]);
+                          setQuickEntry((prev) => ({ ...prev, amount: null, note: "", date: todayKey }));
+                        } catch {
+                          await load({ quiet: true });
+                        }
+                      }}
+                    >
+                      Add
+                    </Button>
+                  </div>
                 </div>
+                <div className="max-h-[680px] overflow-y-auto p-4">
+                  {viewMode === "table" ? (
+                    <div className="overflow-x-auto min-w-full">
+                      <table className="w-full min-w-[980px] table-fixed border-collapse text-sm">
+                        <colgroup>
+                          <col className="w-[86px]" /><col className="w-[54px]" /><col className="w-[102px]" />
+                          <col className="w-[180px]" /><col className="w-[220px]" /><col className="w-[116px]" />
+                          <col className="w-[116px]" /><col className="w-[128px]" /><col className="w-[42px]" />
+                        </colgroup>
+                        <thead>
+                          <tr className="border-b bg-muted/40 text-left text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            <th className="px-3 py-3">Date</th><th className="px-2 py-3">Day</th><th className="px-3 py-3">Type</th>
+                            <th className="px-3 py-3">Category</th><th className="px-3 py-3">Description</th>
+                            <th className="px-3 py-3 text-right text-emerald-600 dark:text-emerald-400">Income</th>
+                            <th className="px-3 py-3 text-right text-rose-600 dark:text-rose-400">Expense</th>
+                            <th className="px-3 py-3 text-right">Balance</th><th className="px-2 py-3" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((r, idx) => {
+                            const isToday = r.dateKey === todayKey;
+                            const isWeekend = r.weekday === "Sat" || r.weekday === "Sun";
+                            return (
+                              <tr key={`${r.dateKey}-${idx}`} className={cn("group border-b last:border-0", isWeekend && "bg-muted/20", isToday && "bg-primary/5", "hover:bg-accent/40")}>
+                                <td className="px-3 py-2 align-middle">{r.firstOfDay && <span className="tabular-nums font-medium">{r.day} {r.month}</span>}</td>
+                                <td className="px-2 py-2 align-middle">{r.firstOfDay && <span className="text-sm text-muted-foreground">{r.weekday}</span>}</td>
+                                <td className="px-3 py-2 align-middle">
+                                  {r.entry ? (
+                                    <span className={cn("inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase", r.kind === "income" ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-rose-500/15 text-rose-600 dark:text-rose-400")}>{r.kind}</span>
+                                  ) : (r.firstOfDay && <span className="text-muted-foreground/40">—</span>)}
+                                </td>
+                                <td className="px-3 py-2 align-middle">{r.entry && <CategorySelect entry={r.entry} kind={r.kind as EntryKind} onChange={(c) => commitCategory(r.entry!, c)} />}</td>
+                                <td className="px-3 py-2 align-middle">{r.entry && <NoteInput entry={r.entry} onCommit={(t) => commitNote(r.entry!, t)} />}</td>
+                                <td className="px-3 py-2 text-right align-middle">
+                                  {r.kind === "income" || r.kind === null ? (
+                                    <AmountInput value={r.entry?.amount ?? null} tone="income" onCommit={(num) => commitAmount(r.dateKey, "income", r.entry, num)} />
+                                  ) : <span className="pr-2 text-muted-foreground/30">–</span>}
+                                </td>
+                                <td className="px-3 py-2 text-right align-middle">
+                                  {r.kind === "expense" || r.kind === null ? (
+                                    <AmountInput value={r.entry?.amount ?? null} tone="expense" onCommit={(num) => commitAmount(r.dateKey, "expense", r.entry, num)} />
+                                  ) : <span className="pr-2 text-muted-foreground/30">–</span>}
+                                </td>
+                                <td className={cn("px-3 py-2 text-right align-middle tabular-nums", r.lastOfDay ? (dayBalances[r.dateKey] < 0 ? "text-destructive" : "text-muted-foreground") : "text-transparent")}>
+                                  {r.lastOfDay ? formatDisplayAmount(dayBalances[r.dateKey] ?? 0) : ""}
+                                </td>
+                                <td className="px-1 py-1 text-center align-middle">
+                                  {r.entry ? (
+                                    <div className="flex items-center justify-center gap-1">
+                                      <button onClick={() => removeEntry(r.entry!)} aria-label="Delete entry" className="rounded p-1 text-muted-foreground/40 transition hover:bg-destructive/10 hover:text-destructive"><X className="h-3.5 w-3.5" /></button>
+                                      {r.lastOfDay && (
+                                        <button onClick={() => addLine(r.dateKey)} aria-label="Add entry" className="rounded p-1 text-muted-foreground/40 transition hover:bg-accent hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button>
+                                      )}
+                                    </div>
+                                  ) : (r.lastOfDay && (
+                                    <button onClick={() => addLine(r.dateKey)} aria-label="Add entry" className="rounded p-1 text-muted-foreground/40 transition hover:bg-accent hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button>
+                                  ))}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t-2 bg-muted/40 font-semibold">
+                            <td className="px-2 py-2.5" colSpan={5}>Total</td>
+                            <td className="px-2 py-2.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{formatDisplayAmount(earned)}</td>
+                            <td className="px-2 py-2.5 text-right tabular-nums text-rose-600 dark:text-rose-400">{formatDisplayAmount(spent)}</td>
+                            <td className="px-2 py-2.5 text-right tabular-nums">{formatDisplayAmount(endBalance)}</td>
+                            <td />
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  ) : viewMode === "cards" ? (
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      {displayExpenses.slice().sort((a, b) => b.createdAt - a.createdAt).map((entry) => (
+                        <div key={entry.id} className="rounded-3xl border border-input bg-background p-4 shadow-sm">
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <p className="text-sm font-semibold">{entry.note ?? categoryLabel(entry.category)}</p>
+                              <p className="mt-1 text-xs text-muted-foreground">{entry.date} • {entry.account} • {entry.kind}</p>
+                            </div>
+                            <div className={cn("rounded-2xl px-3 py-1 text-sm font-semibold", entry.kind === "income" ? "bg-emerald-500/10 text-emerald-600" : "bg-rose-500/10 text-rose-600")}>
+                              {formatDisplayAmount(entry.amount)}
+                            </div>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                            <span className="rounded-full border border-input px-2 py-1">{categoryLabel(entry.category)}</span>
+                            <span className="rounded-full border border-input px-2 py-1">{ACCOUNT_LABEL[entry.account]}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="rounded-3xl border border-input bg-background p-4">
+                        <p className="text-sm font-semibold">Calendar overview</p>
+                        <p className="mt-1 text-xs text-muted-foreground">A quick view of activity across the selected range.</p>
+                        <div className="mt-4">
+                          <Heatmap year={year} month={month} byDay={byDay} todayKey={todayKey} />
+                        </div>
+                      </div>
+                      <div className="grid gap-4 lg:grid-cols-2">
+                        {displayDays.slice(-6).reverse().map((dateKey) => {
+                          const b = byDay.get(dateKey) ?? { income: [], expense: [], net: 0 };
+                          return (
+                            <div key={dateKey} className="rounded-3xl border border-input bg-background p-4">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="text-sm font-semibold">{dateKey}</p>
+                                  <p className="mt-1 text-xs text-muted-foreground">{WEEKDAYS_SHORT[new Date(`${dateKey}T00:00:00`).getDay()]}</p>
+                                </div>
+                                <span className={cn("rounded-2xl px-3 py-1 text-sm font-semibold", b.net >= 0 ? "bg-emerald-500/10 text-emerald-600" : "bg-rose-500/10 text-rose-600")}>
+                                  {formatDisplayAmount(b.net)}
+                                </span>
+                              </div>
+                              <div className="mt-3 space-y-2 text-xs text-muted-foreground">
+                                <p>Income: {formatDisplayAmount(totalEarned(b.income))}</p>
+                                <p>Expenses: {formatDisplayAmount(totalSpent(b.expense))}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </Panel>
             </div>

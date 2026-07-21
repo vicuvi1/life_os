@@ -408,8 +408,11 @@ Built for a student watching every leu/dollar.
   income and expense values for the same date, enlarged the transactions table for
   a more readable layout, made the transactions history panel vertically scrollable,
   added autosave for inline amount and note edits so values are persisted even
-  if you leave the page before explicitly blurring the field, and introduced a
-  compact number view so large amounts can be displayed as 1k / 1m.
+  if you leave the page before explicitly blurring the field, introduced a
+  compact number view so large amounts can be displayed as 1k / 1m, and added
+  advanced finance workspace enhancements: quick add row, filterable views,
+  customizable widget visibility, duplicate transaction alerts, and card/calendar
+  transaction views.
 
 **How to use.**
 1. Open **Expenses → the gear icon** and set your currency and a monthly budget
