@@ -693,7 +693,12 @@ export default function FinancePage() {
                             </td>
                             <td className="px-1 py-1 text-center align-middle">
                               {r.entry ? (
-                                <button onClick={() => removeEntry(r.entry!)} aria-label="Delete entry" className="rounded p-1 text-muted-foreground/40 opacity-0 transition hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"><X className="h-3.5 w-3.5" /></button>
+                                <div className="flex items-center justify-center gap-1">
+                                  <button onClick={() => removeEntry(r.entry!)} aria-label="Delete entry" className="rounded p-1 text-muted-foreground/40 opacity-0 transition hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"><X className="h-3.5 w-3.5" /></button>
+                                  {r.lastOfDay && (
+                                    <button onClick={() => addLine(r.dateKey)} aria-label="Add entry" className="rounded p-1 text-muted-foreground/40 opacity-0 transition hover:bg-accent hover:text-foreground group-hover:opacity-100"><Plus className="h-3.5 w-3.5" /></button>
+                                  )}
+                                </div>
                               ) : (r.firstOfDay && (
                                 <button onClick={() => addLine(r.dateKey)} aria-label="Add entry" className="rounded p-1 text-muted-foreground/40 opacity-0 transition hover:bg-accent hover:text-foreground group-hover:opacity-100"><Plus className="h-3.5 w-3.5" /></button>
                               ))}
