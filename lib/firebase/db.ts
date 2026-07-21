@@ -1958,6 +1958,7 @@ function mapNotifTemplate(snap: QueryDocumentSnapshot<DocumentData>): Notificati
     buttons: Array.isArray(d.buttons) ? d.buttons : [],
     condition: d.condition ?? { timeMode: "absolute", reference: "wake_time", offsetMin: 0, time: "", days: "all", states: [] },
     stylePreset: d.stylePreset ?? "Custom",
+    lastFired: d.lastFired ?? null,
     createdAt: toMillis(d.createdAt),
   };
 }

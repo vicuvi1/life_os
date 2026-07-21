@@ -686,6 +686,8 @@ export interface NotificationTemplate {
   condition: NotifCondition;
   /** Which preset it started from (informational only). */
   stylePreset: string;
+  /** YYYY-MM-DD this template last fired (set by the background sender to dedupe). */
+  lastFired?: string | null;
   createdAt: number;
 }
 

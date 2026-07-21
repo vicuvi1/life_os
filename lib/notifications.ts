@@ -205,6 +205,48 @@ export const STATE_OPTIONS = [
   { key: "habits_remaining", label: "only if habits remain today" },
 ];
 
+function hmToMin(hm: string | null | undefined): number | null {
+  if (!hm) return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hm);
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+
+/**
+ * Decide whether a template should fire right now (used by the background
+ * sender). Pure — the caller supplies "now" and any state flags from real data.
+ */
+export function isTemplateDue(
+  tpl: NotificationTemplate,
+  ctx: {
+    bedtimeTarget: string | null;
+    wakeTarget: string | null;
+    nowMin: number;
+    weekday: number; // 0=Sun … 6=Sat
+    firedToday: boolean;
+    notLoggedToday: boolean;
+    habitsRemaining: boolean;
+  }
+): boolean {
+  if (!tpl.enabled || EVENT_META[tpl.eventType].eventDriven || ctx.firedToday) return false;
+  const c = tpl.condition;
+  if (c.days === "weekdays" && (ctx.weekday === 0 || ctx.weekday === 6)) return false;
+  if (c.days === "weekends" && ctx.weekday !== 0 && ctx.weekday !== 6) return false;
+  if (c.states.includes("not_logged_today") && !ctx.notLoggedToday) return false;
+  if (c.states.includes("habits_remaining") && !ctx.habitsRemaining) return false;
+
+  let targetMin: number | null;
+  if (c.timeMode === "relative") {
+    const base = hmToMin(c.reference === "bedtime" ? ctx.bedtimeTarget : ctx.wakeTarget);
+    targetMin = base == null ? null : ((base + c.offsetMin) % 1440 + 1440) % 1440;
+  } else {
+    targetMin = hmToMin(c.time);
+  }
+  if (targetMin == null) return false;
+  // Fire on the first run at/after the target time each day (dedup handles repeats).
+  return ctx.nowMin >= targetMin;
+}
+
 export function describeCondition(cond: NotifCondition): string {
   const day = cond.days === "weekdays" ? " · weekdays" : cond.days === "weekends" ? " · weekends" : "";
   let when: string;

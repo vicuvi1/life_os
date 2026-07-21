@@ -1951,6 +1951,20 @@ and buttons.
   If/Else). Blocks **compile down to the same `body` string**, so send/preview/
   history all stay on one path and the **one live preview** renders either mode.
 
+**Background sender (shipped).** Hands-free scheduled delivery now exists via a
+secured serverless endpoint `/api/notifications/run` (Firebase Admin + Telegram):
+- It reads each user with Telegram enabled, evaluates their **enabled,
+  time-based** templates against the **current local time** (Europe/Chișinău by
+  default, `?tz=` to override), resolves variables from live data, sends via
+  Telegram, writes a history entry, and **dedupes once per day** per template
+  (`lastFired`).
+- Driven by a **Vercel Cron** (`vercel.json`, hourly — Hobby throttles to ~daily,
+  lower the schedule for finer timing) or any external scheduler hitting the URL
+  with `?key=<CRON_SECRET>`.
+- **Self-disabling:** with no `CRON_SECRET` / `FIREBASE_SERVICE_ACCOUNT` env it
+  no-ops, so it never affects the app until you configure it (see `.env.example`).
+  The `sleep_logged_summary` template still fires instantly client-side on log.
+
 **Deferred.**
 - **AI Summary block** (an LLM-generated block) — the one Phase-2 block left out;
   the text-level AI rewrite already covers AI wording.

@@ -360,8 +360,11 @@ export default function NotificationBuilderPage() {
       )}
 
       <p className="rounded-lg border bg-muted/30 p-2.5 text-xs text-muted-foreground">
-        Notifications deliver via Telegram. “Send now” works today; time-scheduled events (bedtime, morning, weekly) also need the background sender to fire hands-free while the app is closed — a documented next step.
-        {" "}The <strong>Sleep logged</strong> template is used automatically when you log a night.
+        Notifications deliver via Telegram. <strong>Send now</strong> works today and the <strong>Sleep logged</strong>
+        {" "}template fires automatically when you log a night. Time-scheduled events (bedtime, morning, weekly) fire
+        hands-free once the background sender is configured — set <code>CRON_SECRET</code> and
+        {" "}<code>FIREBASE_SERVICE_ACCOUNT</code> on Vercel (see <code>.env.example</code>). A Vercel Cron runs the
+        sender hourly (Hobby throttles to ~once/day; lower the schedule for finer timing).
       </p>
 
       {tpl && (
