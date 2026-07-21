@@ -61,7 +61,7 @@ import {
   ACCOUNT_LABEL,
 } from "@/lib/expenses";
 import { entriesToCsv, downloadCsv } from "@/lib/export";
-import { resolveCurrency, formatAmount } from "@/lib/currency";
+import { resolveCurrency, formatAmount, formatAmountCompact } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -135,6 +135,7 @@ export default function FinancePage() {
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [newAccount, setNewAccount] = useState<AccountKey>("wallet");
   const [filter, setFilter] = useState<AccountFilter>("all");
+  const [amountView, setAmountView] = useState<"full" | "compact">("full");
   const [extraRows, setExtraRows] = useState<Record<string, number>>({});
   const [form, setForm] = useState<{ open: boolean; expense: Expense | null; kind: EntryKind }>({
     open: false,
@@ -163,6 +164,30 @@ export default function FinancePage() {
   const currency = resolveCurrency(budget);
   const mKey = monthKey(year, month);
   const todayKey = toDateKey(now);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("finance:amountView");
+      if (saved === "full" || saved === "compact") {
+        setAmountView(saved);
+      }
+    } catch {
+      // ignore localStorage failures
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("finance:amountView", amountView);
+    } catch {
+      // ignore localStorage failures
+    }
+  }, [amountView]);
+
+  const formatDisplayAmount = useCallback(
+    (amount: number) => (amountView === "compact" ? formatAmountCompact(amount, currency) : formatAmount(amount, currency)),
+    [amountView, currency]
+  );
   const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
   const inFilter = useCallback(
     (e: Expense) => filter === "all" || e.account === filter,
@@ -298,7 +323,7 @@ export default function FinancePage() {
     }
     if (savingsTarget) {
       if (savingsProgress != null && savingsProgress >= 100)
-        out.push({ icon: Target, tone: "good", text: `You've reached your ${formatAmount(savingsTarget, currency)} savings goal! 🎉` });
+        out.push({ icon: Target, tone: "good", text: `You've reached your ${formatDisplayAmount(savingsTarget)} savings goal! 🎉` });
       else if (daysToGoal != null)
         out.push({ icon: Target, tone: "good", text: `At your current pace you'll hit your goal in ~${daysToGoal} days.` });
       else
@@ -307,8 +332,8 @@ export default function FinancePage() {
     if (isCurrentMonth) {
       out.push(
         netToday >= 0
-          ? { icon: Sparkles, tone: "good", text: `Today you're net ${formatAmount(netToday, currency)}.` }
-          : { icon: Sparkles, tone: "info", text: `You've spent ${formatAmount(spentToday, currency)} today.` }
+          ? { icon: Sparkles, tone: "good", text: `Today you're net ${formatDisplayAmount(netToday)}.` }
+          : { icon: Sparkles, tone: "info", text: `You've spent ${formatDisplayAmount(spentToday)} today.` }
       );
     }
     return out.slice(0, 4);
@@ -478,6 +503,13 @@ export default function FinancePage() {
               {ACCOUNTS.map((a) => <SelectItem key={a} value={a}>{ACCOUNT_LABEL[a]}</SelectItem>)}
             </SelectContent>
           </Select>
+          <Select value={amountView} onValueChange={(v) => setAmountView(v as "full" | "compact")}> 
+            <SelectTrigger className="h-9 w-[156px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="full">Full numbers</SelectItem>
+              <SelectItem value="compact">Compact k/m</SelectItem>
+            </SelectContent>
+          </Select>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon" aria-label="Export"><Download className="h-4 w-4" /></Button>
@@ -506,7 +538,7 @@ export default function FinancePage() {
               icon={Landmark}
               iconClass="bg-primary/15 text-primary"
               label="Current money"
-              value={formatAmount(netWorth, currency)}
+              value={formatDisplayAmount(netWorth)}
               sub={
                 <Delta pct={pctChange(netWorth, netWorth - net)} good={net >= 0} suffix="vs last month" />
               }
@@ -516,36 +548,35 @@ export default function FinancePage() {
               icon={Wallet}
               iconClass="bg-sky-500/15 text-sky-500"
               label="Wallet (cash)"
-              value={formatAmount(walletBalance, currency)}
+              value={formatDisplayAmount(walletBalance)}
               sub={<span className="text-xs text-muted-foreground">Available to spend</span>}
             />
             <StatCard
               icon={PiggyBank}
               iconClass="bg-emerald-500/15 text-emerald-500"
               label="Safe (savings)"
-              value={formatAmount(safeBalance, currency)}
+              value={formatDisplayAmount(safeBalance)}
               sub={<span className="text-xs text-muted-foreground">Keep building 💪</span>}
             />
             <StatCard
               icon={BarChart3}
               iconClass="bg-violet-500/15 text-violet-500"
               label="Total net worth"
-              value={formatAmount(netWorth, currency)}
+              value={formatDisplayAmount(netWorth)}
               sub={<span className="text-xs text-muted-foreground">Includes wallet and savings</span>}
             />
             <StatCard
               icon={Target}
               iconClass="bg-violet-500/15 text-violet-500"
               label="Savings goal"
-              value={savingsTarget ? formatAmount(savingsTarget, currency) : "—"}
-              sub={
+              value={              savingsTarget ? formatDisplayAmount(savingsTarget) : "—"}              sub={
                 savingsTarget ? (
                   <div className="mt-1 space-y-1">
                     <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
                       <div className="h-full rounded-full bg-violet-500" style={{ width: `${Math.min(100, savingsProgress ?? 0)}%` }} />
                     </div>
                     <span className="text-xs text-muted-foreground">
-                      {(savingsProgress ?? 0).toFixed(0)}% · {formatAmount(netWorth, currency)}
+                      {(savingsProgress ?? 0).toFixed(0)}% · {formatDisplayAmount(netWorth)}
                     </span>
                   </div>
                 ) : (
@@ -582,10 +613,10 @@ export default function FinancePage() {
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
                 <Panel title="Spending overview" action={<Button variant="ghost" size="sm">View full report</Button>}>
-                  <Donut data={byCategory} currency={currency} total={spent} />
+                  <Donut data={byCategory} currency={currency} total={spent} formatAmountDisplay={formatDisplayAmount} />
                 </Panel>
                 <Panel title="Income vs expenses" action={<Button variant="ghost" size="sm" onClick={() => exportCsv("month")}>Export</Button>}>
-                  <IncomeExpenseBars income={earned} expense={spent} net={net} currency={currency} />
+                  <IncomeExpenseBars income={earned} expense={spent} net={net} currency={currency} formatAmountDisplay={formatDisplayAmount} />
                 </Panel>
                 <Panel title="Calendar heatmap" action={<span className="text-xs text-muted-foreground">{days.length} days</span>}>
                   <Heatmap year={year} month={month} byDay={byDay} todayKey={todayKey} />
@@ -616,7 +647,7 @@ export default function FinancePage() {
                                 </p>
                               </div>
                               <span className={cn("shrink-0 text-sm font-semibold tabular-nums", e.kind === "income" ? "text-emerald-500" : "text-rose-500")}>
-                                {e.kind === "income" ? "+" : "−"}{formatAmount(e.amount, currency)}
+                                {e.kind === "income" ? "+" : "−"}{formatDisplayAmount(e.amount)}
                               </span>
                             </li>
                           );
@@ -638,9 +669,9 @@ export default function FinancePage() {
                     <QuickAdd icon={Settings2} label="Settings" cls="hover:border-primary/60 hover:bg-primary/5" iconCls="bg-primary/15 text-primary" onClick={() => setBudgetOpen(true)} />
                   </div>
                   <div className="mt-4 space-y-2 rounded-lg border p-3 text-sm">
-                    <div className="flex justify-between"><span className="text-muted-foreground">Income</span><span className="font-semibold tabular-nums text-emerald-500">{formatAmount(earned, currency)}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">Expenses</span><span className="font-semibold tabular-nums text-rose-500">{formatAmount(spent, currency)}</span></div>
-                    <div className="flex justify-between border-t pt-2"><span className="text-muted-foreground">Net</span><span className={cn("font-semibold tabular-nums", net >= 0 ? "text-emerald-500" : "text-rose-500")}>{formatAmount(net, currency)}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Income</span><span className="font-semibold tabular-nums text-emerald-500">{formatDisplayAmount(earned)}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Expenses</span><span className="font-semibold tabular-nums text-rose-500">{formatDisplayAmount(spent)}</span></div>
+                    <div className="flex justify-between border-t pt-2"><span className="text-muted-foreground">Net</span><span className={cn("font-semibold tabular-nums", net >= 0 ? "text-emerald-500" : "text-rose-500")}>{formatDisplayAmount(net)}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">Savings rate</span><span className="font-semibold tabular-nums">{savingsRate.toFixed(1)}%</span></div>
                   </div>
                 </Panel>
@@ -690,7 +721,7 @@ export default function FinancePage() {
                               ) : <span className="pr-2 text-muted-foreground/30">–</span>}
                             </td>
                             <td className={cn("px-3 py-2 text-right align-middle tabular-nums", r.lastOfDay ? (dayBalances[r.dateKey] < 0 ? "text-destructive" : "text-muted-foreground") : "text-transparent")}>
-                              {r.lastOfDay ? formatAmount(dayBalances[r.dateKey] ?? 0, currency) : ""}
+                              {r.lastOfDay ? formatDisplayAmount(dayBalances[r.dateKey] ?? 0) : ""}
                             </td>
                             <td className="px-1 py-1 text-center align-middle">
                               {r.entry ? (
@@ -711,9 +742,9 @@ export default function FinancePage() {
                     <tfoot>
                       <tr className="border-t-2 bg-muted/40 font-semibold">
                         <td className="px-2 py-2.5" colSpan={5}>Total</td>
-                        <td className="px-2 py-2.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{formatAmount(earned, currency)}</td>
-                        <td className="px-2 py-2.5 text-right tabular-nums text-rose-600 dark:text-rose-400">{formatAmount(spent, currency)}</td>
-                        <td className="px-2 py-2.5 text-right tabular-nums">{formatAmount(endBalance, currency)}</td>
+                        <td className="px-2 py-2.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{formatDisplayAmount(earned)}</td>
+                        <td className="px-2 py-2.5 text-right tabular-nums text-rose-600 dark:text-rose-400">{formatDisplayAmount(spent)}</td>
+                        <td className="px-2 py-2.5 text-right tabular-nums">{formatDisplayAmount(endBalance)}</td>
                         <td />
                       </tr>
                     </tfoot>
@@ -736,7 +767,7 @@ export default function FinancePage() {
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Wallet (Cash)</p>
-                        <p className="mt-2 text-lg font-semibold">{formatAmount(walletBalance, currency)}</p>
+                        <p className="mt-2 text-lg font-semibold">{formatDisplayAmount(walletBalance)}</p>
                       </div>
                       <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/10 text-sky-500">
                         <Wallet className="h-5 w-5" />
@@ -747,7 +778,7 @@ export default function FinancePage() {
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Safe (Savings)</p>
-                        <p className="mt-2 text-lg font-semibold">{formatAmount(safeBalance, currency)}</p>
+                        <p className="mt-2 text-lg font-semibold">{formatDisplayAmount(safeBalance)}</p>
                       </div>
                       <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500">
                         <PiggyBank className="h-5 w-5" />
@@ -758,7 +789,7 @@ export default function FinancePage() {
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Net worth</p>
-                        <p className="mt-2 text-lg font-semibold">{formatAmount(netWorth, currency)}</p>
+                        <p className="mt-2 text-lg font-semibold">{formatDisplayAmount(netWorth)}</p>
                       </div>
                       <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                         <Landmark className="h-5 w-5" />
@@ -776,13 +807,13 @@ export default function FinancePage() {
                 <div className="p-4">
                   {savingsTarget ? (
                     <>
-                      <p className="text-sm text-muted-foreground">{formatAmount(netWorth, currency)} of {formatAmount(savingsTarget, currency)} saved</p>
+                      <p className="text-sm text-muted-foreground">{formatDisplayAmount(netWorth)} of {formatDisplayAmount(savingsTarget)} saved</p>
                       <div className="mt-3 h-3 overflow-hidden rounded-full bg-muted">
                         <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(100, savingsProgress ?? 0)}%` }} />
                       </div>
                       <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
                         <span>{daysToGoal != null ? `${daysToGoal} days to goal` : "Keep saving to hit your target"}</span>
-                        <span>{formatAmount(netWorth, currency)}</span>
+                        <span>{formatDisplayAmount(netWorth)}</span>
                       </div>
                     </>
                   ) : (
@@ -828,15 +859,15 @@ export default function FinancePage() {
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-sm text-muted-foreground">
                         <span>Budget</span>
-                        <span>{formatAmount(budgetStatus.budget, currency)}</span>
+                        <span>{formatDisplayAmount(budgetStatus.budget)}</span>
                       </div>
                       <div className="flex items-center justify-between text-sm text-muted-foreground">
                         <span>Spent</span>
-                        <span>{formatAmount(budgetStatus.spent, currency)}</span>
+                        <span>{formatDisplayAmount(budgetStatus.spent)}</span>
                       </div>
                       <div className="flex items-center justify-between text-sm text-muted-foreground">
                         <span>Remaining</span>
-                        <span>{formatAmount(budgetStatus.remaining, currency)}</span>
+                        <span>{formatDisplayAmount(budgetStatus.remaining)}</span>
                       </div>
                     </div>
                     <div className="h-3 overflow-hidden rounded-full bg-muted">
@@ -948,7 +979,7 @@ function QuickAdd({ icon: Icon, label, cls, iconCls, onClick }: { icon: LucideIc
   );
 }
 
-function Donut({ data, currency, total }: { data: { category: string; amount: number }[]; currency: ReturnType<typeof resolveCurrency>; total: number }) {
+function Donut({ data, currency, total, formatAmountDisplay }: { data: { category: string; amount: number }[]; currency: ReturnType<typeof resolveCurrency>; total: number; formatAmountDisplay: (amount: number) => string }) {
   if (total <= 0) {
     return <div className="flex h-44 items-center justify-center text-sm text-muted-foreground">No expenses yet</div>;
   }
@@ -967,7 +998,7 @@ function Donut({ data, currency, total }: { data: { category: string; amount: nu
           return el;
         })}
         <text x={70} y={66} textAnchor="middle" className="fill-muted-foreground text-[9px] uppercase">Total</text>
-        <text x={70} y={80} textAnchor="middle" className="fill-foreground text-[13px] font-semibold">{formatAmount(total, currency)}</text>
+        <text x={70} y={80} textAnchor="middle" className="fill-foreground text-[13px] font-semibold">{formatAmountDisplay(total)}</text>
       </svg>
       <ul className="min-w-0 flex-1 space-y-2 text-sm">
         {data.slice(0, 6).map((d) => {
@@ -978,7 +1009,7 @@ function Donut({ data, currency, total }: { data: { category: string; amount: nu
                 <Icon className="h-3.5 w-3.5" />
               </span>
               <span className="min-w-0 flex-1 truncate">{categoryLabel(d.category)}</span>
-              <span className="shrink-0 tabular-nums text-muted-foreground">{formatAmount(d.amount, currency)}</span>
+              <span className="shrink-0 tabular-nums text-muted-foreground">{formatAmountDisplay(d.amount)}</span>
               <span className="w-9 shrink-0 text-right tabular-nums text-xs text-muted-foreground">{Math.round((d.amount / total) * 100)}%</span>
             </li>
           );
@@ -988,7 +1019,7 @@ function Donut({ data, currency, total }: { data: { category: string; amount: nu
   );
 }
 
-function IncomeExpenseBars({ income, expense, net, currency }: { income: number; expense: number; net: number; currency: ReturnType<typeof resolveCurrency> }) {
+function IncomeExpenseBars({ income, expense, net, currency, formatAmountDisplay }: { income: number; expense: number; net: number; currency: ReturnType<typeof resolveCurrency>; formatAmountDisplay: (amount: number) => string }) {
   const max = Math.max(income, expense, 1);
   return (
     <div>
@@ -998,7 +1029,7 @@ function IncomeExpenseBars({ income, expense, net, currency }: { income: number;
           { label: "Expenses", value: expense, cls: "bg-rose-500", text: "text-rose-500" },
         ].map((b) => (
           <div key={b.label} className="flex h-full flex-1 flex-col items-center justify-end gap-1.5">
-            <span className={cn("text-sm font-semibold tabular-nums", b.text)}>{formatAmount(b.value, currency)}</span>
+            <span className={cn("text-sm font-semibold tabular-nums", b.text)}>{formatAmountDisplay(b.value)}</span>
             <div className={cn("w-full max-w-[80px] rounded-t transition-all", b.cls)} style={{ height: `${Math.max(2, (b.value / max) * 100)}%` }} />
             <span className="text-xs text-muted-foreground">{b.label}</span>
           </div>
@@ -1006,7 +1037,7 @@ function IncomeExpenseBars({ income, expense, net, currency }: { income: number;
       </div>
       <div className="mt-3 flex items-center justify-between border-t pt-3 text-sm">
         <span className="text-muted-foreground">Net amount</span>
-        <span className={cn("font-semibold tabular-nums", net >= 0 ? "text-emerald-500" : "text-rose-500")}>{formatAmount(net, currency)}</span>
+        <span className={cn("font-semibold tabular-nums", net >= 0 ? "text-emerald-500" : "text-rose-500")}>{formatAmountDisplay(net)}</span>
       </div>
     </div>
   );
@@ -1103,7 +1134,7 @@ function AmountInput({ value, tone, onCommit }: { value: number | null; tone: "i
   const dirty = useRef(false);
   const commitRef = useRef<() => void>(() => {});
   useEffect(() => { if (!dirty.current) setDraft(value != null ? String(value) : ""); }, [value]);
-  function commit() {
+  const commit = useCallback(() => {
     dirty.current = false;
     const raw = draft.trim();
     const num = raw === "" ? null : Number(raw);
@@ -1114,7 +1145,7 @@ function AmountInput({ value, tone, onCommit }: { value: number | null; tone: "i
     const normalized = num && num > 0 ? Math.round(num * 100) / 100 : null;
     if (normalized === (value ?? null)) return;
     onCommit(normalized);
-  }
+  }, [draft, value, onCommit]);
   useEffect(() => {
     commitRef.current = commit;
   }, [commit]);
@@ -1151,10 +1182,10 @@ function NoteInput({ entry, onCommit }: { entry: Expense; onCommit: (text: strin
   const dirty = useRef(false);
   const commitRef = useRef<() => void>(() => {});
   useEffect(() => { if (!dirty.current) setDraft(value); }, [value]);
-  function commit() {
+  const commit = useCallback(() => {
     dirty.current = false;
     onCommit(draft);
-  }
+  }, [draft, onCommit]);
   useEffect(() => {
     commitRef.current = commit;
   }, [commit]);

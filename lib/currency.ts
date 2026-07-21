@@ -45,3 +45,29 @@ export function formatAmount(amount: number, cur: Currency): string {
   const str = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
   return cur.suffix ? `${str} ${cur.symbol}` : `${cur.symbol}${str}`;
 }
+
+export function formatAmountCompact(amount: number, cur: Currency): string {
+  const rounded = Math.round(amount * 100) / 100;
+  const abs = Math.abs(rounded);
+  const sign = rounded < 0 ? "-" : "";
+  let value = abs;
+  let suffix = "";
+
+  if (abs >= 1_000_000) {
+    value = Math.round((abs / 1_000_000) * 10) / 10;
+    suffix = "m";
+  } else if (abs >= 1_000) {
+    value = Math.round((abs / 1_000) * 10) / 10;
+    suffix = "k";
+  }
+
+  const formattedValue = suffix
+    ? value % 1 === 0
+      ? `${value.toFixed(0)}${suffix}`
+      : `${value.toFixed(1)}${suffix}`
+    : Number.isInteger(value)
+      ? String(value)
+      : value.toFixed(2);
+
+  return cur.suffix ? `${sign}${formattedValue} ${cur.symbol}` : `${sign}${cur.symbol}${formattedValue}`;
+}
