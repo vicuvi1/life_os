@@ -975,6 +975,44 @@ going, and what to do next. The editable transactions grid lives below it.
    grid below. The whole dashboard updates instantly.
 3. Hit **Export** to pull a month (or everything) into Excel.
 
-> **Follow-ups.** Account **transfers** (Wallet → Safe in one step) and
-> **recurring** entries (auto-insert rent/allowance each month) are the natural
-> next additions.
+> **Follow-ups.** **Recurring** entries (auto-insert rent/allowance each month)
+> are the natural next addition.
+
+---
+
+## Finance — Phase 1: transfers, honest KPIs & faster entry
+
+**What it is.** A correctness-and-speed pass over the Finance tab: internal
+account transfers now work for real, the KPI cards tell the truth, and logging
+repeat transactions takes fewer clicks.
+
+**How it works.**
+- **Real Wallet↔Safe transfers.** The "Transfer" quick button now opens a
+  dedicated dialog (from → to, amount, date, note, with a swap button). A
+  transfer is stored as a **linked pair** — an expense out of the source and
+  income into the destination — both tagged with the internal `transfer`
+  category. Because of the pairing, account balances and net worth move
+  correctly, and a transfer nets to zero for the day.
+- **Transfers don't distort your stats.** `totalSpent`, `totalEarned`, and the
+  category breakdown all **exclude** the `transfer` category, so moving money
+  between pots never inflates your income, spending, or savings rate. Transfer
+  rows render as a read-only "Transfer" chip (sky) instead of a category picker.
+- **Honest KPI cards.** The two cards that both showed net worth are gone —
+  the second is now **Net this period** (income − expenses for the current
+  range), with a proper *vs last month* delta when you're viewing a month. The
+  "Current money" card dropped its misleading vs-last-month figure for a plain
+  "Across all accounts" label; it keeps its net-worth sparkline.
+- **Faster entry.** Press **Enter** anywhere in the quick-add row to save. The
+  quick-add row now **remembers your last-used type, account, and category**
+  (persisted locally) so repeat entries start where you left off. Every
+  transaction row gains a **Duplicate** button (on hover) to clone a recurring
+  cost in one click.
+- **Declutter.** Removed the dead "View full report" button from the spending
+  panel.
+
+**How to use it.**
+1. Tap **Transfer** in Quick add, pick From/To, enter an amount, and save — your
+   Wallet and Safe balances update while income/spend stay untouched.
+2. In the quick-add row, type an amount and hit **Enter** to log it. The type,
+   account, and category stay put for the next one.
+3. Hover a transaction row and click the **copy icon** to duplicate it.

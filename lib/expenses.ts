@@ -72,6 +72,19 @@ export const ACCOUNT_LABEL: Record<AccountKey, string> = {
   safe: "Safe",
 };
 
+/**
+ * Category key used for internal money movements between accounts (Wallet↔Safe).
+ * A transfer is stored as a paired expense (out of the source) + income (into the
+ * destination) so account balances update correctly, but it is neither real income
+ * nor real spending — so income/expense totals and the category breakdown skip it.
+ */
+export const TRANSFER_CATEGORY = "transfer";
+
+/** Whether an entry is an internal Wallet↔Safe transfer (not real income/spend). */
+export function isTransfer(e: Pick<Expense, "category">): boolean {
+  return e.category === TRANSFER_CATEGORY;
+}
+
 /** Label for any category key (expense, income, or a custom tag). */
 export function categoryLabel(cat: string): string {
   const maps: Record<string, string> = {
@@ -84,6 +97,7 @@ export function categoryLabel(cat: string): string {
 
 /** Color for any category key; falls back to a neutral grey. */
 export function categoryColor(cat: string): string {
+  if (cat === TRANSFER_CATEGORY) return "#0ea5e9"; // sky — internal movement
   const maps: Record<string, string> = {
     ...EXPENSE_CATEGORY_COLOR,
     ...INCOME_CATEGORY_COLOR,
@@ -131,20 +145,20 @@ function toCents(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-/** Total of the expense entries only (money out). */
+/** Total of the expense entries only (money out); excludes internal transfers. */
 export function totalSpent(entries: Expense[]): number {
   return toCents(
     entries
-      .filter((e) => e.kind === "expense")
+      .filter((e) => e.kind === "expense" && !isTransfer(e))
       .reduce((s, e) => s + e.amount, 0)
   );
 }
 
-/** Total of the income entries only (money in). */
+/** Total of the income entries only (money in); excludes internal transfers. */
 export function totalEarned(entries: Expense[]): number {
   return toCents(
     entries
-      .filter((e) => e.kind === "income")
+      .filter((e) => e.kind === "income" && !isTransfer(e))
       .reduce((s, e) => s + e.amount, 0)
   );
 }
@@ -163,7 +177,7 @@ export interface CategorySpend {
 export function spendByCategory(entries: Expense[]): CategorySpend[] {
   const map = new Map<string, number>();
   for (const e of entries) {
-    if (e.kind !== "expense") continue;
+    if (e.kind !== "expense" || isTransfer(e)) continue;
     map.set(e.category, (map.get(e.category) ?? 0) + e.amount);
   }
   return Array.from(map.entries())

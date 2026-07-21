@@ -30,7 +30,7 @@ import {
   Undo2,
   Tag,
   ArrowRightLeft,
-  BarChart3,
+  Copy,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -59,6 +59,7 @@ import {
   INCOME_CATEGORY_LABEL,
   ACCOUNTS,
   ACCOUNT_LABEL,
+  isTransfer,
 } from "@/lib/expenses";
 import { entriesToCsv, downloadCsv } from "@/lib/export";
 import { resolveCurrency, formatAmount, formatAmountCompact } from "@/lib/currency";
@@ -80,6 +81,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ExpenseFormDialog } from "@/components/expenses/expense-form-dialog";
 import { BudgetFormDialog } from "@/components/expenses/budget-form-dialog";
+import { TransferDialog } from "@/components/expenses/transfer-dialog";
 import { cn } from "@/lib/utils";
 import type { AccountKey, Budget, EntryKind, Expense } from "@/lib/types";
 import type { LucideIcon } from "lucide-react";
@@ -105,6 +107,7 @@ const CATEGORY_ICON: Record<string, LucideIcon> = {
   sale: Tag,
   refund: Undo2,
   investment: TrendingUp,
+  transfer: ArrowRightLeft,
   other: Tag,
 };
 const iconFor = (cat: string): LucideIcon => CATEGORY_ICON[cat] ?? Tag;
@@ -134,6 +137,7 @@ export default function FinancePage() {
   const [budget, setBudget] = useState<Budget | null>(null);
   const [loading, setLoading] = useState(true);
   const [budgetOpen, setBudgetOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
   const [newAccount, setNewAccount] = useState<AccountKey>("wallet");
   const [filter, setFilter] = useState<AccountFilter>("all");
   const [amountView, setAmountView] = useState<"full" | "compact">("full");
@@ -240,6 +244,40 @@ export default function FinancePage() {
       // ignore localStorage failures
     }
   }, [viewMode, rangeFilter, visibleWidgets]);
+
+  // Remember the last-used quick-add kind/account/category so repeat entries
+  // (e.g. daily coffee) start from where you left off — even after a reload.
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("finance:quickDefaults");
+      if (!saved) return;
+      const d = JSON.parse(saved) as { kind?: EntryKind; account?: AccountKey; category?: string };
+      const kind: EntryKind = d.kind === "income" ? "income" : "expense";
+      const account: AccountKey = d.account === "safe" ? "safe" : "wallet";
+      const validCats = kind === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+      const category = d.category && (validCats as string[]).includes(d.category) ? d.category : DEFAULT_CATEGORY[kind];
+      setQuickEntry((prev) => ({ ...prev, kind, account, category }));
+    } catch {
+      // ignore localStorage failures
+    }
+  }, []);
+
+  const quickInit = useRef(true);
+  useEffect(() => {
+    // Skip the initial render so we never overwrite freshly-restored values.
+    if (quickInit.current) {
+      quickInit.current = false;
+      return;
+    }
+    try {
+      window.localStorage.setItem(
+        "finance:quickDefaults",
+        JSON.stringify({ kind: quickEntry.kind, account: quickEntry.account, category: quickEntry.category })
+      );
+    } catch {
+      // ignore localStorage failures
+    }
+  }, [quickEntry.kind, quickEntry.account, quickEntry.category]);
 
   const formatDisplayAmount = useCallback(
     (amount: number) => (amountView === "compact" ? formatAmountCompact(amount, currency) : formatAmount(amount, currency)),
@@ -555,6 +593,41 @@ export default function FinancePage() {
   function addLine(dateKey: string) {
     setExtraRows((p) => ({ ...p, [dateKey]: (p[dateKey] ?? 0) + 1 }));
   }
+  async function submitQuickEntry() {
+    if (!user || quickEntry.amount == null || quickEntry.amount <= 0) return;
+    const draft = {
+      kind: quickEntry.kind,
+      amount: quickEntry.amount,
+      account: quickEntry.account,
+      category: quickEntry.category,
+      note: quickEntry.note.trim() || null,
+      date: quickEntry.date,
+    };
+    try {
+      const id = await createExpense(user.uid, draft);
+      setExpenses((p) => [...p, { id, userId: user.uid, createdAt: Date.now(), ...draft }] as Expense[]);
+      setQuickEntry((prev) => ({ ...prev, amount: null, note: "", date: todayKey }));
+    } catch {
+      await load({ quiet: true });
+    }
+  }
+  async function duplicateEntry(entry: Expense) {
+    if (!user) return;
+    const draft = {
+      kind: entry.kind,
+      amount: entry.amount,
+      account: entry.account,
+      category: entry.category,
+      note: entry.note,
+      date: entry.date,
+    };
+    try {
+      const id = await createExpense(user.uid, draft);
+      setExpenses((p) => [...p, { id, userId: user.uid, createdAt: Date.now(), ...draft }]);
+    } catch {
+      await load({ quiet: true });
+    }
+  }
   function exportCsv(scope: "month" | "all" | "view") {
     const data =
       scope === "month" ? monthExpenses : scope === "all" ? expenses : displayExpenses;
@@ -716,9 +789,7 @@ export default function FinancePage() {
               iconClass="bg-primary/15 text-primary"
               label="Current money"
               value={formatDisplayAmount(netWorth)}
-              sub={
-                <Delta pct={pctChange(netWorth, netWorth - net)} good={net >= 0} suffix="vs last month" />
-              }
+              sub={<span className="text-xs text-muted-foreground">Across all accounts</span>}
               spark={sparkData}
             />
             <StatCard
@@ -736,11 +807,17 @@ export default function FinancePage() {
               sub={<span className="text-xs text-muted-foreground">Keep building 💪</span>}
             />
             <StatCard
-              icon={BarChart3}
-              iconClass="bg-violet-500/15 text-violet-500"
-              label="Total net worth"
-              value={formatDisplayAmount(netWorth)}
-              sub={<span className="text-xs text-muted-foreground">Includes wallet and savings</span>}
+              icon={net >= 0 ? TrendingUp : TrendingDown}
+              iconClass={net >= 0 ? "bg-emerald-500/15 text-emerald-500" : "bg-rose-500/15 text-rose-500"}
+              label="Net this period"
+              value={formatDisplayAmount(net)}
+              sub={
+                rangeFilter === "month" ? (
+                  <Delta pct={pctChange(net, prev.net)} good={net >= prev.net} suffix="vs last month" />
+                ) : (
+                  <span className="text-xs text-muted-foreground">Income − expenses</span>
+                )
+              }
             />
             <StatCard
               icon={Target}
@@ -790,7 +867,7 @@ export default function FinancePage() {
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
                 {visibleWidgets.spendingOverview && (
-                  <Panel title="Spending overview" action={<Button variant="ghost" size="sm">View full report</Button>}>
+                  <Panel title="Spending overview">
                     <Donut data={byCategory} currency={currency} total={spent} formatAmountDisplay={formatDisplayAmount} />
                   </Panel>
                 )}
@@ -851,7 +928,7 @@ export default function FinancePage() {
                   <div className="grid grid-cols-2 gap-3">
                     <QuickAdd icon={TrendingUp} label="Income" cls="hover:border-emerald-500/60 hover:bg-emerald-500/5" iconCls="bg-emerald-500/15 text-emerald-500" onClick={() => openAdd("income")} />
                     <QuickAdd icon={TrendingDown} label="Expense" cls="hover:border-rose-500/60 hover:bg-rose-500/5" iconCls="bg-rose-500/15 text-rose-500" onClick={() => openAdd("expense")} />
-                    <QuickAdd icon={ArrowRightLeft} label="Transfer" cls="hover:border-sky-500/60 hover:bg-sky-500/5" iconCls="bg-sky-500/15 text-sky-500" onClick={() => openAdd("expense")} />
+                    <QuickAdd icon={ArrowRightLeft} label="Transfer" cls="hover:border-sky-500/60 hover:bg-sky-500/5" iconCls="bg-sky-500/15 text-sky-500" onClick={() => setTransferOpen(true)} />
                     <QuickAdd icon={Settings2} label="Settings" cls="hover:border-primary/60 hover:bg-primary/5" iconCls="bg-primary/15 text-primary" onClick={() => setBudgetOpen(true)} />
                   </div>
                   <div className="mt-4 space-y-2 rounded-lg border p-3 text-sm">
@@ -902,6 +979,7 @@ export default function FinancePage() {
                       placeholder="Description"
                       value={quickEntry.note}
                       onChange={(event) => setQuickEntry((prev) => ({ ...prev, note: event.target.value }))}
+                      onKeyDown={(event) => { if (event.key === "Enter") submitQuickEntry(); }}
                       className="h-10"
                     />
                     <Input
@@ -909,29 +987,10 @@ export default function FinancePage() {
                       placeholder="Amount"
                       value={quickEntry.amount ?? ""}
                       onChange={(event) => setQuickEntry((prev) => ({ ...prev, amount: event.target.value ? Number(event.target.value) : null }))}
+                      onKeyDown={(event) => { if (event.key === "Enter") submitQuickEntry(); }}
                       className="h-10"
                     />
-                    <Button
-                      className="h-10"
-                      onClick={async () => {
-                        if (!user || quickEntry.amount == null || quickEntry.amount <= 0) return;
-                        const draft = {
-                          kind: quickEntry.kind,
-                          amount: quickEntry.amount,
-                          account: quickEntry.account,
-                          category: quickEntry.category,
-                          note: quickEntry.note.trim() || null,
-                          date: quickEntry.date,
-                        };
-                        try {
-                          const id = await createExpense(user.uid, draft);
-                          setExpenses((p) => [...p, { id, userId: user.uid, createdAt: Date.now(), ...draft }] as Expense[]);
-                          setQuickEntry((prev) => ({ ...prev, amount: null, note: "", date: todayKey }));
-                        } catch {
-                          await load({ quiet: true });
-                        }
-                      }}
-                    >
+                    <Button className="h-10" onClick={submitQuickEntry}>
                       Add
                     </Button>
                   </div>
@@ -943,7 +1002,7 @@ export default function FinancePage() {
                         <colgroup>
                           <col className="w-[86px]" /><col className="w-[54px]" /><col className="w-[102px]" />
                           <col className="w-[180px]" /><col className="w-[220px]" /><col className="w-[116px]" />
-                          <col className="w-[116px]" /><col className="w-[128px]" /><col className="w-[42px]" />
+                          <col className="w-[116px]" /><col className="w-[128px]" /><col className="w-[92px]" />
                         </colgroup>
                         <thead>
                           <tr className="border-b bg-muted/40 text-left text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -984,10 +1043,11 @@ export default function FinancePage() {
                                 </td>
                                 <td className="px-1 py-1 text-center align-middle">
                                   {r.entry ? (
-                                    <div className="flex items-center justify-center gap-1">
-                                      <button onClick={() => removeEntry(r.entry!)} aria-label="Delete entry" className="rounded p-1 text-muted-foreground/40 transition hover:bg-destructive/10 hover:text-destructive"><X className="h-3.5 w-3.5" /></button>
+                                    <div className="flex items-center justify-center gap-0.5">
+                                      <button onClick={() => duplicateEntry(r.entry!)} aria-label="Duplicate entry" title="Duplicate" className="rounded p-1 text-muted-foreground/40 opacity-0 transition hover:bg-accent hover:text-foreground group-hover:opacity-100"><Copy className="h-3.5 w-3.5" /></button>
+                                      <button onClick={() => removeEntry(r.entry!)} aria-label="Delete entry" title="Delete" className="rounded p-1 text-muted-foreground/40 transition hover:bg-destructive/10 hover:text-destructive"><X className="h-3.5 w-3.5" /></button>
                                       {r.lastOfDay && (
-                                        <button onClick={() => addLine(r.dateKey)} aria-label="Add entry" className="rounded p-1 text-muted-foreground/40 transition hover:bg-accent hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button>
+                                        <button onClick={() => addLine(r.dateKey)} aria-label="Add entry" title="Add row" className="rounded p-1 text-muted-foreground/40 transition hover:bg-accent hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button>
                                       )}
                                     </div>
                                   ) : (r.lastOfDay && (
@@ -1209,6 +1269,13 @@ export default function FinancePage() {
             onSaved={load}
           />
           <BudgetFormDialog open={budgetOpen} onOpenChange={setBudgetOpen} userId={user.uid} budget={budget} onSaved={load} />
+          <TransferDialog
+            open={transferOpen}
+            onOpenChange={setTransferOpen}
+            userId={user.uid}
+            defaultDate={isCurrentMonth ? todayKey : `${mKey}-01`}
+            onSaved={load}
+          />
         </>
       )}
     </div>
@@ -1532,6 +1599,15 @@ function CategorySelect({ entry, kind, onChange }: { entry: Expense; kind: Entry
   const label = (c: string) => kind === "income"
     ? INCOME_CATEGORY_LABEL[c as keyof typeof INCOME_CATEGORY_LABEL] ?? c
     : EXPENSE_CATEGORY_LABEL[c as keyof typeof EXPENSE_CATEGORY_LABEL] ?? c;
+  // Transfers aren't a user-pickable category — show a static, non-editable chip.
+  if (isTransfer(entry)) {
+    return (
+      <span className="flex items-center gap-1.5 px-2 text-sm text-muted-foreground">
+        <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: categoryColor(entry.category) }} />
+        Transfer
+      </span>
+    );
+  }
   return (
     <Select value={entry.category} onValueChange={onChange}>
       <SelectTrigger className="h-8 border-transparent bg-transparent px-2 text-sm hover:bg-background/70">
