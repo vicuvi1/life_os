@@ -2140,3 +2140,89 @@ adjust quantity/serving → save. The Daily Summary updates on save.
   FX conversion (no external API); totals assume a single currency.
 - **Save a built meal back to a reusable template** — meals are per-day today;
   the duplicate action covers repeats within a day.
+
+---
+
+## 🧱 Nutrition architecture — reference-only foods
+
+**Purpose.** Make the whole nutrition system scale and stay consistent by
+building it around one source of truth: the **Food Library**. Nothing else
+stores nutrition numbers.
+
+**The hierarchy.** Food Library → Meals → Recipes → Templates → Pantry →
+Shopping → Daily Nutrition → Analytics. Meals, recipes, templates, pantry and
+shopping all **reference foods + quantities only** — macros and cost are always
+resolved live from the referenced food. Edit a food's calories or price once and
+every meal, recipe, and analytic updates.
+
+**How it works.** A meal/recipe line stores `foodId + quantity + serving`
+(label + grams) and a display-name cache — never the nutrition. A resolver layer
+(`entriesTotals` / `mealTotals` / `dayTotals`, given a food map) computes
+Calories/Protein/Carbs/Fat/Cost on the fly. All nutrition documents live in the
+existing `nutritionLogs` collection, discriminated by `docType`
+(per-day log · `meal` · `food` · `pantry` · `shopping` · `recipe`), so the
+system supports unlimited foods/meals/recipes/templates/categories/tags/
+collections/servings **without any new Firestore collection or security rule**.
+
+---
+
+## 📦 Pantry & Shopping (Milestone 4)
+
+**Purpose.** Know what you have, waste less, and shop without thinking hard.
+
+**Pantry.** Track lots of food on hand — each references a Food Library item and
+stores quantity remaining (+ originally purchased), unit, purchase date,
+expiration date, purchase price, and a low-stock threshold. **Quantities
+decrease automatically as you log meals** that use the food: consumption is
+drawn FEFO (first-expiring-first) across lots and reconciled per meal on edit or
+delete, so the pantry stays honest. Everything stays manually editable.
+
+- Surfaces **Estimated Pantry Value**, **Running Low**, and **Expiring Soon**
+  (with days-left), plus one-tap "add to shopping" for low/expiring items.
+- Sortable table (name · expiring soonest · least remaining · highest value) and
+  custom drag-reorder.
+
+**Shopping list.** Add items by typing (Enter to add) or from the library; send
+low/expiring pantry items straight here; **mark purchased**, inline-edit quantity
+and cost, reorder (drag), sort (to-buy first · name · cost), and remove. Shows
+**estimated shopping cost** (from each food's price, or a manual override), and a
+one-tap **"Add to pantry"** restocks purchased items — closing the loop back into
+the pantry.
+
+---
+
+## 🥘 Recipes & Meal Templates (Milestone 5)
+
+**Purpose.** Save the meals you make often and log them in one tap.
+
+- **Recipes** (a dish, e.g. *Chicken Rice Bowl*) and **Templates** (a quick-log
+  meal, e.g. *Protein Lunch*) are both named sets of Food Library references.
+  Calories, Protein, Carbs, Fat and Cost **auto-calculate** from the foods.
+- Organize with **collections/folders**, **tags**, **favorites**, **archive**,
+  **custom drag-reorder**, and **duplicate**. Search + filter by kind, collection,
+  tag, or favorite.
+- **Log to today** instantiates a real meal referencing the same foods (which
+  also draws down the pantry). Optional image, notes, and an editor that reuses
+  the same fast food-builder as meals.
+
+---
+
+## 📊 Nutrition Analytics (Milestone 6)
+
+**Purpose.** Help a student/busy professional make better daily food decisions —
+clarity over complexity, no wall of nutrition stats.
+
+**Today at a glance.** Calories, Protein, Water, Food Cost, Meals Logged, and a
+Health Score.
+
+**Budget & averages.** An editable **weekly food budget** with a spend-vs-budget
+bar, **this-month spending**, and average protein / water per logged day.
+
+**Simple charts** (last 7 / 30 / 90 days): Daily Calories, Protein Trend, Water
+Trend, Food Spending, and Meal Frequency — clean mini-bars, no clutter.
+
+**Insight lists.** Most Eaten Foods and Favorite Meals.
+
+**Filters.** Scope everything by date range, meal, food, category, or tag. All
+numbers read live from meals (which reference foods), so the dashboard always
+reflects the latest logging automatically.
