@@ -46,6 +46,30 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const SNAPSHOT_MIN_GAP_MS = 12 * 60 * 60 * 1000;
 
 type ConfirmState = { title: string; description: string; confirmLabel: string; run: () => Promise<void> } | null;
+type Deletion = { collection: string; ids: string[] };
+
+/** Remove deleted docs from a scan in place (avoids a full re-read after cleanup). */
+function pruneScan(prev: UsageScan | null, dels: Deletion[]): UsageScan | null {
+  if (!prev || dels.length === 0) return prev;
+  const removed = new Map<string, Set<string>>();
+  for (const d of dels) {
+    const set = removed.get(d.collection) ?? new Set<string>();
+    d.ids.forEach((id) => set.add(id));
+    removed.set(d.collection, set);
+  }
+  const raw = { ...prev.raw };
+  const collections = prev.collections.map((c) => {
+    const rem = removed.get(c.name);
+    if (!rem || rem.size === 0) return c;
+    const kept = (raw[c.name] ?? []).filter((docItem) => !rem.has(docItem.id));
+    raw[c.name] = kept;
+    const bytes = kept.reduce((s, docItem) => s + estimateDocBytes(docItem.id, docItem.data), 0);
+    return { ...c, count: kept.length, bytes };
+  });
+  const totalBytes = collections.reduce((s, c) => s + c.bytes, 0);
+  const totalDocs = collections.reduce((s, c) => s + c.count, 0);
+  return { ...prev, totalBytes, totalDocs, collections, raw };
+}
 
 export default function StoragePage() {
   const { user } = useAuth();
@@ -86,19 +110,21 @@ export default function StoragePage() {
         const s = await scanUsage(user.uid);
         setScanMs(Math.round((typeof performance !== "undefined" ? performance.now() : Date.now()) - t0));
         setScan(s);
-        let nextCfg = cfg;
-        if (cfg) {
-          const last = cfg.snapshots[cfg.snapshots.length - 1];
-          if (!last || s.at - last.at > SNAPSHOT_MIN_GAP_MS) {
-            const byCollection: Record<string, number> = {};
-            for (const c of s.collections) byCollection[c.name] = c.bytes;
-            const snapshot: StorageSnapshot = { at: s.at, totalBytes: s.totalBytes, docCount: s.totalDocs, byCollection };
-            nextCfg = { ...cfg, snapshots: [...cfg.snapshots, snapshot].slice(-30) };
-            setConfig(nextCfg);
-            await persist(nextCfg);
-          }
-        }
-        return { scan: s, cfg: nextCfg };
+        // Record a snapshot at most every ~12h, merging into the LATEST config
+        // (not the captured `cfg`) so a concurrent policy edit can't be clobbered.
+        setConfig((cur) => {
+          const base = cur ?? cfg;
+          if (!base) return base;
+          const last = base.snapshots[base.snapshots.length - 1];
+          if (last && s.at - last.at <= SNAPSHOT_MIN_GAP_MS) return base;
+          const byCollection: Record<string, number> = {};
+          for (const c of s.collections) byCollection[c.name] = c.bytes;
+          const snapshot: StorageSnapshot = { at: s.at, totalBytes: s.totalBytes, docCount: s.totalDocs, byCollection };
+          const merged = { ...base, snapshots: [...base.snapshots, snapshot].slice(-30) };
+          void persist(merged);
+          return merged;
+        });
+        return { scan: s, cfg };
       } catch {
         setScanError(true);
         return { scan: null, cfg };
@@ -111,9 +137,10 @@ export default function StoragePage() {
 
   // Delete docs older than each enabled policy's window (once/day guard).
   const runAutoCleanup = useCallback(
-    async (cfg: StorageConfig, s: UsageScan): Promise<number> => {
+    async (cfg: StorageConfig, s: UsageScan): Promise<{ deleted: number; dels: Deletion[] }> => {
       const policies = [...cfg.policies];
       let deleted = 0;
+      const dels: Deletion[] = [];
       for (let i = 0; i < policies.length; i++) {
         const p = policies[i];
         if (!p.enabled) continue;
@@ -122,15 +149,21 @@ export default function StoragePage() {
         if (!target) continue; // only ever the safe, log-like collections
         const old = idsBefore(s.raw[p.collection] ?? [], target.dateField, cutoffDateKey(now, p.days));
         if (old.length > 0) {
-          await deleteDocsByIds(p.collection, old.map((d) => d.id));
-          deleted += old.length;
+          const ids = old.map((d) => d.id);
+          await deleteDocsByIds(p.collection, ids);
+          deleted += ids.length;
+          dels.push({ collection: p.collection, ids });
         }
         policies[i] = { ...p, lastRun: now.getTime() };
       }
-      const next = { ...cfg, policies };
-      setConfig(next);
-      await persist(next);
-      return deleted;
+      // Merge into the latest config so a snapshot recorded by doScan survives.
+      setConfig((cur) => {
+        const base = cur ?? cfg;
+        const next = { ...base, policies };
+        void persist(next);
+        return next;
+      });
+      return { deleted, dels };
     },
     [now, persist]
   );
@@ -149,10 +182,10 @@ export default function StoragePage() {
       setConfig(cfg);
       const { scan: s, cfg: cfg2 } = await doScan(cfg);
       if (s && cfg2?.autoCleanup) {
-        const n = await runAutoCleanup(cfg2, s);
-        if (n > 0) {
-          setAutoMsg(`Auto-cleanup removed ${n} old record${n === 1 ? "" : "s"}.`);
-          await doScan(cfg2);
+        const { deleted, dels } = await runAutoCleanup(cfg2, s);
+        if (deleted > 0) {
+          setAutoMsg(`Auto-cleanup removed ${deleted} old record${deleted === 1 ? "" : "s"}.`);
+          setScan((prev) => pruneScan(prev, dels));
         }
       }
     })();
@@ -199,7 +232,7 @@ export default function StoragePage() {
     try {
       await deleteDocsByIds(collectionName, ids);
       updatePolicy(collectionName, { lastRun: Date.now() });
-      await doScan(config);
+      setScan((prev) => pruneScan(prev, [{ collection: collectionName, ids }]));
     } finally {
       setBusy(false);
     }
@@ -227,10 +260,14 @@ export default function StoragePage() {
     if (!user) return;
     setBusy(true);
     try {
+      const dels: Deletion[] = [];
       for (const r of manualPreview) {
-        if (r.ids.length > 0) await deleteDocsByIds(r.target.collection, r.ids);
+        if (r.ids.length > 0) {
+          await deleteDocsByIds(r.target.collection, r.ids);
+          dels.push({ collection: r.target.collection, ids: r.ids });
+        }
       }
-      await doScan(config);
+      setScan((prev) => pruneScan(prev, dels));
     } finally {
       setBusy(false);
     }
@@ -328,7 +365,7 @@ export default function StoragePage() {
               <div className="grid grid-cols-2 gap-3 pt-1 text-sm sm:grid-cols-3">
                 <div><p className="text-muted-foreground">Documents</p><p className="font-semibold tabular-nums">{scan.totalDocs.toLocaleString()}</p></div>
                 <div><p className="text-muted-foreground">Collections</p><p className="font-semibold tabular-nums">{scan.collections.filter((c) => c.count > 0).length}</p></div>
-                <div><p className="text-muted-foreground">Est. monthly cost</p><p className="font-semibold tabular-nums">{total < FREE_TIER_BYTES ? "$0.00" : `$${((total / FREE_TIER_BYTES) * OVERAGE_PER_GIB_MONTH).toFixed(2)}`}</p></div>
+                <div><p className="text-muted-foreground">Est. monthly cost</p><p className="font-semibold tabular-nums">{total <= FREE_TIER_BYTES ? "$0.00" : `$${(((total - FREE_TIER_BYTES) / FREE_TIER_BYTES) * OVERAGE_PER_GIB_MONTH).toFixed(2)}`}</p></div>
               </div>
             </>
           )}
@@ -426,14 +463,18 @@ export default function StoragePage() {
                 description: `This permanently deletes ${enabledDue.count} old record${enabledDue.count === 1 ? "" : "s"} (~${formatBytes(enabledDue.bytes)}) across enabled policies. This can't be undone.`,
                 confirmLabel: "Delete all",
                 run: async () => {
+                  const dels: Deletion[] = [];
                   for (const p of policiesEnabled) {
                     const t = retentionTarget(p.collection);
                     if (!t) continue;
                     const old = oldForPolicy(p.collection, t.dateField, p.days);
-                    if (old.ids.length > 0) await deleteDocsByIds(p.collection, old.ids);
+                    if (old.ids.length > 0) {
+                      await deleteDocsByIds(p.collection, old.ids);
+                      dels.push({ collection: p.collection, ids: old.ids });
+                    }
                     updatePolicy(p.collection, { lastRun: Date.now() });
                   }
-                  await doScan(config);
+                  setScan((prev) => pruneScan(prev, dels));
                 },
               })}>
               <Trash2 className="h-4 w-4" /> Apply enabled policies ({enabledDue.count})
