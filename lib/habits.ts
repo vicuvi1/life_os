@@ -40,6 +40,20 @@ export const HABIT_COLORS: { name: string; value: string }[] = [
 
 export const DEFAULT_HABIT_COLOR = HABIT_COLORS[0].value;
 
+/** Emoji presets offered when picking a habit's icon. */
+export const EMOJI_PRESETS = [
+  // health & fitness
+  "💧", "🏃", "🏋️", "🧘", "💪", "🚴", "🏊", "🤸", "🥗", "🥦", "🍎", "💊", "🩺", "😴", "🚭", "🦷", "🚿", "⚖️",
+  // mind & learning
+  "📚", "📖", "✍️", "🧠", "🎯", "🗣️", "🧩", "🎓", "📝", "💡", "🌱", "🙏",
+  // work & productivity
+  "💻", "📅", "✅", "📧", "📊", "💼", "⏰", "🔧", "🚀", "🗒️",
+  // creative
+  "🎸", "🎨", "🎹", "📸", "🎬", "🎤", "🕹️", "📷",
+  // lifestyle
+  "☀️", "🌙", "🛏️", "🧹", "🍳", "🐕", "🌿", "💰", "📵", "🍷", "☕", "🚶", "❤️", "👨‍👩‍👧", "📞", "🧴", "🔋", "🌊",
+];
+
 // ---------------------------------------------------------------------------
 // Difficulty
 // ---------------------------------------------------------------------------

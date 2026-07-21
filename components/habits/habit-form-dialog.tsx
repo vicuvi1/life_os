@@ -29,6 +29,7 @@ import {
   DEFAULT_HABIT_COLOR,
   DIFFICULTIES,
   DIFFICULTY_META,
+  EMOJI_PRESETS,
 } from "@/lib/habits";
 import { NumberField } from "@/components/ui/number-field";
 import { cn } from "@/lib/utils";
@@ -43,19 +44,6 @@ const TARGET_TYPES: { key: HabitTargetType; label: string; hint: string }[] = [
   { key: "check", label: "Yes / No", hint: "A simple daily checkbox" },
   { key: "count", label: "Count with target", hint: "e.g. 8 glasses of water" },
   { key: "duration", label: "Duration (minutes)", hint: "e.g. 30 min meditation" },
-];
-
-const EMOJI_PRESETS = [
-  // health & fitness
-  "💧", "🏃", "🏋️", "🧘", "💪", "🚴", "🏊", "🤸", "🥗", "🥦", "🍎", "💊", "🩺", "😴", "🚭", "🦷", "🚿", "⚖️",
-  // mind & learning
-  "📚", "📖", "✍️", "🧠", "🎯", "🗣️", "🧩", "🎓", "📝", "💡", "🌱", "🙏",
-  // work & productivity
-  "💻", "📅", "✅", "📧", "📊", "💼", "⏰", "🔧", "🚀", "🗒️",
-  // creative
-  "🎸", "🎨", "🎹", "📸", "🎬", "🎤", "🕹️", "📷",
-  // lifestyle
-  "☀️", "🌙", "🛏️", "🧹", "🍳", "🐕", "🌿", "💰", "📵", "🍷", "☕", "🚶", "❤️", "👨‍👩‍👧", "📞", "🧴", "🔋", "🌊",
 ];
 
 interface Props {

@@ -1394,3 +1394,8 @@ flash.
   the **week start** (Mon or Sun — applies to the weekly bars, heatmaps, and
   calendar), plus your **view** and **show-numbers** preference — all remembered
   on your device.
+
+**Inline emoji & color.** Click a habit's **icon dot** in any view (Table, Cards,
+Compact) to open a quick editor and change its **emoji** and **color** right
+there — changes apply instantly, no need to open the full Edit form. (The full
+form still has both too.)

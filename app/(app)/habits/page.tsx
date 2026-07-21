@@ -53,6 +53,7 @@ import {
 import { HabitStatsDialog } from "@/components/habits/habit-stats-dialog";
 import { TemplatesDialog } from "@/components/habits/templates-dialog";
 import { DayEditorDialog } from "@/components/habits/day-editor-dialog";
+import { IconColorDialog } from "@/components/habits/icon-color-dialog";
 import { toDateKey } from "@/lib/greeting";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -114,6 +115,7 @@ export default function HabitsPage() {
   const [noteTarget, setNoteTarget] = useState<{ habit: Habit; date: string } | null>(null);
   const [poppedCell, setPoppedCell] = useState<string | null>(null);
   const [celebrate, setCelebrate] = useState<{ message: string; habit: string } | null>(null);
+  const [appearanceId, setAppearanceId] = useState<string | null>(null);
 
   const [windowOffset, setWindowOffset] = useState(0); // 0 = current window (ends today)
   const [windowDays, setWindowDays] = useState(WINDOW);
@@ -314,6 +316,12 @@ export default function HabitsPage() {
     } catch {
       await load({ quiet: true });
     }
+  }
+
+  function applyAppearance(patch: { emoji?: string | null; color?: string }) {
+    if (!user || !appearanceId) return;
+    setHabits((prev) => prev.map((h) => (h.id === appearanceId ? { ...h, ...patch } : h)));
+    void updateHabit(appearanceId, patch).catch(() => void load({ quiet: true }));
   }
 
   async function moveHabit(habit: Habit, dir: -1 | 1) {
@@ -587,9 +595,15 @@ export default function HabitsPage() {
                         <tr key={habit.id} className={cn("group border-b last:border-0 hover:bg-accent/30", habit.archived && "opacity-50")}>
                           <td className="sticky left-0 z-10 bg-card px-3 py-2">
                             <div className="flex items-center gap-2">
-                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-base" style={{ backgroundColor: `${color}22` }}>
+                              <button
+                                type="button"
+                                onClick={() => setAppearanceId(habit.id)}
+                                title="Change emoji & color"
+                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-base transition hover:ring-2 hover:ring-ring"
+                                style={{ backgroundColor: `${color}22` }}
+                              >
                                 {habit.emoji || <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />}
-                              </span>
+                              </button>
                               <div className="min-w-0">
                                 <div className="flex items-center gap-1.5">
                                   <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: DIFFICULTY_META[habit.difficulty].color }} title={`${DIFFICULTY_META[habit.difficulty].label} difficulty`} />
@@ -647,9 +661,15 @@ export default function HabitsPage() {
                   const recent = cells.slice(-14);
                   return (
                     <div key={habit.id} className={cn("flex items-center gap-3 px-4 py-2.5", habit.archived && "opacity-50")}>
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base" style={{ backgroundColor: `${color}22` }}>
+                      <button
+                        type="button"
+                        onClick={() => setAppearanceId(habit.id)}
+                        title="Change emoji & color"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base transition hover:ring-2 hover:ring-ring"
+                        style={{ backgroundColor: `${color}22` }}
+                      >
                         {habit.emoji || <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />}
-                      </span>
+                      </button>
                       <div className="min-w-0 flex-1">
                         <p className="flex items-center gap-1.5 truncate text-sm font-medium">
                           <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: DIFFICULTY_META[habit.difficulty].color }} />
@@ -679,9 +699,15 @@ export default function HabitsPage() {
                     <div key={habit.id} className={cn("rounded-2xl border bg-background p-4", habit.archived && "opacity-50")}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex min-w-0 items-center gap-2">
-                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-lg" style={{ backgroundColor: `${color}22` }}>
+                          <button
+                            type="button"
+                            onClick={() => setAppearanceId(habit.id)}
+                            title="Change emoji & color"
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-lg transition hover:ring-2 hover:ring-ring"
+                            style={{ backgroundColor: `${color}22` }}
+                          >
                             {habit.emoji || <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />}
-                          </span>
+                          </button>
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold">{habit.title}</p>
                             <p className="text-xs text-muted-foreground">{DIFFICULTY_META[habit.difficulty].label} · 🔥 {streak}</p>
@@ -868,6 +894,13 @@ export default function HabitsPage() {
       {user && (
         <TemplatesDialog open={templatesOpen} onOpenChange={setTemplatesOpen} userId={user.uid} onSaved={load} />
       )}
+
+      <IconColorDialog
+        open={appearanceId !== null}
+        onOpenChange={(o) => { if (!o) setAppearanceId(null); }}
+        habit={appearanceId ? (habits.find((h) => h.id === appearanceId) ?? null) : null}
+        onApply={applyAppearance}
+      />
 
       {user && (
         <DayEditorDialog
