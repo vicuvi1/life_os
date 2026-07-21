@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Shirt, Plus, Pencil, Trash2 } from "lucide-react";
-import { getClothing, deleteClothing, updateClothing } from "@/lib/firebase/db";
+import { getClothing, deleteClothing, bumpItemWear } from "@/lib/firebase/db";
+import { toDateKey } from "@/lib/greeting";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ClothingFormDialog } from "@/components/wardrobe/clothing-form-dialog";
@@ -29,22 +30,25 @@ export function WardrobeSection({ userId }: { userId: string }) {
     load();
   }, [load]);
 
+  // Retired items leave active views everywhere — exclude them here too.
+  const activeClothes = useMemo(() => items.filter((i) => !i.retired), [items]);
+
   const allTags = useMemo(() => {
     const s = new Set<string>();
-    for (const item of items) for (const t of item.tags) s.add(t);
+    for (const item of activeClothes) for (const t of item.tags) s.add(t);
     return Array.from(s).sort();
-  }, [items]);
+  }, [activeClothes]);
 
   const visible = activeTag
-    ? items.filter((i) => i.tags.includes(activeTag))
-    : items;
+    ? activeClothes.filter((i) => i.tags.includes(activeTag))
+    : activeClothes;
 
   async function wear(item: ClothingItem) {
-    const next = item.timesWorn + 1;
+    const today = toDateKey(new Date());
     setItems((prev) =>
-      prev.map((i) => (i.id === item.id ? { ...i, timesWorn: next } : i))
+      prev.map((i) => (i.id === item.id ? { ...i, timesWorn: i.timesWorn + 1, lastWorn: today, status: "worn" } : i))
     );
-    await updateClothing(item.id, { timesWorn: next });
+    await bumpItemWear(item.id, today);
   }
 
   return (

@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Layers,
   BarChart3,
+  Luggage,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -31,7 +32,10 @@ import {
   filterItems,
   recentlyWorn,
   wearForDate,
+  seasonsInUse,
+  currentSeason,
 } from "@/lib/wardrobe";
+import { SurpriseDialog } from "@/components/wardrobe/surprise-dialog";
 import { toDateKey } from "@/lib/greeting";
 import { addDays } from "@/lib/habits";
 import { Button } from "@/components/ui/button";
@@ -69,10 +73,12 @@ function wmoMeta(code: number): { label: string; icon: string } {
   return WMO.find((w) => w.codes.includes(code)) ?? { label: "—", icon: "🌡️" };
 }
 
-/** "18-28" (with optional °C etc.) → does temp fall inside? Null if unparseable. */
+/** "18-28°C" → does temp fall inside? Null if no genuine temperature range. */
 function weatherFitMatches(fit: string | null, temp: number | null): boolean | null {
   if (!fit || temp == null) return null;
-  const m = fit.match(/(-?\d+)\s*[-–]\s*(-?\d+)/);
+  // Only treat a number pair as a temperature range when it carries a degree
+  // marker, or when it IS the whole field — so "gusts 15-25 km/h" never matches.
+  const m = fit.match(/(-?\d+)\s*[-–]\s*(-?\d+)\s*°?\s*C\b/i) ?? fit.match(/^\s*(-?\d+)\s*[-–]\s*(-?\d+)\s*°?\s*$/);
   if (!m) return null;
   const lo = Math.min(Number(m[1]), Number(m[2]));
   const hi = Math.max(Number(m[1]), Number(m[2]));
@@ -87,9 +93,12 @@ export default function WardrobeOverviewPage() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerDate, setPickerDate] = useState<string | null>(null);
+  const [surpriseOpen, setSurpriseOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [seasonFilter, setSeasonFilter] = useState<string>("all");
 
   const today = toDateKey(new Date());
 
@@ -123,16 +132,20 @@ export default function WardrobeOverviewPage() {
   const activeItems = useMemo(() => items.filter((i) => !i.retired), [items]);
   const counts = useMemo(() => statusCounts(items), [items]);
   const categories = useMemo(() => categoriesInUse(activeItems), [activeItems]);
+  const seasons = useMemo(() => seasonsInUse(activeItems), [activeItems]);
 
-  const gridItems = useMemo(
-    () =>
-      filterItems(items, {
-        query,
-        category,
-        status: statusFilter === "all" ? null : (statusFilter as WardrobeStatus | "needsIroning"),
-      }),
-    [items, query, category, statusFilter]
-  );
+  const resolvedSeason = seasonFilter === "all" ? null : seasonFilter === "in" ? currentSeason() : seasonFilter;
+  const gridItems = useMemo(() => {
+    if (statusFilter === "retired") {
+      return filterItems(items, { query, category, season: resolvedSeason, includeRetired: true }).filter((i) => i.retired);
+    }
+    return filterItems(items, {
+      query,
+      category,
+      status: statusFilter === "all" ? null : (statusFilter as WardrobeStatus | "needsIroning"),
+      season: resolvedSeason,
+    });
+  }, [items, query, category, statusFilter, resolvedSeason]);
 
   const todayWear = useMemo(() => wearForDate(wears, today), [wears, today]);
   const todayItems = useMemo(() => {
@@ -156,6 +169,14 @@ export default function WardrobeOverviewPage() {
     setData((prev) => ({ ...prev, items: prev.items.map((i) => (i.id === item.id ? { ...i, ...patch } : i)) }));
     void updateClothing(item.id, patch).catch(() => void load({ quiet: true }));
   }
+
+  function openPicker(date: string) {
+    setPickerDate(date);
+    setPickerOpen(true);
+  }
+
+  const activePickerDate = pickerDate ?? today;
+  const activePickerWear = useMemo(() => wearForDate(wears, activePickerDate), [wears, activePickerDate]);
 
   async function confirmPlannedToday() {
     if (!user || !todayWear || todayItems.length === 0) return;
@@ -181,11 +202,19 @@ export default function WardrobeOverviewPage() {
           <p className="text-muted-foreground">Your clothes, outfits, and laundry — decided in seconds.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {activeItems.length > 0 && (
+            <Button variant="outline" onClick={() => setSurpriseOpen(true)}>
+              <Sparkles className="h-4 w-4" /> Surprise me
+            </Button>
+          )}
           <Button variant="outline" asChild>
             <Link href="/wardrobe/outfits"><Layers className="h-4 w-4" /> Outfits</Link>
           </Button>
           <Button variant="outline" asChild>
             <Link href="/wardrobe/calendar"><CalendarDays className="h-4 w-4" /> Calendar</Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href="/wardrobe/packing"><Luggage className="h-4 w-4" /> Packing</Link>
           </Button>
           <Button variant="outline" asChild>
             <Link href="/wardrobe/laundry"><WashingMachine className="h-4 w-4" /> Laundry</Link>
@@ -227,12 +256,31 @@ export default function WardrobeOverviewPage() {
               </div>
               <div className="grid gap-4 p-4 sm:grid-cols-[1fr_auto]">
                 <div>
-                  {todayItems.length === 0 ? (
+                  {!todayWear ? (
                     <div className="flex flex-col items-start gap-2 py-2">
                       <p className="text-sm text-muted-foreground">No outfit picked for today yet.</p>
-                      <Button size="sm" onClick={() => setPickerOpen(true)}>
-                        <Sparkles className="h-4 w-4" /> Pick today&apos;s outfit
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" onClick={() => openPicker(today)}>
+                          <Shirt className="h-4 w-4" /> Pick today&apos;s outfit
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setSurpriseOpen(true)}>
+                          <Sparkles className="h-4 w-4" /> Surprise me
+                        </Button>
+                      </div>
+                    </div>
+                  ) : todayItems.length === 0 ? (
+                    <div className="flex flex-col items-start gap-2 py-2">
+                      <p className="text-sm text-muted-foreground">
+                        {todayWear.planned ? "Planned for today" : "Logged as worn today"} — but those items are no longer in your wardrobe.
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {!todayWear.planned && (
+                          <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                            <Check className="h-3.5 w-3.5" /> Worn today
+                          </span>
+                        )}
+                        <Button size="sm" variant="outline" onClick={() => openPicker(today)}>Change</Button>
+                      </div>
                     </div>
                   ) : (
                     <>
@@ -265,7 +313,7 @@ export default function WardrobeOverviewPage() {
                             <Check className="h-3.5 w-3.5" /> Worn today
                           </span>
                         )}
-                        <Button size="sm" variant="outline" onClick={() => setPickerOpen(true)}>Change</Button>
+                        <Button size="sm" variant="outline" onClick={() => openPicker(today)}>Change</Button>
                       </div>
                     </>
                   )}
@@ -295,7 +343,7 @@ export default function WardrobeOverviewPage() {
             {outfits.length > 0 && (
               <div className="flex gap-2 overflow-x-auto pb-1">
                 <QuickShortcut href="/wardrobe/outfits?type=template" icon="★" label="Templates" count={outfits.filter((o) => o.type === "template").length} />
-                <QuickShortcut href="/wardrobe/outfits" icon="❤️" label="Favorites" count={outfits.filter((o) => o.favorite).length} />
+                <QuickShortcut href="/wardrobe/outfits?type=favorites" icon="❤️" label="Favorites" count={outfits.filter((o) => o.favorite).length} />
                 {Array.from(new Set(outfits.flatMap((o) => o.occasions))).sort().map((occ) => (
                   <QuickShortcut
                     key={occ}
@@ -322,8 +370,19 @@ export default function WardrobeOverviewPage() {
                         <SelectItem value="all">All statuses</SelectItem>
                         {WARDROBE_STATUSES.map((s) => <SelectItem key={s} value={s}>{STATUS_META[s].label}</SelectItem>)}
                         <SelectItem value="needsIroning">Needs ironing</SelectItem>
+                        <SelectItem value="retired">Retired</SelectItem>
                       </SelectContent>
                     </Select>
+                    {seasons.length > 0 && (
+                      <Select value={seasonFilter} onValueChange={setSeasonFilter}>
+                        <SelectTrigger className="h-8 w-[140px]"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All seasons</SelectItem>
+                          <SelectItem value="in">In season ({currentSeason()})</SelectItem>
+                          {seasons.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -428,9 +487,14 @@ export default function WardrobeOverviewPage() {
                   <CalendarDays className="h-3.5 w-3.5" /> Upcoming outfits
                 </span>
               </div>
-              <div className="space-y-2 p-4">
+              <div className="space-y-1 p-2">
                 {upcoming.map(({ date, wear }) => (
-                  <div key={date} className="flex items-center gap-2 text-sm">
+                  <button
+                    key={date}
+                    type="button"
+                    onClick={() => openPicker(date)}
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition hover:bg-accent"
+                  >
                     <span className="w-[74px] shrink-0 text-xs tabular-nums text-muted-foreground">{date.slice(5)}</span>
                     {wear ? (
                       <div className="flex flex-1 items-center gap-1.5 overflow-hidden">
@@ -445,9 +509,10 @@ export default function WardrobeOverviewPage() {
                         })}
                       </div>
                     ) : (
-                      <span className="flex-1 text-xs text-muted-foreground/60">No outfit planned yet</span>
+                      <span className="flex-1 text-xs text-muted-foreground/60">Tap to plan an outfit</span>
                     )}
-                  </div>
+                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />
+                  </button>
                 ))}
               </div>
             </Card>
@@ -464,9 +529,18 @@ export default function WardrobeOverviewPage() {
             userId={user.uid}
             items={items}
             outfits={outfits}
-            date={today}
-            initialIds={todayWear?.itemIds}
-            existing={todayWear}
+            date={activePickerDate}
+            initialIds={activePickerWear?.itemIds}
+            existing={activePickerWear}
+            onSaved={() => load({ quiet: true })}
+          />
+          <SurpriseDialog
+            open={surpriseOpen}
+            onOpenChange={setSurpriseOpen}
+            userId={user.uid}
+            items={items}
+            outfits={outfits}
+            existingToday={todayWear}
             onSaved={() => load({ quiet: true })}
           />
         </>

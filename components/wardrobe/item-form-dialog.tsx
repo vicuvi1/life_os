@@ -112,7 +112,6 @@ export function ItemFormDialog({ open, onOpenChange, userId, item, onSaved }: Pr
       favorite,
       notes: notes.trim() || null,
       care: care.trim() || null,
-      timesWorn: item?.timesWorn ?? 0,
     };
     try {
       if (isEdit && item) await updateClothing(item.id, payload);

@@ -440,6 +440,22 @@ export interface WearLog {
   createdAt: number;
 }
 
+/**
+ * A trip packing list — pick items from the wardrobe and check them off as you
+ * pack. Stored in the `clothing` collection with docType "packing".
+ */
+export interface PackingList {
+  id: string;
+  userId: string;
+  name: string;
+  /** Optional trip length in days (display only). */
+  days: number | null;
+  itemIds: string[];
+  /** Item ids already ticked off. */
+  packed: string[];
+  createdAt: number;
+}
+
 /** A retention rule for one log-like collection (trim data older than `days`). */
 export interface RetentionPolicy {
   collection: string;

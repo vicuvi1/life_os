@@ -11,6 +11,7 @@ import {
   doc,
   serverTimestamp,
   writeBatch,
+  increment,
   Timestamp,
   type DocumentData,
   type QueryDocumentSnapshot,
@@ -38,6 +39,7 @@ import {
   type MealSlot,
   type NutritionLog,
   type Outfit,
+  type PackingList,
   type Project,
   type RecurringRule,
   type Session,
@@ -1348,7 +1350,8 @@ export async function getWardrobe(userId: string): Promise<WardrobeData> {
     const t = docSnap.data().docType;
     if (t === "outfit") outfits.push(mapOutfit(docSnap));
     else if (t === "wear") wears.push(mapWear(docSnap));
-    else items.push(mapClothing(docSnap)); // legacy items have no docType
+    else if (t == null || t === "item") items.push(mapClothing(docSnap)); // legacy items have no docType
+    // any other docType (e.g. "packing") is intentionally ignored here
   }
   items.sort((a, b) => a.createdAt - b.createdAt);
   outfits.sort((a, b) => b.createdAt - a.createdAt);
@@ -1362,7 +1365,7 @@ export async function getClothing(userId: string): Promise<ClothingItem[]> {
 
 export type ClothingInput = Pick<
   ClothingItem,
-  "name" | "tags" | "imageData" | "cost" | "timesWorn"
+  "name" | "tags" | "imageData" | "cost"
 > &
   Partial<
     Pick<
@@ -1382,6 +1385,9 @@ export type ClothingInput = Pick<
       | "care"
       | "retired"
       | "lastWorn"
+      // Optional: the wear counter is normally managed by wearing an item, not by
+      // the edit form. The legacy Routines form still exposes it as a manual field.
+      | "timesWorn"
     >
   >;
 
@@ -1407,6 +1413,7 @@ export async function createClothing(
     care: null,
     retired: false,
     lastWorn: null,
+    timesWorn: 0,
     ...input,
     createdAt: serverTimestamp(),
   });
@@ -1422,6 +1429,19 @@ export async function updateClothing(
 
 export async function deleteClothing(id: string): Promise<void> {
   await deleteDoc(doc(db, COLLECTIONS.clothing, id));
+}
+
+/**
+ * Quick single-item wear (legacy Routines widget): bump the counter atomically
+ * and mark the item worn so it stays consistent with laundry / recently-worn.
+ * Does not touch the day's outfit wear log — use setWearForDay for full outfits.
+ */
+export async function bumpItemWear(itemId: string, date: string): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.clothing, itemId), {
+    timesWorn: increment(1),
+    lastWorn: date,
+    status: "worn",
+  });
 }
 
 /** Bulk status change — laundry is a batch activity (chunked under 500 ops). */
@@ -1479,10 +1499,10 @@ export async function removeWearDay(input: {
   const batch = writeBatch(db);
   batch.delete(doc(db, COLLECTIONS.clothing, `wear_${userId}_${date}`));
   for (const it of prevItems) {
-    batch.update(doc(db, COLLECTIONS.clothing, it.id), { timesWorn: Math.max(0, it.timesWorn - 1) });
+    batch.update(doc(db, COLLECTIONS.clothing, it.id), { timesWorn: increment(-1) });
   }
   if (prevOutfit) {
-    batch.update(doc(db, COLLECTIONS.clothing, prevOutfit.id), { timesWorn: Math.max(0, prevOutfit.timesWorn - 1) });
+    batch.update(doc(db, COLLECTIONS.clothing, prevOutfit.id), { timesWorn: increment(-1) });
   }
   await batch.commit();
 }
@@ -1517,6 +1537,8 @@ export async function setWearForDay(input: {
   prevItems: Pick<ClothingItem, "id" | "timesWorn">[];
   prevOutfit: Pick<Outfit, "id" | "timesWorn"> | null;
 }): Promise<void> {
+  // Counters use Firestore increment() so concurrent writers can't clobber each
+  // other; the diff logic below only decides WHICH docs move, never the value.
   const { userId, date, kind, chosen, outfit, prevItems, prevOutfit } = input;
   const planned = kind === "plan";
   const markWorn = kind === "confirm";
@@ -1542,7 +1564,7 @@ export async function setWearForDay(input: {
         if (markWorn) batch.update(doc(db, COLLECTIONS.clothing, it.id), { status: "worn", lastWorn: date });
         continue;
       }
-      const patch: Record<string, unknown> = { timesWorn: it.timesWorn + 1, lastWorn: laterDate(it.lastWorn, date) };
+      const patch: Record<string, unknown> = { timesWorn: increment(1), lastWorn: laterDate(it.lastWorn, date) };
       if (markWorn) patch.status = "worn";
       batch.update(doc(db, COLLECTIONS.clothing, it.id), patch);
     }
@@ -1550,20 +1572,70 @@ export async function setWearForDay(input: {
   // Removed items (present in the prior confirmed log, gone now): −1 wear.
   for (const it of prevItems) {
     if (newIds.has(it.id) && !planned) continue;
-    batch.update(doc(db, COLLECTIONS.clothing, it.id), { timesWorn: Math.max(0, it.timesWorn - 1) });
+    batch.update(doc(db, COLLECTIONS.clothing, it.id), { timesWorn: increment(-1) });
   }
 
   // Outfit counters — only move when the linked outfit actually changed.
   const prevOid = prevOutfit?.id ?? null;
   const newOid = planned ? null : outfit?.id ?? null;
   if (prevOid && prevOid !== newOid) {
-    batch.update(doc(db, COLLECTIONS.clothing, prevOutfit!.id), { timesWorn: Math.max(0, prevOutfit!.timesWorn - 1) });
+    batch.update(doc(db, COLLECTIONS.clothing, prevOutfit!.id), { timesWorn: increment(-1) });
   }
   if (newOid && newOid !== prevOid && outfit) {
-    batch.update(doc(db, COLLECTIONS.clothing, outfit.id), { timesWorn: outfit.timesWorn + 1, lastWorn: laterDate(outfit.lastWorn, date) });
+    batch.update(doc(db, COLLECTIONS.clothing, outfit.id), { timesWorn: increment(1), lastWorn: laterDate(outfit.lastWorn, date) });
   }
 
   await batch.commit();
+}
+
+// --- Packing lists -----------------------------------------------------------
+// Stored in the `clothing` collection (docType "packing") so no new security
+// rules are needed; getWardrobe ignores them.
+function mapPacking(snap: QueryDocumentSnapshot<DocumentData>): PackingList {
+  const d = snap.data();
+  return {
+    id: snap.id,
+    userId: d.userId,
+    name: d.name ?? "Trip",
+    days: typeof d.days === "number" ? d.days : null,
+    itemIds: Array.isArray(d.itemIds) ? d.itemIds : [],
+    packed: Array.isArray(d.packed) ? d.packed : [],
+    createdAt: toMillis(d.createdAt),
+  };
+}
+
+export async function getPackingLists(userId: string): Promise<PackingList[]> {
+  const q = query(collection(db, COLLECTIONS.clothing), where("userId", "==", userId));
+  const snap = await getDocs(q);
+  return snap.docs
+    .filter((d) => d.data().docType === "packing")
+    .map(mapPacking)
+    .sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export async function createPackingList(
+  userId: string,
+  input: { name: string; days: number | null; itemIds: string[] }
+): Promise<string> {
+  const ref = await addDoc(collection(db, COLLECTIONS.clothing), {
+    userId,
+    docType: "packing",
+    packed: [],
+    ...input,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export async function updatePackingList(
+  id: string,
+  input: Partial<Pick<PackingList, "name" | "days" | "itemIds" | "packed">>
+): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.clothing, id), { ...input });
+}
+
+export async function deletePackingList(id: string): Promise<void> {
+  await deleteDoc(doc(db, COLLECTIONS.clothing, id));
 }
 
 // ---------------------------------------------------------------------------

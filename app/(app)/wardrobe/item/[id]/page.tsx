@@ -66,6 +66,10 @@ export default function WardrobeItemPage() {
 
   const item = useMemo(() => data.items.find((i) => i.id === itemId) ?? null, [data.items, itemId]);
   const photos = useMemo(() => (item ? [item.imageData, ...item.extraImages].filter((s): s is string => Boolean(s)) : []), [item]);
+  // Keep the selected photo valid after an edit removes photos (avoids a blank main pane).
+  useEffect(() => {
+    if (photoIndex > 0 && photoIndex >= photos.length) setPhotoIndex(Math.max(0, photos.length - 1));
+  }, [photos.length, photoIndex]);
   const inOutfits = useMemo(() => data.outfits.filter((o) => item && o.itemIds.includes(item.id)), [data.outfits, item]);
   const history = useMemo(
     () => data.wears.filter((w) => item && !w.planned && w.itemIds.includes(item.id)).sort((a, b) => (a.date < b.date ? 1 : -1)),

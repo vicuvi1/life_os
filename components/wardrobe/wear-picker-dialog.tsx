@@ -53,7 +53,10 @@ export function WearPickerDialog({ open, onOpenChange, userId, items, outfits, d
 
   useEffect(() => {
     if (!open) return;
-    setSelected(new Set(initialIds ?? []));
+    // Only seed ids that still exist; drop retired ones too (except when logging a
+    // past day, where an item worn back then may since have been retired).
+    const seedable = new Set(items.filter((i) => kind === "log" || !i.retired).map((i) => i.id));
+    setSelected(new Set((initialIds ?? []).filter((id) => seedable.has(id))));
     setPickedOutfitId(null);
     setQuery("");
     setCategory(null);
@@ -61,6 +64,7 @@ export function WearPickerDialog({ open, onOpenChange, userId, items, outfits, d
     setSaveAsOutfit(false);
     setOutfitName("");
     setAsTemplate(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialIds]);
 
   const categories = useMemo(() => categoriesInUse(items), [items]);
@@ -83,13 +87,21 @@ export function WearPickerDialog({ open, onOpenChange, userId, items, outfits, d
     const valid = new Set(items.filter((i) => !i.retired).map((i) => i.id));
     setSelected(new Set(o.itemIds.filter((id) => valid.has(id))));
     setPickedOutfitId(o.id);
+    // Starting from a saved outfit means we're not creating a new one.
+    setSaveAsOutfit(false);
+    setOutfitName("");
+    setAsTemplate(false);
   }
 
+  // Count of selections that resolve to real items — drives the button and guards
+  // against a stale selection writing an empty confirmed log.
+  const chosenCount = useMemo(() => items.filter((i) => selected.has(i.id)).length, [items, selected]);
+
   async function save() {
-    if (!userId || selected.size === 0) return;
+    const chosen = items.filter((i) => selected.has(i.id));
+    if (!userId || chosen.length === 0) return;
     setSaving(true);
     try {
-      const chosen = items.filter((i) => selected.has(i.id));
       const picked = pickedOutfitId ? outfits?.find((o) => o.id === pickedOutfitId) ?? null : null;
       let outfit: Pick<Outfit, "id" | "timesWorn" | "lastWorn"> | null = picked
         ? { id: picked.id, timesWorn: picked.timesWorn, lastWorn: picked.lastWorn }
@@ -259,14 +271,14 @@ export function WearPickerDialog({ open, onOpenChange, userId, items, outfits, d
           )}
           <div className="flex items-center gap-2">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button type="button" onClick={save} disabled={saving || selected.size === 0 || (saveAsOutfit && !outfitName.trim())}>
+          <Button type="button" onClick={save} disabled={saving || chosenCount === 0 || (!pickedOutfitId && saveAsOutfit && !outfitName.trim())}>
             {saving
               ? "Saving…"
               : kind === "confirm"
-                ? `Wear today (${selected.size})`
+                ? `Wear today (${chosenCount})`
                 : kind === "plan"
-                  ? `Plan for ${date} (${selected.size})`
-                  : `Log for ${date} (${selected.size})`}
+                  ? `Plan for ${date} (${chosenCount})`
+                  : `Log for ${date} (${chosenCount})`}
           </Button>
           </div>
         </DialogFooter>

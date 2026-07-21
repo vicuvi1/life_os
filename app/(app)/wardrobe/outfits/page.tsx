@@ -91,7 +91,9 @@ function OutfitsInner() {
   const today = toDateKey(new Date());
 
   useEffect(() => {
-    if (search?.get("type") === "template") setTab("templates");
+    const t = search?.get("type");
+    if (t === "template") setTab("templates");
+    else if (t === "favorites") setTab("favorites");
     const occ = search?.get("occasion");
     if (occ) setOccasion(occ);
   }, [search]);
@@ -116,6 +118,12 @@ function OutfitsInner() {
     return Array.from(set).sort();
   }, [data.outfits]);
 
+  // Clear a stale occasion filter (e.g. a bookmarked ?occasion= no outfit uses
+  // anymore) once data has loaded, so it can never become an invisible filter.
+  useEffect(() => {
+    if (!loading && occasion && !occasionsInUse.includes(occasion)) setOccasion(null);
+  }, [loading, occasion, occasionsInUse]);
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return data.outfits.filter((o) => {
@@ -134,10 +142,10 @@ function OutfitsInner() {
     void updateOutfit(o.id, patch).catch(() => void load({ quiet: true }));
   }
 
-  async function wearToday(o: Outfit) {
-    if (!user) return;
+  async function wearToday(o: Outfit): Promise<boolean> {
+    if (!user) return false;
     const wearItems = outfitItems(o, data.items).filter((i) => !i.retired);
-    if (wearItems.length === 0) return;
+    if (wearItems.length === 0) return false;
     // Reconcile against whatever was already confirmed for today (no double-count).
     const existing = data.wears.find((w) => w.date === today);
     const prevConfirmed = existing && !existing.planned ? existing : null;
@@ -165,6 +173,7 @@ function OutfitsInner() {
       prevOutfit,
     });
     await load({ quiet: true });
+    return true;
   }
 
   async function duplicate(o: Outfit) {
@@ -205,7 +214,12 @@ function OutfitsInner() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-        <DropdownMenuItem onClick={() => wearToday(o)}><Check className="h-4 w-4" /> Wear today</DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={outfitItems(o, data.items).filter((i) => !i.retired).length === 0}
+          onClick={() => void wearToday(o)}
+        >
+          <Check className="h-4 w-4" /> Wear today
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={() => { setEditing(o); setBuilderOpen(true); }}><Pencil className="h-4 w-4" /> Edit</DropdownMenuItem>
         <DropdownMenuItem onClick={() => duplicate(o)}><Copy className="h-4 w-4" /> Duplicate</DropdownMenuItem>
         <DropdownMenuItem onClick={() => share(o)}><Share2 className="h-4 w-4" /> Share</DropdownMenuItem>
@@ -383,7 +397,11 @@ function OutfitsInner() {
                 {detail.notes && <p className="whitespace-pre-wrap rounded-lg border bg-muted/20 p-3 text-sm">{detail.notes}</p>}
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <Button size="sm" onClick={() => { void wearToday(detail); setDetailId(null); }}>
+                  <Button
+                    size="sm"
+                    disabled={outfitItems(detail, data.items).filter((i) => !i.retired).length === 0}
+                    onClick={async () => { const ok = await wearToday(detail); if (ok) setDetailId(null); }}
+                  >
                     <Check className="h-4 w-4" /> Wear today
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => { setEditing(detail); setBuilderOpen(true); setDetailId(null); }}><Pencil className="h-4 w-4" /> Edit</Button>

@@ -1538,5 +1538,50 @@ clothes and dead weight; the calendar turns "what do I wear tomorrow" into a
   that day**, so re-confirming or editing a day never double-counts `times worn`,
   and clearing a confirmed day correctly decrements it.
 
-**Next increments.** "Surprise me" outfit randomizer, packing-list mode for
-travel, and seasonal storage filters.
+---
+
+## Wardrobe — Surprise Me, Packing Lists & Seasonal filter
+
+**What it is.** The final wardrobe increment — the everyday-convenience extras
+that finish the system: a one-tap outfit randomizer, trip packing lists, and a
+seasonal filter over your wardrobe.
+
+**How it works.**
+- **Surprise me** (button on the Overview + in the empty "today" hero): builds a
+  random wearable outfit — one item per core category (Tops / Bottoms / Footwear
+  / Outerwear) drawn only from **clean/ready/worn** items (never something in the
+  wash). **Shuffle** re-rolls; an optional **season** filter constrains it (Any /
+  In season / a specific season); **Wear it today** logs it through the same
+  reconciling write path as everything else. If nothing is wearable it says so
+  honestly instead of inventing an outfit.
+- **Packing lists** (sidebar → Wardrobe → Packing): plan a trip by name (and
+  optional day count), pick the clothes to bring from your wardrobe, then **tick
+  each item off as you pack**, grouped by category with a progress bar. Multiple
+  trips, edit/reset/delete, and items that later leave your wardrobe are dropped
+  gracefully. Stored in the existing `clothing` collection (docType "packing") —
+  no new security rules.
+- **Seasonal filter**: the wardrobe grid gains a season selector — **All seasons**,
+  **In season** (auto-detected from the month), or a specific season. Items with
+  no season tag count as all-season and always show, so nothing hides
+  unexpectedly.
+
+**Also in this release — data-integrity & UX hardening** (from an adversarial
+review of the whole wardrobe area):
+- **Atomic wear counters.** `times worn` now uses Firestore's `increment()`
+  sentinel everywhere, so concurrent writers can't clobber each other, and the
+  edit form no longer rewrites the counter on save.
+- **Legacy Routines widget** no longer shows retired items and its quick "wear"
+  now marks the item worn + updates `last worn` (consistent with laundry and
+  recently-worn), via a shared atomic helper.
+- **Retired items are reachable again** — a "Retired" filter on the wardrobe grid
+  surfaces them (and their Unretire button).
+- **The day picker validates its selection** — deleted/retired ids can no longer
+  ride along into a confirmed wear or produce an empty logged day; the button
+  count reflects only real items.
+- **Planning is reachable from the Overview** too: the "Upcoming outfits" rows
+  are now tappable (plan any of the next days), matching the Calendar.
+- Smaller fixes: honest weather-match (only real temperature ranges, e.g.
+  "18-28°C", trigger the badge), the Favorites shortcut now lands filtered, a
+  stale `?occasion=` deep link self-clears, the outfit "Wear today" action is
+  disabled (not silently ignored) when an outfit has no wearable items, and the
+  item photo viewer no longer blanks after you delete a photo.

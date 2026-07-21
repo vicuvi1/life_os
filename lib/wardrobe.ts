@@ -92,6 +92,8 @@ export interface WardrobeFilter {
   query?: string;
   category?: string | null; // null/undefined = all
   status?: WardrobeStatus | "needsIroning" | null;
+  /** A season name — items tagged with other seasons are hidden; untagged items count as all-season. */
+  season?: string | null;
   includeRetired?: boolean;
 }
 
@@ -105,6 +107,8 @@ export function filterItems(items: ClothingItem[], f: WardrobeFilter): ClothingI
     } else if (f.status && i.status !== f.status) {
       return false;
     }
+    // Season: untagged items are treated as all-season (always shown).
+    if (f.season && i.seasons.length > 0 && !i.seasons.includes(f.season)) return false;
     if (!q) return true;
     const hay = [i.name, i.brand ?? "", i.color ?? "", i.category ?? "", ...i.tags, ...i.styles, ...i.seasons]
       .join(" ")
@@ -223,3 +227,64 @@ export function monthGrid(year: number, month: number): CalendarCell[] {
 }
 
 export const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+// ---------------------------------------------------------------------------
+// Seasons
+// ---------------------------------------------------------------------------
+/** Northern-hemisphere season for a date (defaults to now). */
+export function currentSeason(date: Date = new Date()): string {
+  const m = date.getMonth(); // 0-11
+  if (m === 11 || m <= 1) return "Winter";
+  if (m <= 4) return "Spring";
+  if (m <= 7) return "Summer";
+  return "Autumn";
+}
+
+/** Seasons actually tagged on active items, ordered by the standard calendar. */
+export function seasonsInUse(items: ClothingItem[]): string[] {
+  const set = new Set<string>();
+  for (const i of items) if (!i.retired) for (const s of i.seasons) set.add(s);
+  const ordered = DEFAULT_SEASONS.filter((s) => set.has(s));
+  const extra = Array.from(set).filter((s) => !DEFAULT_SEASONS.includes(s)).sort();
+  return [...ordered, ...extra];
+}
+
+// ---------------------------------------------------------------------------
+// Outfit randomizer ("Surprise me")
+// ---------------------------------------------------------------------------
+/** Core categories a full outfit tries to cover, in display order. */
+export const CORE_CATEGORIES = ["Tops", "Bottoms", "Footwear", "Outerwear"];
+
+/**
+ * Assemble a random wearable outfit: one item per core category that has any
+ * wearable option, optionally constrained to a season. Falls back gracefully
+ * when categories are missing. Pure given the RNG, so callers control shuffling.
+ */
+export function surpriseOutfit(
+  items: ClothingItem[],
+  opts?: { season?: string | null; rng?: () => number }
+): ClothingItem[] {
+  const rng = opts?.rng ?? Math.random;
+  const pool = items.filter((i) => {
+    if (!isWearable(i)) return false;
+    if (opts?.season && i.seasons.length > 0 && !i.seasons.includes(opts.season)) return false;
+    return true;
+  });
+  const pick = (list: ClothingItem[]) => (list.length ? list[Math.floor(rng() * list.length)] : null);
+  const chosen: ClothingItem[] = [];
+  const used = new Set<string>();
+  for (const cat of CORE_CATEGORIES) {
+    const inCat = pool.filter((i) => i.category === cat && !used.has(i.id));
+    const picked = pick(inCat);
+    if (picked) {
+      chosen.push(picked);
+      used.add(picked.id);
+    }
+  }
+  // If nothing matched core categories (all uncategorized), pick a few at random.
+  if (chosen.length === 0) {
+    const shuffled = [...pool].sort(() => rng() - 0.5).slice(0, 3);
+    return shuffled;
+  }
+  return chosen;
+}
