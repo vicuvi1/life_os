@@ -190,11 +190,22 @@ export interface Session {
   createdAt: number;
 }
 
+/** A main night's sleep, or a daytime nap. */
+export type SleepKind = "sleep" | "nap";
+
 export interface SleepLog {
   id: string;
   userId: string;
   date: string; // the morning you woke up (YYYY-MM-DD)
-  hours: number; // e.g. 7.5
+  /** Main night sleep (one per day) or a nap (many per day). Defaults to "sleep". */
+  kind: SleepKind;
+  /** Clock time you went to bed, "HH:mm" (null when only a duration was logged). */
+  bedtime: string | null;
+  /** Clock time you woke, "HH:mm". */
+  wakeTime: string | null;
+  hours: number; // actual sleep duration in hours, e.g. 7.5
+  /** Minutes spent awake while in bed — time in bed minus this ≈ sleep duration. */
+  awakeMinutes: number;
   quality: number; // 1-10
   notes: string | null;
   createdAt: number;
@@ -492,6 +503,10 @@ export interface UserPrefs {
   hiddenTrackers: string[];
   /** Nightly sleep goal in hours (used for Good/Low ratings). */
   sleepTarget: number;
+  /** Target bedtime "HH:mm" (null = not set). */
+  bedtimeTarget?: string | null;
+  /** Target wake-up time "HH:mm" (null = not set). */
+  wakeTarget?: string | null;
   /** Week-score scale for the Weekly Review: rate out of 10 or out of 100. */
   reviewScale: 10 | 100;
   /** Storage monitoring & data-retention config. */

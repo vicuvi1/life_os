@@ -1,4 +1,80 @@
 import type { SleepLog } from "@/lib/types";
+import { addDays } from "@/lib/habits";
+
+const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+
+// ---------------------------------------------------------------------------
+// Clock-time helpers ("HH:mm")
+// ---------------------------------------------------------------------------
+/** "HH:mm" → minutes since midnight, or null if unparseable. */
+export function parseHM(hm: string | null | undefined): number | null {
+  if (!hm) return null;
+  const m = hm.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
+/** Hours between bedtime and wake time, wrapping past midnight. Null if either is missing. */
+export function durationHours(bedtime: string | null, wakeTime: string | null): number | null {
+  const b = parseHM(bedtime);
+  const w = parseHM(wakeTime);
+  if (b == null || w == null) return null;
+  let mins = w - b;
+  if (mins <= 0) mins += 24 * 60; // slept past midnight
+  return Math.round((mins / 60) * 100) / 100;
+}
+
+/** Total time in bed (bedtime → wake); falls back to the logged duration when no times. */
+export function timeInBedHours(log: Pick<SleepLog, "bedtime" | "wakeTime" | "hours">): number {
+  return durationHours(log.bedtime, log.wakeTime) ?? log.hours;
+}
+
+// ---------------------------------------------------------------------------
+// Sleep score (heuristic 0-100: 50% duration vs goal, 30% quality, 20% efficiency)
+// ---------------------------------------------------------------------------
+export function sleepScore(
+  log: Pick<SleepLog, "hours" | "quality" | "bedtime" | "wakeTime" | "awakeMinutes">,
+  target = 8
+): number {
+  const durationScore = clamp01(log.hours / target);
+  const qualityScore = clamp01((log.quality || 0) / 10);
+  const tib = timeInBedHours(log);
+  const efficiencyScore = tib > 0 ? clamp01(log.hours / tib) : 1;
+  return Math.round(100 * (0.5 * durationScore + 0.3 * qualityScore + 0.2 * efficiencyScore));
+}
+
+/** Label + colour for a sleep score. */
+export function scoreMeta(score: number): { label: string; color: string } {
+  if (score >= 85) return { label: "Excellent", color: "#10b981" };
+  if (score >= 70) return { label: "Good", color: "#84cc16" };
+  if (score >= 50) return { label: "Fair", color: "#f59e0b" };
+  return { label: "Poor", color: "#f43f5e" };
+}
+
+/**
+ * Consecutive nights (ending today or yesterday) that met the sleep goal. Naps
+ * are ignored. Returns 0 if neither last night nor the night before hit the goal.
+ */
+export function sleepGoalStreak(
+  logs: Pick<SleepLog, "date" | "hours" | "kind">[],
+  target: number,
+  today: string
+): number {
+  const met = new Set(
+    logs.filter((l) => l.kind !== "nap" && l.hours >= target).map((l) => l.date)
+  );
+  let cursor = met.has(today) ? today : addDays(today, -1);
+  if (!met.has(cursor)) return 0;
+  let streak = 0;
+  while (met.has(cursor)) {
+    streak++;
+    cursor = addDays(cursor, -1);
+  }
+  return streak;
+}
 
 type BadgeVariant =
   | "default"

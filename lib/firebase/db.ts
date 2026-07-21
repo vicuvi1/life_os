@@ -765,14 +765,19 @@ function mapSleepLog(snap: QueryDocumentSnapshot<DocumentData>): SleepLog {
     id: snap.id,
     userId: d.userId,
     date: d.date,
+    kind: d.kind === "nap" ? "nap" : "sleep",
+    bedtime: d.bedtime ?? null,
+    wakeTime: d.wakeTime ?? null,
     hours: d.hours ?? 0,
+    awakeMinutes: d.awakeMinutes ?? 0,
     quality: d.quality ?? 0,
     notes: d.notes ?? null,
     createdAt: toMillis(d.createdAt),
   };
 }
 
-export async function getSleepLogs(userId: string): Promise<SleepLog[]> {
+/** Every sleep doc (main sleeps + naps), newest date first. */
+export async function getSleepEntries(userId: string): Promise<SleepLog[]> {
   const q = query(
     collection(db, COLLECTIONS.sleepLogs),
     where("userId", "==", userId)
@@ -781,6 +786,11 @@ export async function getSleepLogs(userId: string): Promise<SleepLog[]> {
   return snap.docs
     .map(mapSleepLog)
     .sort((a, b) => (a.date < b.date ? 1 : -1));
+}
+
+/** Main night sleeps only (naps excluded) — the shape existing consumers expect. */
+export async function getSleepLogs(userId: string): Promise<SleepLog[]> {
+  return (await getSleepEntries(userId)).filter((l) => l.kind !== "nap");
 }
 
 export async function getSleepLog(
@@ -793,8 +803,10 @@ export async function getSleepLog(
   return mapSleepLog(snap as QueryDocumentSnapshot<DocumentData>);
 }
 
-export type SleepLogInput = Pick<SleepLog, "hours" | "quality" | "notes">;
+export type SleepLogInput = Pick<SleepLog, "hours" | "quality" | "notes"> &
+  Partial<Pick<SleepLog, "bedtime" | "wakeTime" | "awakeMinutes">>;
 
+/** Upsert the main night sleep for a day (one per day; deterministic id). */
 export async function upsertSleepLog(
   userId: string,
   date: string,
@@ -804,7 +816,36 @@ export async function upsertSleepLog(
   const existing = await getDoc(ref);
   // Only stamp createdAt on first creation so merge-writes don't reset it.
   const created = existing.exists() ? {} : { createdAt: serverTimestamp() };
-  await setDoc(ref, { userId, date, ...input, ...created }, { merge: true });
+  await setDoc(ref, { userId, date, kind: "sleep", ...input, ...created }, { merge: true });
+}
+
+/** Add a nap for a day (auto id — a day can have several). */
+export async function addNap(
+  userId: string,
+  date: string,
+  input: SleepLogInput
+): Promise<string> {
+  const ref = await addDoc(collection(db, COLLECTIONS.sleepLogs), {
+    userId,
+    date,
+    kind: "nap",
+    ...input,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+/** Patch any sleep entry (main sleep or nap) by doc id. */
+export async function updateSleepEntry(
+  id: string,
+  input: Partial<SleepLogInput & Pick<SleepLog, "date">>
+): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.sleepLogs, id), { ...input });
+}
+
+/** Delete any sleep entry by doc id (works for main sleeps and naps). */
+export async function deleteSleepEntry(id: string): Promise<void> {
+  await deleteDoc(doc(db, COLLECTIONS.sleepLogs, id));
 }
 
 export async function deleteSleepLog(
@@ -1666,6 +1707,8 @@ export async function getPrefs(userId: string): Promise<UserPrefs> {
     waterUnit: d.waterUnit ?? "glasses",
     hiddenTrackers: Array.isArray(d.hiddenTrackers) ? d.hiddenTrackers : [],
     sleepTarget: d.sleepTarget ?? 8,
+    bedtimeTarget: d.bedtimeTarget ?? null,
+    wakeTarget: d.wakeTarget ?? null,
     reviewScale: d.reviewScale === 10 ? 10 : 100,
     storage: d.storage && typeof d.storage === "object" ? (d.storage as StorageConfig) : null,
   };
@@ -1732,7 +1775,7 @@ export async function deleteDocsByIds(collectionName: string, ids: string[]): Pr
 export async function upsertPrefs(
   userId: string,
   input: Partial<
-    Pick<UserPrefs, "waterUnit" | "hiddenTrackers" | "sleepTarget" | "reviewScale">
+    Pick<UserPrefs, "waterUnit" | "hiddenTrackers" | "sleepTarget" | "bedtimeTarget" | "wakeTarget" | "reviewScale">
   >
 ): Promise<void> {
   const ref = doc(db, COLLECTIONS.prefs, userId);

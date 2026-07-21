@@ -1705,3 +1705,43 @@ remaining gaps):
 
 Everything remains fully editable from the UI — items, outfits, seasons,
 occasions, statuses, prices and plans are all data in Firestore, no code needed.
+
+---
+
+## 🌙 Sleep — Foundation (Milestone 1)
+
+**What it is.** A real daily sleep tracker: a dashboard, richer logging (times +
+naps), a week chart, a month calendar, goals, and searchable history.
+
+**Dashboard.**
+- **Sleep score** (0-100 ring) for last night, blending duration-vs-goal (50%),
+  quality (30%) and efficiency — time asleep ÷ time in bed (20%).
+- **Duration, bedtime, wake-up, time in bed, quality**, a **goal-progress** bar,
+  and your **current streak** (consecutive nights meeting the goal).
+- KPI tiles: 7-day average duration, 7-day average score, current streak, and an
+  inline-editable nightly goal.
+
+**Logging.**
+- **Log sleep / Edit sleep / Add nap** quick actions. Enter **bedtime + wake-up**
+  and the duration is computed automatically (wrapping past midnight), or just
+  type a duration (handy for naps). Optional **awake-during-the-night** minutes
+  refine sleep-vs-time-in-bed. Quality slider (1-10) and notes.
+- **Naps** are tracked as separate sessions, so a day can have a main sleep plus
+  several naps — "multiple sleep sessions" without disturbing the nightly record.
+
+**Calendar & history.**
+- **This week** bar chart — one bar per night, height = duration, colour = score,
+  tap to open that day.
+- **Month calendar** — every night colour-coded by score with its duration; a ☀️
+  marks days with naps; tap any day to log or edit it.
+- **History** list of every night and nap with a **date search**, each row
+  editable.
+
+**Goals.** Set **target duration**, **target bedtime**, and **target wake-up** —
+all editable inline and stored per-user.
+
+**Under the hood.** The main night sleep stays one-per-day (deterministic id, so
+the dashboard/insights/calendar keep working unchanged); naps are extra docs in
+the same `sleepLogs` collection and are excluded from the legacy night-only
+queries. Sleep scores/streaks are computed client-side — no schema migration
+needed, and older logs (hours + quality only) still render correctly.
