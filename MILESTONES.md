@@ -1467,3 +1467,33 @@ a new **Wardrobe** section in the sidebar (Wardrobe · Laundry).
 **Next increments.** Outfits & Templates pages, Statistics (incl. wardrobe
 cost-per-wear ranking + gap analysis), the full Outfit Calendar, "Surprise me"
 randomizer, packing lists, and seasonal storage filters.
+
+---
+
+## Wardrobe — Outfits & Templates
+
+**What it is.** The second wardrobe increment: build, manage, rate, and wear
+saved outfits — with templates as reusable go-tos.
+
+**How it works.**
+- **Outfits page** (sidebar → Outfits): every saved outfit as a card with its
+  item photo strip, Template/Custom badge, occasion tags, ★ rating, favorite ❤️,
+  and worn count / last-worn. Filter tabs (**All / Templates / Favorites**), an
+  occasion filter row, and search.
+- **Outfit builder.** Pick items from a filterable grid (search + category
+  chips, retired items excluded), name it, tag **occasions** (user-extensible:
+  University, Gym, Rainy Day…), optionally set a manual **weather fit** range
+  ("18-28°C, sunny") and notes, and save as a **Template** or one-off Custom.
+- **Outfit detail.** Item photos linking to their detail pages, stats (worn,
+  last worn, weather fit), a **click-to-set star rating**, notes, and full
+  actions: **Wear today · Edit · Duplicate · Share · Delete** (share uses the
+  system share sheet or copies a text summary).
+- **Wear today from an outfit** logs the day and bumps counters on the outfit
+  *and* every item (marking them Worn).
+- **Quick Templates row** on the Overview: shortcut chips for Templates,
+  Favorites, and every occasion in use (with counts) that filter straight into
+  the Outfits page. The row reflects the tags you actually use, so adding or
+  renaming happens naturally through your outfits.
+- **Start from an outfit** in the day picker: picking today's clothes now offers
+  your saved outfits as one-tap starting points; tweaking the selection turns it
+  back into an ad-hoc combination.

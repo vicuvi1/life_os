@@ -17,13 +17,15 @@ import { confirmWear, upsertWearLog, createOutfit } from "@/lib/firebase/db";
 import { categoriesInUse, filterItems, isWearable } from "@/lib/wardrobe";
 import { toDateKey } from "@/lib/greeting";
 import { cn } from "@/lib/utils";
-import type { ClothingItem } from "@/lib/types";
+import type { ClothingItem, Outfit } from "@/lib/types";
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   userId: string;
   items: ClothingItem[];
+  /** Saved outfits offered as one-tap starting points. */
+  outfits?: Outfit[];
   /** Date to assign (YYYY-MM-DD). Today = confirm wear; future = plan. */
   date: string;
   /** Pre-selected item ids (e.g. re-planning an existing day). */
@@ -32,10 +34,11 @@ interface Props {
 }
 
 /** Pick items for a day — wear it now (today) or plan it (future date). */
-export function WearPickerDialog({ open, onOpenChange, userId, items, date, initialIds, onSaved }: Props) {
+export function WearPickerDialog({ open, onOpenChange, userId, items, outfits, date, initialIds, onSaved }: Props) {
   const today = toDateKey(new Date());
   const isToday = date === today;
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [pickedOutfitId, setPickedOutfitId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string | null>(null);
   const [cleanOnly, setCleanOnly] = useState(true);
@@ -47,6 +50,7 @@ export function WearPickerDialog({ open, onOpenChange, userId, items, date, init
   useEffect(() => {
     if (!open) return;
     setSelected(new Set(initialIds ?? []));
+    setPickedOutfitId(null);
     setQuery("");
     setCategory(null);
     setCleanOnly(true);
@@ -62,6 +66,7 @@ export function WearPickerDialog({ open, onOpenChange, userId, items, date, init
   }, [items, query, category, cleanOnly, selected]);
 
   function toggle(item: ClothingItem) {
+    setPickedOutfitId(null); // manual changes make it an ad-hoc combination
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(item.id)) next.delete(item.id);
@@ -70,13 +75,20 @@ export function WearPickerDialog({ open, onOpenChange, userId, items, date, init
     });
   }
 
+  function startFromOutfit(o: Outfit) {
+    const valid = new Set(items.filter((i) => !i.retired).map((i) => i.id));
+    setSelected(new Set(o.itemIds.filter((id) => valid.has(id))));
+    setPickedOutfitId(o.id);
+  }
+
   async function save() {
     if (!userId || selected.size === 0) return;
     setSaving(true);
     try {
       const chosen = items.filter((i) => selected.has(i.id));
-      let outfitId: string | null = null;
-      if (saveAsOutfit && outfitName.trim()) {
+      const picked = pickedOutfitId ? outfits?.find((o) => o.id === pickedOutfitId) ?? null : null;
+      let outfitId: string | null = picked?.id ?? null;
+      if (!picked && saveAsOutfit && outfitName.trim()) {
         outfitId = await createOutfit(userId, {
           name: outfitName.trim(),
           type: asTemplate ? "template" : "custom",
@@ -89,7 +101,12 @@ export function WearPickerDialog({ open, onOpenChange, userId, items, date, init
         });
       }
       if (isToday) {
-        await confirmWear(userId, date, chosen, outfitId ? { id: outfitId, timesWorn: 0 } : null);
+        await confirmWear(
+          userId,
+          date,
+          chosen,
+          outfitId ? { id: outfitId, timesWorn: picked?.timesWorn ?? 0 } : null
+        );
       } else {
         await upsertWearLog(userId, date, chosen.map((i) => i.id), outfitId, true);
       }
@@ -111,6 +128,29 @@ export function WearPickerDialog({ open, onOpenChange, userId, items, date, init
               : "Select items to plan for that day. Nothing is marked worn until you confirm."}
           </DialogDescription>
         </DialogHeader>
+
+        {outfits && outfits.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Start from an outfit</p>
+            <div className="flex gap-1.5 overflow-x-auto pb-1">
+              {outfits.map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  onClick={() => startFromOutfit(o)}
+                  className={cn(
+                    "shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition",
+                    pickedOutfitId === o.id
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-input text-muted-foreground hover:bg-accent"
+                  )}
+                >
+                  {o.type === "template" ? "★ " : ""}{o.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
           <Input placeholder="Search items…" value={query} onChange={(e) => setQuery(e.target.value)} className="h-9 min-w-[140px] flex-1" />
@@ -154,7 +194,7 @@ export function WearPickerDialog({ open, onOpenChange, userId, items, date, init
           </div>
         )}
 
-        <div className="space-y-2 rounded-xl border bg-muted/20 p-3">
+        <div className={cn("space-y-2 rounded-xl border bg-muted/20 p-3", pickedOutfitId && "hidden")}>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={saveAsOutfit} onChange={(e) => setSaveAsOutfit(e.target.checked)} className="h-4 w-4 rounded border-input" />
             Save this combination as an outfit

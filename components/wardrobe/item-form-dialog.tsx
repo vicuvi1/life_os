@@ -17,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { createClothing, updateClothing, type ClothingInput } from "@/lib/firebase/db";
 import { compressImageToThumbnail } from "@/lib/images";
 import { DEFAULT_CATEGORIES, DEFAULT_SEASONS, DEFAULT_STYLES } from "@/lib/wardrobe";
-import { cn } from "@/lib/utils";
+import { TagChips } from "@/components/wardrobe/tag-chips";
 import type { ClothingItem } from "@/lib/types";
 
 const MAX_PHOTOS = 4; // primary + 3 extra, all inline in one Firestore doc
@@ -28,59 +28,6 @@ interface Props {
   userId: string;
   item?: ClothingItem | null;
   onSaved: () => void;
-}
-
-/** Toggleable chip list with a free-text "add your own" input. */
-function TagChips({ value, onChange, suggestions, addLabel }: {
-  value: string[];
-  onChange: (next: string[]) => void;
-  suggestions: string[];
-  addLabel: string;
-}) {
-  const [custom, setCustom] = useState("");
-  const all = [...suggestions, ...value.filter((v) => !suggestions.includes(v))];
-  function toggle(tag: string) {
-    onChange(value.includes(tag) ? value.filter((t) => t !== tag) : [...value, tag]);
-  }
-  function addCustom() {
-    const t = custom.trim();
-    if (!t) return;
-    if (!value.includes(t)) onChange([...value, t]);
-    setCustom("");
-  }
-  return (
-    <div className="space-y-1.5">
-      <div className="flex flex-wrap gap-1.5">
-        {all.map((tag) => (
-          <button
-            key={tag}
-            type="button"
-            onClick={() => toggle(tag)}
-            className={cn(
-              "rounded-full border px-2.5 py-0.5 text-xs font-medium transition",
-              value.includes(tag)
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-input text-muted-foreground hover:bg-accent"
-            )}
-          >
-            {tag}
-          </button>
-        ))}
-      </div>
-      <div className="flex gap-1.5">
-        <Input
-          value={custom}
-          onChange={(e) => setCustom(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustom(); } }}
-          placeholder={addLabel}
-          className="h-7 flex-1 text-xs"
-        />
-        <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={addCustom} disabled={!custom.trim()}>
-          Add
-        </Button>
-      </div>
-    </div>
-  );
 }
 
 export function ItemFormDialog({ open, onOpenChange, userId, item, onSaved }: Props) {

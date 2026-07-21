@@ -13,6 +13,7 @@ import {
   CalendarDays,
   WashingMachine,
   ChevronRight,
+  Layers,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -171,6 +172,9 @@ export default function WardrobeOverviewPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" asChild>
+            <Link href="/wardrobe/outfits"><Layers className="h-4 w-4" /> Outfits</Link>
+          </Button>
+          <Button variant="outline" asChild>
             <Link href="/wardrobe/laundry"><WashingMachine className="h-4 w-4" /> Laundry</Link>
           </Button>
           <Button onClick={() => setFormOpen(true)}>
@@ -270,6 +274,23 @@ export default function WardrobeOverviewPage() {
                 </div>
               </div>
             </Card>
+
+            {/* Quick templates — occasion shortcuts into Outfits */}
+            {outfits.length > 0 && (
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                <QuickShortcut href="/wardrobe/outfits?type=template" icon="★" label="Templates" count={outfits.filter((o) => o.type === "template").length} />
+                <QuickShortcut href="/wardrobe/outfits" icon="❤️" label="Favorites" count={outfits.filter((o) => o.favorite).length} />
+                {Array.from(new Set(outfits.flatMap((o) => o.occasions))).sort().map((occ) => (
+                  <QuickShortcut
+                    key={occ}
+                    href={`/wardrobe/outfits?occasion=${encodeURIComponent(occ)}`}
+                    icon="👔"
+                    label={occ}
+                    count={outfits.filter((o) => o.occasions.includes(occ)).length}
+                  />
+                ))}
+              </div>
+            )}
 
             {/* Wardrobe grid */}
             <Card className="overflow-hidden">
@@ -423,6 +444,7 @@ export default function WardrobeOverviewPage() {
             onOpenChange={setPickerOpen}
             userId={user.uid}
             items={items}
+            outfits={outfits}
             date={today}
             initialIds={todayWear?.itemIds}
             onSaved={() => load({ quiet: true })}
@@ -430,6 +452,16 @@ export default function WardrobeOverviewPage() {
         </>
       )}
     </div>
+  );
+}
+
+function QuickShortcut({ href, icon, label, count }: { href: string; icon: string; label: string; count: number }) {
+  return (
+    <Link href={href} className="flex shrink-0 items-center gap-2 rounded-xl border bg-card px-3 py-2 text-sm transition hover:border-primary/40 hover:bg-accent">
+      <span>{icon}</span>
+      <span className="font-medium">{label}</span>
+      <span className="rounded-full bg-secondary px-1.5 text-xs tabular-nums text-muted-foreground">{count}</span>
+    </Link>
   );
 }
 

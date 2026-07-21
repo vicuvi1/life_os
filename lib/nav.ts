@@ -5,6 +5,7 @@ import {
   CheckSquare,
   Shirt,
   WashingMachine,
+  Layers,
   Flame,
   CalendarClock,
   Moon,
@@ -60,6 +61,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Wardrobe",
     items: [
       { href: "/wardrobe", label: "Wardrobe", icon: Shirt },
+      { href: "/wardrobe/outfits", label: "Outfits", icon: Layers },
       { href: "/wardrobe/laundry", label: "Laundry", icon: WashingMachine },
     ],
   },
