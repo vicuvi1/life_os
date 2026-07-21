@@ -1399,3 +1399,28 @@ flash.
 Compact) to open a quick editor and change its **emoji** and **color** right
 there — changes apply instantly, no need to open the full Edit form. (The full
 form still has both too.)
+
+---
+
+## Habits — "Today" hero summary + table polish
+
+**What it is.** The five plain KPI cards are replaced by one actionable hero, and
+the tracker table got a batch of polish.
+- **Today hero.** One card shows **X / Y habits complete** with a big progress bar
+  and %, **estimated time left** today (from your incomplete habits' durations),
+  and your **longest current streak** — plus a **Remaining today** checklist you
+  can tick straight from the summary.
+- **Today column highlighted.** Today's whole column (header + cells) gets a subtle
+  purple tint so it's easy to find.
+- **Visible progress bars.** Each habit row shows a real progress bar (not just a
+  %), always on.
+- **Rich hover.** Hovering a cell shows the date, status, logged value, the time it
+  was logged, and any note.
+- **More right-click / menu actions.** The ⋯ menu now also has **Emoji & color**,
+  **Duplicate**, plus the existing Statistics / Edit day / Edit habit / Move
+  up-down / Archive / Delete.
+- **Taller, sticky table.** The grid scrolls with a **sticky header and habit
+  column**, so many habits stay readable.
+
+> Still on the wishlist for a focused follow-up: **row-expand** (click a habit to
+> reveal history/graph/notes inline) and **collapsible category groups**.

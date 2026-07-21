@@ -7,11 +7,9 @@ import {
   Flame,
   Plus,
   Check,
-  Target,
-  TrendingUp,
-  TrendingDown,
-  ListChecks,
-  Award,
+  Clock,
+  Copy,
+  Palette,
   ChevronLeft,
   ChevronRight,
   MoreVertical,
@@ -75,7 +73,6 @@ import { HabitFormDialog } from "@/components/habits/habit-form-dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { cn } from "@/lib/utils";
 import type { Habit, HabitLog } from "@/lib/types";
-import type { LucideIcon } from "lucide-react";
 
 const WINDOW = 28; // 4 weeks
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -89,6 +86,15 @@ function rangeLabel(first: string, last: string): string {
   const a = fmtDay(first);
   const b = fmtDay(last);
   return `${a.day} ${a.month} – ${b.day} ${b.month}`;
+}
+function cellTitle(key: string, status: DayStatus, log?: { value: number | null; note: string | null; createdAt: number }): string {
+  const d = fmtDay(key);
+  const word = status === "completed" ? "Completed" : status === "partial" ? "Partial" : status === "missed" ? "Missed" : "Not done";
+  const parts = [`${d.day} ${d.month}`, word];
+  if (log?.value != null) parts.push(String(log.value));
+  if (log?.createdAt) parts.push(new Date(log.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+  if (log?.note) parts.push(log.note);
+  return parts.join("  ·  ");
 }
 function monthKeysOf(anchorKey: string): { keys: string[]; label: string } {
   const d = new Date(anchorKey + "T00:00:00");
@@ -190,7 +196,6 @@ export default function HabitsPage() {
   // Window end is derived from the LIVE today, so it never goes stale at midnight.
   const anchorEnd = useMemo(() => addDays(today, -windowOffset * windowDays), [today, windowOffset, windowDays]);
   const keys = useMemo(() => lastNDays(anchorEnd, windowDays), [anchorEnd, windowDays]);
-  const prevKeys = useMemo(() => lastNDays(addDays(keys[0], -1), windowDays), [keys, windowDays]);
 
   const activeHabits = useMemo(() => habits.filter((h) => !h.archived), [habits]);
   const archivedCount = habits.length - activeHabits.length;
@@ -232,15 +237,6 @@ export default function HabitsPage() {
   }, [filteredHabits, logMap, keys, today]);
 
   const allTally = useMemo(() => tallyStatuses(grid.flatMap((g) => g.cells.map((c) => c.status))), [grid]);
-  const prevTally = useMemo(() => {
-    const statuses: DayStatus[] = filteredHabits.flatMap((h) => {
-      const createdKey = toDateKey(new Date(h.createdAt));
-      const perDate = logMap.get(h.id) ?? new Map<string, HabitLog>();
-      return prevKeys.map((k) => dayStatus(h, perDate.get(k), k, today, createdKey));
-    });
-    return tallyStatuses(statuses);
-  }, [filteredHabits, logMap, prevKeys, today]);
-  const hasBaseline = prevTally.scheduled > 0;
 
   // Streaks computed live from logs (so toggling updates instantly, no refetch).
   const streaksByHabit = useMemo(() => {
@@ -251,9 +247,6 @@ export default function HabitsPage() {
     }
     return m;
   }, [habits, logsByHabit, today]);
-  const currentStreakMax = filteredHabits.reduce((m, h) => Math.max(m, streaksByHabit.get(h.id)?.streak ?? 0), 0);
-  const bestStreakMax = filteredHabits.reduce((m, h) => Math.max(m, streaksByHabit.get(h.id)?.best ?? 0), 0);
-  const trend = allTally.rate - prevTally.rate;
   const topStreak = useMemo(() => {
     let top: { habit: Habit; streak: number } | null = null;
     for (const h of filteredHabits) {
@@ -304,10 +297,21 @@ export default function HabitsPage() {
     return m;
   }, [filteredHabits, logMap, yearKeys, today]);
 
-  const doneToday = activeHabits.filter((h) => {
-    const log = logMap.get(h.id)?.get(today);
-    return log ? isLogDone(h, log) : false;
-  }).length;
+  // Today summary (hero): completed count, what's left, and rough time remaining.
+  const remainingToday = useMemo(
+    () =>
+      activeHabits.filter((h) => {
+        const log = logMap.get(h.id)?.get(today);
+        return !(log && isLogDone(h, log));
+      }),
+    [activeHabits, logMap, today]
+  );
+  const doneToday = activeHabits.length - remainingToday.length;
+  const todayPct = activeHabits.length > 0 ? (doneToday / activeHabits.length) * 100 : 0;
+  const timeLeftMin = useMemo(
+    () => remainingToday.reduce((s, h) => s + (h.targetType === "duration" && h.targetValue ? h.targetValue : 5), 0),
+    [remainingToday]
+  );
 
   async function setArchived(habit: Habit, archived: boolean) {
     setHabits((prev) => prev.map((h) => (h.id === habit.id ? { ...h, archived } : h)));
@@ -322,6 +326,28 @@ export default function HabitsPage() {
     if (!user || !appearanceId) return;
     setHabits((prev) => prev.map((h) => (h.id === appearanceId ? { ...h, ...patch } : h)));
     void updateHabit(appearanceId, patch).catch(() => void load({ quiet: true }));
+  }
+
+  async function duplicateHabit(habit: Habit) {
+    if (!user) return;
+    try {
+      await createHabit(user.uid, {
+        title: `${habit.title} (copy)`,
+        description: habit.description,
+        emoji: habit.emoji,
+        tags: habit.tags,
+        frequency: habit.frequency,
+        category: habit.category,
+        color: habit.color,
+        targetType: habit.targetType,
+        targetValue: habit.targetValue,
+        difficulty: habit.difficulty,
+        archived: false,
+      });
+      await load({ quiet: true });
+    } catch {
+      await load({ quiet: true });
+    }
   }
 
   async function moveHabit(habit: Habit, dir: -1 | 1) {
@@ -413,6 +439,8 @@ export default function HabitsPage() {
         <DropdownMenuItem onClick={() => setStatsHabit(habit)}><BarChart3 className="h-4 w-4" /> Statistics</DropdownMenuItem>
         <DropdownMenuItem onClick={() => setNoteTarget({ habit, date: today })}><StickyNote className="h-4 w-4" /> Edit today</DropdownMenuItem>
         <DropdownMenuItem onClick={() => { setEditing(habit); setFormOpen(true); }}><Pencil className="h-4 w-4" /> Edit habit</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setAppearanceId(habit.id)}><Palette className="h-4 w-4" /> Emoji &amp; color</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => duplicateHabit(habit)}><Copy className="h-4 w-4" /> Duplicate</DropdownMenuItem>
         <DropdownMenuItem onClick={() => moveHabit(habit, -1)}><ArrowUp className="h-4 w-4" /> Move up</DropdownMenuItem>
         <DropdownMenuItem onClick={() => moveHabit(habit, 1)}><ArrowDown className="h-4 w-4" /> Move down</DropdownMenuItem>
         <DropdownMenuItem onClick={() => setArchived(habit, !habit.archived)}>
@@ -474,17 +502,6 @@ export default function HabitsPage() {
         </div>
       </div>
 
-      {!loading && topStreak && topStreak.streak >= 3 && (
-        <div className="flex items-center gap-2 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-4 py-2.5 text-sm">
-          <span className="text-lg">🔥</span>
-          <span>
-            <span className="font-semibold text-orange-500">{topStreak.streak}-day streak</span> on{" "}
-            {topStreak.habit.emoji ? `${topStreak.habit.emoji} ` : ""}
-            {topStreak.habit.title} — don&apos;t break it!
-          </span>
-        </div>
-      )}
-
       {loading ? (
         <div className="space-y-3">
           <SkeletonCard lines={4} />
@@ -505,20 +522,63 @@ export default function HabitsPage() {
         </Card>
       ) : (
         <>
-          {/* KPI row */}
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-5">
-            <Stat icon={ListChecks} tint="bg-emerald-500/15 text-emerald-500" label="Total habits" value={String(filteredHabits.length)} sub="Active habits" />
-            <Stat icon={Target} tint="bg-violet-500/15 text-violet-500" label="Completion rate" value={`${Math.round(allTally.rate)}%`} sub="This period" />
-            <Stat icon={Flame} tint="bg-orange-500/15 text-orange-500" label="Current streak" value={`${currentStreakMax} ${currentStreakMax === 1 ? "day" : "days"}`} sub={`Best ${bestStreakMax} days`} />
-            <Stat icon={Award} tint="bg-amber-500/15 text-amber-500" label="Total completions" value={allTally.completed.toLocaleString()} sub="This period" />
-            <Stat
-              icon={!hasBaseline ? TrendingUp : trend >= 0 ? TrendingUp : TrendingDown}
-              tint={!hasBaseline ? "bg-muted text-muted-foreground" : trend >= 0 ? "bg-emerald-500/15 text-emerald-500" : "bg-rose-500/15 text-rose-500"}
-              label="Success trend"
-              value={hasBaseline ? `${trend >= 0 ? "+" : ""}${Math.round(trend)}%` : "New"}
-              sub={hasBaseline ? "vs last 4 weeks" : "no prior data yet"}
-            />
-          </div>
+          {/* Today hero summary */}
+          <Card className="overflow-hidden">
+            <div className="grid gap-5 p-5 lg:grid-cols-[1.45fr_1fr]">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Today</p>
+                <div className="mt-1 flex items-end gap-2">
+                  <span className="text-3xl font-bold tabular-nums">{doneToday} / {activeHabits.length}</span>
+                  <span className="pb-1 text-sm text-muted-foreground">habits complete · {Math.round(todayPct)}%</span>
+                </div>
+                <div className="mt-3 h-3 overflow-hidden rounded-full bg-muted">
+                  <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${Math.max(2, todayPct)}%` }} />
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-500/15 text-sky-500"><Clock className="h-4 w-4" /></span>
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground">Est. time left</p>
+                      <p className="font-semibold tabular-nums">{remainingToday.length === 0 ? "Done 🎉" : `~${timeLeftMin} min`}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-orange-500/15 text-orange-500"><Flame className="h-4 w-4" /></span>
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground">Longest streak</p>
+                      <p className="truncate font-semibold">
+                        {topStreak && topStreak.streak > 0 ? `${topStreak.habit.emoji ? topStreak.habit.emoji + " " : ""}${topStreak.habit.title} · ${topStreak.streak}d` : "—"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl border bg-muted/20 p-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Remaining today</p>
+                {remainingToday.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-muted-foreground">All done for today 🎉</p>
+                ) : (
+                  <ul className="max-h-44 space-y-1 overflow-y-auto">
+                    {remainingToday.map((h) => {
+                      const c = h.color ?? DEFAULT_HABIT_COLOR;
+                      const st = dayStatus(h, logMap.get(h.id)?.get(today), today, today, toDateKey(new Date(h.createdAt)));
+                      return (
+                        <li key={h.id}>
+                          <button onClick={() => toggleCell(h, today, st)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition hover:bg-accent">
+                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-sm" style={{ backgroundColor: `${c}22` }}>
+                              {h.emoji || <span className="h-2 w-2 rounded-full" style={{ backgroundColor: c }} />}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate">{h.title}</span>
+                            <span className="h-4 w-4 shrink-0 rounded-full border border-muted-foreground/40" />
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </Card>
 
           {/* Filter bar */}
           <div className="flex flex-wrap items-center gap-2 rounded-2xl border bg-surface p-2">
@@ -563,18 +623,18 @@ export default function HabitsPage() {
             {grid.length === 0 ? (
               <CardContent className="p-10 text-center text-sm text-muted-foreground">No habits match this filter.</CardContent>
             ) : viewMode === "table" ? (
-              <div className="overflow-x-auto">
+              <div className="max-h-[68vh] overflow-auto">
                 <table className="w-full border-collapse text-sm">
-                  <thead>
+                  <thead className="sticky top-0 z-20 bg-card">
                     <tr className="border-b">
-                      <th className="sticky left-0 z-10 bg-card px-3 py-2 text-left align-bottom">
+                      <th className="sticky left-0 z-30 bg-card px-3 py-2 text-left align-bottom">
                         <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Habit</span>
                       </th>
                       {keys.map((k) => {
                         const { wd, day } = fmtDay(k);
                         const isToday = k === today;
                         return (
-                          <th key={k} className={cn("w-[34px] px-0 py-1 text-center align-bottom", isToday && "text-primary")}>
+                          <th key={k} className={cn("w-[34px] px-0 py-1 text-center align-bottom", isToday && "bg-primary/5 text-primary")}>
                             <div className="text-[9px] uppercase text-muted-foreground">{wd[0]}</div>
                             <div className={cn("text-[11px] tabular-nums", isToday ? "font-bold text-primary" : "text-muted-foreground")}>{day}</div>
                           </th>
@@ -624,7 +684,7 @@ export default function HabitsPage() {
                             </div>
                           </td>
                           {cells.map((c) => (
-                            <td key={c.key} className="p-0.5 text-center">
+                            <td key={c.key} className={cn("p-0.5 text-center", c.key === today && "bg-primary/5")}>
                               <StatusCell
                                 status={c.status}
                                 color={color}
@@ -633,6 +693,7 @@ export default function HabitsPage() {
                                 disabled={c.key > today}
                                 hasNote={Boolean(c.log?.note)}
                                 animate={poppedCell === `${habit.id}:${c.key}`}
+                                title={cellTitle(c.key, c.status, c.log)}
                                 onClick={() => toggleCell(habit, c.key, c.status)}
                                 onNote={() => setNoteTarget({ habit, date: c.key })}
                               />
@@ -640,8 +701,8 @@ export default function HabitsPage() {
                           ))}
                           <td className="px-2 py-2">
                             <div className="flex items-center justify-end gap-2">
-                              <div className="hidden h-1.5 w-16 overflow-hidden rounded-full bg-muted sm:block">
-                                <div className="h-full rounded-full" style={{ width: `${Math.round(tally.rate)}%`, backgroundColor: color }} />
+                              <div className="h-2 w-20 overflow-hidden rounded-full bg-muted">
+                                <div className="h-full rounded-full transition-all" style={{ width: `${Math.round(tally.rate)}%`, backgroundColor: color }} />
                               </div>
                               <span className="w-9 text-right text-xs tabular-nums text-muted-foreground">{Math.round(tally.rate)}%</span>
                               {renderMenu(habit)}
@@ -679,7 +740,7 @@ export default function HabitsPage() {
                       </div>
                       <div className="hidden items-center gap-0.5 md:flex">
                         {recent.map((c) => (
-                          <StatusCell key={c.key} status={c.status} color={color} value={c.log?.value ?? null} showNumber={false} disabled={c.key > today} hasNote={Boolean(c.log?.note)} animate={poppedCell === `${habit.id}:${c.key}`} onClick={() => toggleCell(habit, c.key, c.status)} onNote={() => setNoteTarget({ habit, date: c.key })} />
+                          <StatusCell key={c.key} status={c.status} color={color} value={c.log?.value ?? null} showNumber={false} disabled={c.key > today} hasNote={Boolean(c.log?.note)} animate={poppedCell === `${habit.id}:${c.key}`} title={cellTitle(c.key, c.status, c.log)} onClick={() => toggleCell(habit, c.key, c.status)} onNote={() => setNoteTarget({ habit, date: c.key })} />
                         ))}
                       </div>
                       <span className="flex shrink-0 items-center gap-1 text-sm font-semibold text-orange-500"><Flame className="h-3.5 w-3.5" />{streak}</span>
@@ -932,17 +993,6 @@ export default function HabitsPage() {
 }
 
 // ---------------------------------------------------------------------------
-function Stat({ icon: Icon, tint, label, value, sub }: { icon: LucideIcon; tint: string; label: string; value: string; sub: string }) {
-  return (
-    <Card className="p-4">
-      <span className={cn("flex h-9 w-9 items-center justify-center rounded-lg", tint)}><Icon className="h-4 w-4" /></span>
-      <p className="mt-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-0.5 text-2xl font-bold tabular-nums">{value}</p>
-      <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>
-    </Card>
-  );
-}
-
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <Card className="overflow-hidden">
@@ -954,8 +1004,8 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-function StatusCell({ status, color, value, showNumber, disabled, hasNote, animate, onClick, onNote }: {
-  status: DayStatus; color: string; value: number | null; showNumber: boolean; disabled: boolean; hasNote: boolean; animate?: boolean; onClick: () => void; onNote: () => void;
+function StatusCell({ status, color, value, showNumber, disabled, hasNote, animate, title, onClick, onNote }: {
+  status: DayStatus; color: string; value: number | null; showNumber: boolean; disabled: boolean; hasNote: boolean; animate?: boolean; title?: string; onClick: () => void; onNote: () => void;
 }) {
   const base = cn(
     "relative mx-auto flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold tabular-nums transition",
@@ -989,7 +1039,7 @@ function StatusCell({ status, color, value, showNumber, disabled, hasNote, anima
       className={cn(base, cls)}
       style={style}
       aria-label={label}
-      title={hasNote ? "Has a note · right-click to edit" : "Right-click to add a note"}
+      title={title ?? label}
     >
       {content}
       {hasNote && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-sky-400 ring-1 ring-card" />}
