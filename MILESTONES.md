@@ -1866,3 +1866,38 @@ live in the existing `decisions` collection discriminated by `docType` — that
 collection is only ever read by direct doc id, so hub docs are invisible to
 existing code and no new security rules were needed. Provider keys live on the
 prefs doc alongside the Telegram token.
+
+---
+
+## 🌙 Sleep — dashboard polish (from design review)
+
+- **Adaptive hero.** With no data logged it's one inviting card ("Good
+  morning 🌙 · Log last night"); once a night is logged it transforms into a
+  unified strip — **Sleep score · Duration (+ vs-goal + 7-day mini-bars +
+  bedtime→wake) · Recovery · Today's energy** — instead of four half-empty cards.
+- **Today's recommendation** is now a short, prioritised **list** of concrete
+  tips (skip hard training, hydrate, earlier bedtime…) with a one-tap Telegram send.
+- **Calendar** gains a **Month ⇄ Year** toggle, and tapping any day opens a
+  **side panel** with that night's score, duration, times, recovery, quality,
+  naps and morning check-in.
+- **Sleep trend** shows **Avg / Goal / Diff** above the line and rings the
+  **best (green) and worst (red)** night; the **bedtime chart shades the ideal
+  window** around your target bedtime.
+- **Streaks** add **🏆 Longest** and a progress ring (current vs longest).
+- **Sleep summary** now reports the daily-useful set: **average score, average
+  duration, consistency, average recovery, and sleep debt** — with a dedicated
+  **sleep-debt bar**.
+- **Monthly goal** is a real **mini-calendar** (✓ hit / ✕ missed / number) you
+  can tap into the day panel.
+- **Morning check-in** is richer: **mood · energy · stress · recovered · notes**
+  (stored for later correlations).
+- **Routines** get a **progress bar**, a **"by HH:MM" finish time**, and
+  **Mark-all / Reset** quick actions.
+- **Life Agent card** ties Sleep into the Agent Hub — last night's summary plus
+  computed **best focus window, workout readiness, and suggested bedtime**, with
+  a link into the Sleep Agent chat.
+
+**Deferred (needs a device/integration, not faked):** a deep-sleep/REM
+**timeline** and **Apple Health / smartwatch import** require a wearable; a
+full **sleep↔habits/mood/productivity correlations** view is a larger analytics
+pass — all flagged in-app rather than mocked.

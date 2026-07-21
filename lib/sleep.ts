@@ -256,6 +256,20 @@ export function consistencyStreak(
   return streakCount(ok, today);
 }
 
+/** Longest run of consecutive goal-met nights anywhere in history. */
+export function longestGoalStreak(logs: Pick<SleepLog, "date" | "hours" | "kind">[], target: number): number {
+  const met = logs.filter((l) => l.kind !== "nap" && l.hours >= target && l.hours > 0).map((l) => l.date).sort();
+  let best = 0;
+  let run = 0;
+  let prev: string | null = null;
+  for (const d of met) {
+    run = prev && addDays(prev, 1) === d ? run + 1 : 1;
+    prev = d;
+    if (run > best) best = run;
+  }
+  return best;
+}
+
 // ---------------------------------------------------------------------------
 // Recovery, energy, recommendation
 // ---------------------------------------------------------------------------
@@ -277,6 +291,20 @@ export function energyToday(recovery: number, goalStreak: number): number {
   return Math.round(clamp01((recovery + Math.min(8, goalStreak)) / 100) * 100);
 }
 
+/** Average recovery over the last `days` logged nights (each vs its trailing debt). */
+export function averageRecovery(
+  logs: SleepLog[],
+  target: number,
+  today: string,
+  days = 7
+): number | null {
+  const cutoff = addDays(today, -(days - 1));
+  const recent = logs.filter((l) => l.kind !== "nap" && l.hours > 0 && l.date >= cutoff);
+  if (!recent.length) return null;
+  const sum = recent.reduce((s, l) => s + recoveryScore(l, sleepDebt(logs, target, l.date, 7), target), 0);
+  return Math.round(sum / recent.length);
+}
+
 /** One actionable sleep tip based on the recent picture. */
 export function sleepRecommendation(ctx: {
   lastLog: SleepLog | null;
@@ -294,6 +322,33 @@ export function sleepRecommendation(ctx: {
   if (lastLog.hours < target - 1) return `You slept ${formatHours(lastLog.hours)} — under your ${target}h goal. An earlier bedtime tonight will help.`;
   if (goalStreak >= 5) return `${goalStreak} nights on goal — great consistency. Keep the same bedtime tonight.`;
   return "You're on track — hold your bedtime and wake time steady to build consistency.";
+}
+
+/** A few concrete tips for today, prioritised by what the data shows. */
+export function sleepRecommendations(ctx: {
+  lastLog: SleepLog | null;
+  netDebtHours: number;
+  target: number;
+  bedtimeTarget: string | null;
+  goalStreak: number;
+}): string[] {
+  const { lastLog, netDebtHours, target, bedtimeTarget } = ctx;
+  if (!lastLog) return ["Log last night to get today's personalised guidance."];
+  const tips: string[] = [];
+  const short = lastLog.hours < target - 1;
+  if (short) tips.push(`You slept ${formatHours(lastLog.hours)} — under your ${target}h goal.`);
+  if (short || lastLog.quality <= 5) tips.push("Skip intense training today; keep it light or active-recovery.");
+  if (short) tips.push("Drink an extra glass of water this morning to offset the deficit.");
+  if (netDebtHours <= -2) {
+    const t = bedtimeTarget ? `by ${bedtimeTarget}` : "30 minutes earlier";
+    tips.push(`You're ${formatHours(Math.abs(netDebtHours))} behind this week — get to bed ${t} tonight.`);
+  }
+  if (lastLog.quality <= 4) tips.push("Cut screens an hour before bed and keep the room cool and dark.");
+  if (!tips.length) {
+    tips.push("Solid night — you're clear for a full workout and focused work.");
+    tips.push("Hold the same bedtime and wake time to protect your streak.");
+  }
+  return tips.slice(0, 4);
 }
 
 // ---------------------------------------------------------------------------

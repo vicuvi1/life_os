@@ -522,6 +522,8 @@ export interface SleepMeta {
   /** Morning check-in. */
   energy: number | null; // 1-5
   mood: string | null;
+  stress: number | null; // 1-5
+  recoveryFeel: number | null; // 1-5 (how recovered you feel)
   checkinNotes: string | null;
 }
 

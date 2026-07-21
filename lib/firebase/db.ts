@@ -792,6 +792,8 @@ function mapSleepMeta(snap: QueryDocumentSnapshot<DocumentData>): SleepMeta {
     morningDone: Array.isArray(d.morningDone) ? d.morningDone : [],
     energy: typeof d.energy === "number" ? d.energy : null,
     mood: d.mood ?? null,
+    stress: typeof d.stress === "number" ? d.stress : null,
+    recoveryFeel: typeof d.recoveryFeel === "number" ? d.recoveryFeel : null,
     checkinNotes: d.checkinNotes ?? null,
   };
 }
@@ -836,7 +838,7 @@ export async function getSleepData(userId: string): Promise<SleepData> {
 export async function upsertSleepMeta(
   userId: string,
   date: string,
-  patch: Partial<Pick<SleepMeta, "eveningDone" | "morningDone" | "energy" | "mood" | "checkinNotes">>
+  patch: Partial<Pick<SleepMeta, "eveningDone" | "morningDone" | "energy" | "mood" | "stress" | "recoveryFeel" | "checkinNotes">>
 ): Promise<void> {
   const ref = doc(db, COLLECTIONS.sleepLogs, `${userId}_meta_${date}`);
   const created = (await docExists(ref)) ? {} : { createdAt: serverTimestamp() };

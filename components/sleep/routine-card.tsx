@@ -13,12 +13,18 @@ interface Props {
   done: string[];
   onToggle: (id: string) => void;
   onEdit: () => void;
+  /** Mark every step done / clear all (Skip today / Reset). */
+  onSetAll?: (done: boolean) => void;
 }
 
 /** An evening/morning routine checklist with per-day completion. */
-export function RoutineCard({ title, icon, steps, done, onToggle, onEdit }: Props) {
+export function RoutineCard({ title, icon, steps, done, onToggle, onEdit, onSetAll }: Props) {
   const doneSet = new Set(done);
   const completed = steps.filter((s) => doneSet.has(s.id)).length;
+  const pct = steps.length ? Math.round((completed / steps.length) * 100) : 0;
+  const allDone = steps.length > 0 && completed === steps.length;
+  const times = steps.map((s) => s.time).filter((t): t is string => Boolean(t)).sort();
+  const finishBy = times.length ? times[times.length - 1] : null;
 
   return (
     <Card className="overflow-hidden">
@@ -27,12 +33,17 @@ export function RoutineCard({ title, icon, steps, done, onToggle, onEdit }: Prop
           {icon} {title}
         </span>
         <div className="flex items-center gap-2">
-          <span className="text-xs tabular-nums text-muted-foreground">{completed}/{steps.length}</span>
+          <span className="text-xs tabular-nums text-muted-foreground">{completed}/{steps.length}{finishBy ? ` · by ${finishBy}` : ""}</span>
           <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" aria-label="Edit routine" onClick={onEdit}>
             <Pencil className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>
+      {steps.length > 0 && (
+        <div className="h-1.5 w-full bg-muted">
+          <div className={cn("h-full transition-all", allDone ? "bg-emerald-500" : "bg-primary")} style={{ width: `${pct}%` }} />
+        </div>
+      )}
       <div className="p-2">
         {steps.length === 0 ? (
           <p className="px-2 py-4 text-center text-sm text-muted-foreground">No steps yet — tap edit to add some.</p>
@@ -56,6 +67,18 @@ export function RoutineCard({ title, icon, steps, done, onToggle, onEdit }: Prop
           })
         )}
       </div>
+      {steps.length > 0 && onSetAll && (
+        <div className="flex items-center gap-2 border-t px-3 py-2">
+          {allDone ? (
+            <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => onSetAll(false)}>Reset</Button>
+          ) : (
+            <>
+              <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => onSetAll(true)}>Mark all done</Button>
+              <span className="ml-auto text-xs text-muted-foreground">{pct}%</span>
+            </>
+          )}
+        </div>
+      )}
     </Card>
   );
 }
