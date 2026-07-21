@@ -4,6 +4,7 @@ import {
   FolderKanban,
   CheckSquare,
   Shirt,
+  WashingMachine,
   Flame,
   CalendarClock,
   Moon,
@@ -53,6 +54,13 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: "/meals", label: "Meals", icon: UtensilsCrossed },
       { href: "/expenses", label: "Finance", icon: Wallet },
       { href: "/trackers", label: "Trackers", icon: SlidersHorizontal },
+    ],
+  },
+  {
+    label: "Wardrobe",
+    items: [
+      { href: "/wardrobe", label: "Wardrobe", icon: Shirt },
+      { href: "/wardrobe/laundry", label: "Laundry", icon: WashingMachine },
     ],
   },
   {

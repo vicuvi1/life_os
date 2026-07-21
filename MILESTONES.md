@@ -1424,3 +1424,46 @@ the tracker table got a batch of polish.
 
 > Still on the wishlist for a focused follow-up: **row-expand** (click a habit to
 > reveal history/graph/notes inline) and **collapsible category groups**.
+
+---
+
+## Wardrobe & Outfits — foundation (items · today's outfit · laundry)
+
+**What it is.** The start of a full wardrobe system: a photo catalog of your
+clothes, a "Today's outfit" flow with weather, and a proper laundry cycle — under
+a new **Wardrobe** section in the sidebar (Wardrobe · Laundry).
+
+**How it works.**
+- **Rich clothing items.** Each item holds up to **4 photos** (first = thumbnail;
+  photos are compressed hard client-side and stored inline — no paid storage
+  plan needed), plus category, brand, color, size, **season & style tags** (all
+  user-extensible, never locked lists), purchase date, **price** (in your app
+  currency), notes, care instructions, and a favorite ❤️.
+- **Today's Outfit hero.** Pick today's items from a filterable picker
+  (wearable-only by default). **Wear today** logs the date and bumps
+  `times worn` / `last worn` on every item (and marks them Worn); you can also
+  **save the combination as an outfit** (one-off or reusable template) in the
+  same step, or **plan a future day** instead. A compact **weather block**
+  (Chișinău) shows current conditions, with a "perfect weather for this outfit"
+  note only when the outfit's manually-set weather range matches.
+- **Wardrobe grid.** Search (name/brand/tag/color), category quick-tabs (from
+  the categories you actually use), status filter, favorites and retired states.
+- **Laundry flow.** Clean → Worn → Dirty → Washing → Drying → Ready, plus an
+  independent **needs-ironing** flag. Status changes are one click from any card;
+  the Laundry page is a set of **filtered tabs over the same items** (never
+  separate lists) with **bulk actions** — select many, mark them Washing/Ready/…
+  together.
+- **Item detail page.** Photo gallery with thumbnails, all metadata, live
+  **cost-per-wear** (price ÷ times worn), tabs for Outfits it appears in / wear
+  History / Notes / Care, and **Retire** — which hides an item from active views
+  and pickers while keeping its full history and stats.
+- **Sidebar extras.** Clothing-status counts (each linking to a pre-filtered
+  laundry view), compact stats (most/least worn), and the next 3 days'
+  **planned outfits**.
+- **Storage note.** Outfits and daily wear-logs live in the existing `clothing`
+  Firestore collection (docType-discriminated) so the already-deployed security
+  rules cover everything — no config changes needed.
+
+**Next increments.** Outfits & Templates pages, Statistics (incl. wardrobe
+cost-per-wear ranking + gap analysis), the full Outfit Calendar, "Surprise me"
+randomizer, packing lists, and seasonal storage filters.

@@ -8,7 +8,9 @@
  */
 
 const THUMB_SIZE = 384; // px, square
-const MAX_DATA_URL_BYTES = 400_000; // hard safety cap
+// Multiple photos share ONE Firestore doc (1 MB cap), so each must stay small:
+// 4 photos × ~140 KB + metadata still leaves ample headroom.
+const MAX_DATA_URL_BYTES = 140_000;
 
 export async function compressImageToThumbnail(file: File): Promise<string> {
   if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) {

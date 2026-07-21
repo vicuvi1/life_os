@@ -349,16 +349,94 @@ export interface TrackerLog {
   value: number; // yesno: 1 = yes
 }
 
-/** A wardrobe item; image stored inline as a compressed data URL. */
+/** Wash-cycle status of a clothing item (needs-ironing is a separate flag). */
+export type WardrobeStatus =
+  | "clean"
+  | "worn"
+  | "dirty"
+  | "washing"
+  | "drying"
+  | "ready";
+
+/**
+ * A wardrobe item. All photos are stored inline as compressed data URLs
+ * (Firebase Storage needs the paid plan): `imageData` is the primary
+ * thumbnail used everywhere; `extraImages` holds up to 3 more shots that are
+ * only rendered on the item detail view.
+ */
 export interface ClothingItem {
   id: string;
   userId: string;
   name: string;
+  /** Legacy free-form tags (kept for back-compat with the Routines widget). */
   tags: string[];
-  /** Small square thumbnail as a data URL (client-compressed), or null. */
+  /** Primary square thumbnail as a data URL (client-compressed), or null. */
   imageData: string | null;
+  /** Additional photos (front/back/detail), compressed data URLs. Max 3. */
+  extraImages: string[];
+  /** User-extensible category name (e.g. "Tops"), or null. */
+  category: string | null;
+  brand: string | null;
+  color: string | null;
+  size: string | null;
+  /** User-extensible season tags (e.g. ["Summer"]). */
+  seasons: string[];
+  /** User-extensible style tags (e.g. ["Casual", "Sport"]). */
+  styles: string[];
+  purchaseDate: string | null; // YYYY-MM-DD
+  /** Price in the app's display currency (labelled Price in the UI). */
   cost: number | null;
+  status: WardrobeStatus;
+  /** Independent flag that can layer on top of any status. */
+  needsIroning: boolean;
+  favorite: boolean;
+  notes: string | null;
+  /** Care instructions (wash temperature, dry-clean only, …). */
+  care: string | null;
+  /** Retired items keep their history but leave active views/builders. */
+  retired: boolean;
   timesWorn: number;
+  lastWorn: string | null; // YYYY-MM-DD
+  createdAt: number;
+}
+
+/**
+ * A saved outfit — a named set of wardrobe items. Stored in the `clothing`
+ * collection with docType "outfit" (reusing its deployed security rules).
+ */
+export interface Outfit {
+  id: string;
+  userId: string;
+  name: string;
+  /** Templates are intentionally reusable; customs are one-off combos. */
+  type: "template" | "custom";
+  itemIds: string[];
+  /** User-extensible occasion tags (University, Gym, Rainy Day, …). */
+  occasions: string[];
+  /** 1-5 stars, set after wearing. */
+  rating: number | null;
+  /** Manually-set fit like "18-28°C, sunny" (displayed, never inferred). */
+  weatherFit: string | null;
+  notes: string | null;
+  favorite: boolean;
+  timesWorn: number;
+  lastWorn: string | null; // YYYY-MM-DD
+  createdAt: number;
+}
+
+/**
+ * One outfit log per calendar day — either a confirmed past wear or a planned
+ * future outfit. Doc id is `${userId}_${date}` so logging is idempotent.
+ * Stored in the `clothing` collection with docType "wear".
+ */
+export interface WearLog {
+  id: string;
+  userId: string;
+  date: string; // YYYY-MM-DD
+  outfitId: string | null;
+  itemIds: string[];
+  /** true = planned for the future; false = confirmed worn. */
+  planned: boolean;
   createdAt: number;
 }
 

@@ -37,6 +37,7 @@ import {
   type MealPlanEntry,
   type MealSlot,
   type NutritionLog,
+  type Outfit,
   type Project,
   type RecurringRule,
   type Session,
@@ -47,6 +48,8 @@ import {
   type Tracker,
   type TrackerLog,
   type UserPrefs,
+  type WardrobeStatus,
+  type WearLog,
   type WeeklyReview,
 } from "@/lib/types";
 import { habitCurrentStreak, habitLongestStreak, isLogDone } from "@/lib/habits";
@@ -1255,35 +1258,132 @@ export async function setTrackerLog(
 }
 
 // ---------------------------------------------------------------------------
-// Wardrobe (clothing items with inline compressed thumbnails)
+// Wardrobe (clothing items, outfits & wear logs)
+//
+// Everything lives in the existing `clothing` collection — its owner-scoped
+// security rules are already deployed, and new rules can't be pushed from this
+// environment. Docs are discriminated by `docType`: items (missing docType or
+// "item"), outfits ("outfit"), and daily wear logs ("wear"). Photos are inline
+// compressed data URLs on the item doc itself.
 // ---------------------------------------------------------------------------
 function mapClothing(snap: QueryDocumentSnapshot<DocumentData>): ClothingItem {
   const d = snap.data();
+  const validStatus = ["clean", "worn", "dirty", "washing", "drying", "ready"];
   return {
     id: snap.id,
     userId: d.userId,
     name: d.name,
     tags: Array.isArray(d.tags) ? d.tags : [],
     imageData: d.imageData ?? null,
+    extraImages: Array.isArray(d.extraImages) ? d.extraImages : [],
+    category: d.category ?? null,
+    brand: d.brand ?? null,
+    color: d.color ?? null,
+    size: d.size ?? null,
+    seasons: Array.isArray(d.seasons) ? d.seasons : [],
+    styles: Array.isArray(d.styles) ? d.styles : [],
+    purchaseDate: d.purchaseDate ?? null,
     cost: d.cost ?? null,
+    status: validStatus.includes(d.status) ? d.status : "clean",
+    needsIroning: d.needsIroning === true,
+    favorite: d.favorite === true,
+    notes: d.notes ?? null,
+    care: d.care ?? null,
+    retired: d.retired === true,
     timesWorn: d.timesWorn ?? 0,
+    lastWorn: d.lastWorn ?? null,
     createdAt: toMillis(d.createdAt),
   };
 }
 
-export async function getClothing(userId: string): Promise<ClothingItem[]> {
+function mapOutfit(snap: QueryDocumentSnapshot<DocumentData>): Outfit {
+  const d = snap.data();
+  return {
+    id: snap.id,
+    userId: d.userId,
+    name: d.name ?? "Outfit",
+    type: d.type === "template" ? "template" : "custom",
+    itemIds: Array.isArray(d.itemIds) ? d.itemIds : [],
+    occasions: Array.isArray(d.occasions) ? d.occasions : [],
+    rating: typeof d.rating === "number" ? d.rating : null,
+    weatherFit: d.weatherFit ?? null,
+    notes: d.notes ?? null,
+    favorite: d.favorite === true,
+    timesWorn: d.timesWorn ?? 0,
+    lastWorn: d.lastWorn ?? null,
+    createdAt: toMillis(d.createdAt),
+  };
+}
+
+function mapWear(snap: QueryDocumentSnapshot<DocumentData>): WearLog {
+  const d = snap.data();
+  return {
+    id: snap.id,
+    userId: d.userId,
+    date: d.date,
+    outfitId: d.outfitId ?? null,
+    itemIds: Array.isArray(d.itemIds) ? d.itemIds : [],
+    planned: d.planned === true,
+    createdAt: toMillis(d.createdAt),
+  };
+}
+
+export interface WardrobeData {
+  items: ClothingItem[];
+  outfits: Outfit[];
+  wears: WearLog[];
+}
+
+/** One query for the whole wardrobe area, split by docType client-side. */
+export async function getWardrobe(userId: string): Promise<WardrobeData> {
   const q = query(
     collection(db, COLLECTIONS.clothing),
     where("userId", "==", userId)
   );
   const snap = await getDocs(q);
-  return snap.docs.map(mapClothing).sort((a, b) => a.createdAt - b.createdAt);
+  const items: ClothingItem[] = [];
+  const outfits: Outfit[] = [];
+  const wears: WearLog[] = [];
+  for (const docSnap of snap.docs) {
+    const t = docSnap.data().docType;
+    if (t === "outfit") outfits.push(mapOutfit(docSnap));
+    else if (t === "wear") wears.push(mapWear(docSnap));
+    else items.push(mapClothing(docSnap)); // legacy items have no docType
+  }
+  items.sort((a, b) => a.createdAt - b.createdAt);
+  outfits.sort((a, b) => b.createdAt - a.createdAt);
+  wears.sort((a, b) => (a.date < b.date ? 1 : -1));
+  return { items, outfits, wears };
+}
+
+export async function getClothing(userId: string): Promise<ClothingItem[]> {
+  return (await getWardrobe(userId)).items;
 }
 
 export type ClothingInput = Pick<
   ClothingItem,
   "name" | "tags" | "imageData" | "cost" | "timesWorn"
->;
+> &
+  Partial<
+    Pick<
+      ClothingItem,
+      | "extraImages"
+      | "category"
+      | "brand"
+      | "color"
+      | "size"
+      | "seasons"
+      | "styles"
+      | "purchaseDate"
+      | "status"
+      | "needsIroning"
+      | "favorite"
+      | "notes"
+      | "care"
+      | "retired"
+      | "lastWorn"
+    >
+  >;
 
 export async function createClothing(
   userId: string,
@@ -1291,6 +1391,22 @@ export async function createClothing(
 ): Promise<string> {
   const ref = await addDoc(collection(db, COLLECTIONS.clothing), {
     userId,
+    docType: "item",
+    extraImages: [],
+    category: null,
+    brand: null,
+    color: null,
+    size: null,
+    seasons: [],
+    styles: [],
+    purchaseDate: null,
+    status: "clean",
+    needsIroning: false,
+    favorite: false,
+    notes: null,
+    care: null,
+    retired: false,
+    lastWorn: null,
     ...input,
     createdAt: serverTimestamp(),
   });
@@ -1306,6 +1422,109 @@ export async function updateClothing(
 
 export async function deleteClothing(id: string): Promise<void> {
   await deleteDoc(doc(db, COLLECTIONS.clothing, id));
+}
+
+/** Bulk status change — laundry is a batch activity (chunked under 500 ops). */
+export async function bulkUpdateClothingStatus(
+  ids: string[],
+  patch: { status?: WardrobeStatus; needsIroning?: boolean }
+): Promise<void> {
+  for (let i = 0; i < ids.length; i += 450) {
+    const batch = writeBatch(db);
+    for (const id of ids.slice(i, i + 450)) {
+      batch.update(doc(db, COLLECTIONS.clothing, id), { ...patch });
+    }
+    await batch.commit();
+  }
+}
+
+// --- Outfits -----------------------------------------------------------------
+export type OutfitInput = Pick<
+  Outfit,
+  "name" | "type" | "itemIds" | "occasions" | "rating" | "weatherFit" | "notes" | "favorite"
+>;
+
+export async function createOutfit(userId: string, input: OutfitInput): Promise<string> {
+  const ref = await addDoc(collection(db, COLLECTIONS.clothing), {
+    userId,
+    docType: "outfit",
+    timesWorn: 0,
+    lastWorn: null,
+    ...input,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export async function updateOutfit(id: string, input: Partial<OutfitInput>): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.clothing, id), { ...input });
+}
+
+export async function deleteOutfit(id: string): Promise<void> {
+  await deleteDoc(doc(db, COLLECTIONS.clothing, id));
+}
+
+// --- Wear log ----------------------------------------------------------------
+/**
+ * Assign an outfit (or ad-hoc item list) to a date. One log per day —
+ * deterministic doc id makes this idempotent. `planned: true` for future days.
+ */
+export async function upsertWearLog(
+  userId: string,
+  date: string,
+  itemIds: string[],
+  outfitId: string | null,
+  planned: boolean
+): Promise<void> {
+  await setDoc(doc(db, COLLECTIONS.clothing, `wear_${userId}_${date}`), {
+    userId,
+    docType: "wear",
+    date,
+    itemIds,
+    outfitId,
+    planned,
+    createdAt: serverTimestamp(),
+  });
+}
+
+export async function deleteWearLog(userId: string, date: string): Promise<void> {
+  await deleteDoc(doc(db, COLLECTIONS.clothing, `wear_${userId}_${date}`));
+}
+
+/**
+ * Confirm a wear: log the date, set every included item to "worn" with
+ * incremented counters, and bump the outfit's counters too. One batch.
+ */
+export async function confirmWear(
+  userId: string,
+  date: string,
+  items: Pick<ClothingItem, "id" | "timesWorn">[],
+  outfit: Pick<Outfit, "id" | "timesWorn"> | null
+): Promise<void> {
+  const batch = writeBatch(db);
+  batch.set(doc(db, COLLECTIONS.clothing, `wear_${userId}_${date}`), {
+    userId,
+    docType: "wear",
+    date,
+    itemIds: items.map((i) => i.id),
+    outfitId: outfit?.id ?? null,
+    planned: false,
+    createdAt: serverTimestamp(),
+  });
+  for (const item of items) {
+    batch.update(doc(db, COLLECTIONS.clothing, item.id), {
+      timesWorn: item.timesWorn + 1,
+      lastWorn: date,
+      status: "worn",
+    });
+  }
+  if (outfit) {
+    batch.update(doc(db, COLLECTIONS.clothing, outfit.id), {
+      timesWorn: outfit.timesWorn + 1,
+      lastWorn: date,
+    });
+  }
+  await batch.commit();
 }
 
 // ---------------------------------------------------------------------------
