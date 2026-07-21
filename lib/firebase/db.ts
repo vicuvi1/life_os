@@ -889,6 +889,17 @@ export async function deleteExpense(id: string): Promise<void> {
   await deleteDoc(doc(db, COLLECTIONS.expenses, id));
 }
 
+/** Delete many expense entries at once. Chunked to respect the 500-op batch cap. */
+export async function deleteExpenses(ids: string[]): Promise<void> {
+  for (let i = 0; i < ids.length; i += 450) {
+    const batch = writeBatch(db);
+    for (const id of ids.slice(i, i + 450)) {
+      batch.delete(doc(db, COLLECTIONS.expenses, id));
+    }
+    await batch.commit();
+  }
+}
+
 export async function getBudget(userId: string): Promise<Budget | null> {
   const ref = doc(db, COLLECTIONS.budgets, userId);
   const snap = await getDoc(ref);

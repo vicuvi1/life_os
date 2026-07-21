@@ -1093,3 +1093,31 @@ caps show live progress, and look-alike transactions can be cleaned up in one pl
    progress card.
 3. If the Transactions panel shows **possible duplicates**, click it to review
    and delete the extras.
+
+---
+
+## Finance — bulk clear (select rows · clear month)
+
+**What it is.** A fast way to delete many transactions at once instead of removing
+them one row at a time.
+
+**How it works.**
+- **Row selection.** The transactions table gained a **checkbox column** with a
+  **select-all** box in the header. Selected rows are highlighted, and a bar shows
+  **"N selected"** with **Clear selected** and **Cancel**.
+- **Clear menu.** A **Clear** menu on the Transactions panel offers **Clear
+  selected (N)** and — depending on the active range — **Clear all of {Month}**
+  (when viewing a month) or **Clear current view** (last-30 / all). The month/view
+  option wipes exactly the transactions currently shown (respecting the account
+  filter and search).
+- **Safe & irreversible-aware.** Every bulk clear routes through a **confirmation
+  dialog** that states precisely what will be deleted and how many. Deletes are
+  **batched** in Firestore (chunked to stay under the 500-op limit) and applied
+  optimistically, so the grid updates instantly.
+
+**How to use it.**
+1. Tick the rows you want (or the header box to select the whole view), then hit
+   **Clear selected**.
+2. Or open the **Clear** menu and choose **Clear all of {Month}** to wipe the
+   whole month in one click.
+3. Confirm in the dialog — that's the only step that actually deletes.

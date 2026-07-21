@@ -33,6 +33,7 @@ import {
   Copy,
   Repeat,
   Check,
+  Trash2,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -41,6 +42,7 @@ import {
   createExpense,
   updateExpense,
   deleteExpense,
+  deleteExpenses,
   setRecurringRules,
 } from "@/lib/firebase/db";
 import { toDateKey, resolveFirstName } from "@/lib/greeting";
@@ -87,6 +89,7 @@ import { BudgetFormDialog } from "@/components/expenses/budget-form-dialog";
 import { TransferDialog } from "@/components/expenses/transfer-dialog";
 import { RecurringDialog } from "@/components/expenses/recurring-dialog";
 import { DuplicatesDialog } from "@/components/expenses/duplicates-dialog";
+import { ConfirmDialog } from "@/components/expenses/confirm-dialog";
 import { cn } from "@/lib/utils";
 import type { AccountKey, Budget, EntryKind, Expense, RecurringRule } from "@/lib/types";
 import type { LucideIcon } from "lucide-react";
@@ -145,6 +148,8 @@ export default function FinancePage() {
   const [transferOpen, setTransferOpen] = useState(false);
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [clearTarget, setClearTarget] = useState<{ ids: string[]; scope: string } | null>(null);
   const [newAccount, setNewAccount] = useState<AccountKey>("wallet");
   const [filter, setFilter] = useState<AccountFilter>("all");
   const [amountView, setAmountView] = useState<"full" | "compact">("full");
@@ -444,6 +449,13 @@ export default function FinancePage() {
     [recurring, nowMonthKey, nowDim, now]
   );
 
+  // Bulk selection for clearing rows (table view).
+  const selectedIds = useMemo(
+    () => displayExpenses.filter((e) => selected.has(e.id)).map((e) => e.id),
+    [displayExpenses, selected]
+  );
+  const allSelected = displayExpenses.length > 0 && selectedIds.length === displayExpenses.length;
+
   const recent = useMemo(
     () =>
       [...visibleExpenses]
@@ -717,6 +729,46 @@ export default function FinancePage() {
     const auto = dueRecurring.filter((r) => r.autopost);
     if (auto.length > 0) void postRules(auto);
   }, [loading, user, dueRecurring, postRules]);
+
+  // --- Bulk clear ------------------------------------------------------------
+  function toggleRow(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(displayExpenses.map((e) => e.id)));
+  }
+  function requestClearSelected() {
+    if (selectedIds.length === 0) return;
+    setClearTarget({
+      ids: selectedIds,
+      scope: `${selectedIds.length} selected transaction${selectedIds.length === 1 ? "" : "s"}`,
+    });
+  }
+  function requestClearView() {
+    const ids = displayExpenses.map((e) => e.id);
+    if (ids.length === 0) return;
+    const scope =
+      rangeFilter === "month"
+        ? `all ${ids.length} transaction${ids.length === 1 ? "" : "s"} in ${monthLabel(year, month)}`
+        : `all ${ids.length} transaction${ids.length === 1 ? "" : "s"} in the current view`;
+    setClearTarget({ ids, scope });
+  }
+  async function confirmClear() {
+    if (!clearTarget) return;
+    const idSet = new Set(clearTarget.ids);
+    setExpenses((p) => p.filter((e) => !idSet.has(e.id)));
+    setSelected(new Set());
+    try {
+      await deleteExpenses(clearTarget.ids);
+    } catch {
+      await load({ quiet: true });
+    }
+  }
   function exportCsv(scope: "month" | "all" | "view") {
     const data =
       scope === "month" ? monthExpenses : scope === "all" ? expenses : displayExpenses;
@@ -1052,11 +1104,28 @@ export default function FinancePage() {
                 title="Transactions"
                 bodyClassName="p-0"
                 action={
-                  duplicateGroups.length > 0 ? (
-                    <Button variant="ghost" size="sm" className="text-amber-600 dark:text-amber-400" onClick={() => setDuplicatesOpen(true)}>
-                      <Tag className="h-3.5 w-3.5" /> {duplicateGroups.length} possible duplicate{duplicateGroups.length === 1 ? "" : "s"}
-                    </Button>
-                  ) : undefined
+                  <div className="flex items-center gap-1">
+                    {duplicateGroups.length > 0 && (
+                      <Button variant="ghost" size="sm" className="text-amber-600 dark:text-amber-400" onClick={() => setDuplicatesOpen(true)}>
+                        <Tag className="h-3.5 w-3.5" /> {duplicateGroups.length} possible duplicate{duplicateGroups.length === 1 ? "" : "s"}
+                      </Button>
+                    )}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
+                          <Trash2 className="h-3.5 w-3.5" /> Clear
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem disabled={selectedIds.length === 0} onClick={requestClearSelected}>
+                          Clear selected ({selectedIds.length})
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={requestClearView} className="text-destructive focus:text-destructive">
+                          {rangeFilter === "month" ? `Clear all of ${monthLabel(year, month)}` : "Clear current view"}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 }
               >
                 <div className="space-y-4 border-b border-muted/20 bg-background/80 px-4 py-4">
@@ -1114,16 +1183,31 @@ export default function FinancePage() {
                   </div>
                 </div>
                 <div className="max-h-[680px] overflow-y-auto p-4">
+                  {selectedIds.length > 0 && (
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+                      <span className="font-medium">{selectedIds.length} selected</span>
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Cancel</Button>
+                        <Button size="sm" variant="destructive" onClick={requestClearSelected}>
+                          <Trash2 className="h-3.5 w-3.5" /> Clear selected
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                   {viewMode === "table" ? (
                     <div className="overflow-x-auto min-w-full">
-                      <table className="w-full min-w-[980px] table-fixed border-collapse text-sm">
+                      <table className="w-full min-w-[1020px] table-fixed border-collapse text-sm">
                         <colgroup>
+                          <col className="w-[40px]" />
                           <col className="w-[86px]" /><col className="w-[54px]" /><col className="w-[102px]" />
                           <col className="w-[180px]" /><col className="w-[220px]" /><col className="w-[116px]" />
                           <col className="w-[116px]" /><col className="w-[128px]" /><col className="w-[92px]" />
                         </colgroup>
                         <thead>
                           <tr className="border-b bg-muted/40 text-left text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            <th className="px-2 py-3">
+                              <input type="checkbox" aria-label="Select all" checked={allSelected} onChange={toggleAll} className="h-4 w-4 rounded border-input align-middle" />
+                            </th>
                             <th className="px-3 py-3">Date</th><th className="px-2 py-3">Day</th><th className="px-3 py-3">Type</th>
                             <th className="px-3 py-3">Category</th><th className="px-3 py-3">Description</th>
                             <th className="px-3 py-3 text-right text-emerald-600 dark:text-emerald-400">Income</th>
@@ -1136,7 +1220,12 @@ export default function FinancePage() {
                             const isToday = r.dateKey === todayKey;
                             const isWeekend = r.weekday === "Sat" || r.weekday === "Sun";
                             return (
-                              <tr key={`${r.dateKey}-${idx}`} className={cn("group border-b last:border-0", isWeekend && "bg-muted/20", isToday && "bg-primary/5", "hover:bg-accent/40")}>
+                              <tr key={`${r.dateKey}-${idx}`} className={cn("group border-b last:border-0", isWeekend && "bg-muted/20", isToday && "bg-primary/5", r.entry && selected.has(r.entry.id) && "bg-primary/10", "hover:bg-accent/40")}>
+                                <td className="px-2 py-2 align-middle">
+                                  {r.entry && (
+                                    <input type="checkbox" aria-label="Select transaction" checked={selected.has(r.entry.id)} onChange={() => toggleRow(r.entry!.id)} className="h-4 w-4 rounded border-input align-middle" />
+                                  )}
+                                </td>
                                 <td className="px-3 py-2 align-middle">{r.firstOfDay && <span className="tabular-nums font-medium">{r.day} {r.month}</span>}</td>
                                 <td className="px-2 py-2 align-middle">{r.firstOfDay && <span className="text-sm text-muted-foreground">{r.weekday}</span>}</td>
                                 <td className="px-3 py-2 align-middle">
@@ -1178,7 +1267,7 @@ export default function FinancePage() {
                         </tbody>
                         <tfoot>
                           <tr className="border-t-2 bg-muted/40 font-semibold">
-                            <td className="px-2 py-2.5" colSpan={5}>Total</td>
+                            <td className="px-2 py-2.5" colSpan={6}>Total</td>
                             <td className="px-2 py-2.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{formatDisplayAmount(earned)}</td>
                             <td className="px-2 py-2.5 text-right tabular-nums text-rose-600 dark:text-rose-400">{formatDisplayAmount(spent)}</td>
                             <td className="px-2 py-2.5 text-right tabular-nums">{formatDisplayAmount(endBalance)}</td>
@@ -1523,6 +1612,15 @@ export default function FinancePage() {
             groups={duplicateGroups}
             format={formatDisplayAmount}
             onDelete={removeEntry}
+          />
+          <ConfirmDialog
+            open={clearTarget !== null}
+            onOpenChange={(o) => { if (!o) setClearTarget(null); }}
+            title="Clear transactions?"
+            description={`This permanently deletes ${clearTarget?.scope ?? ""}. This can't be undone.`}
+            confirmLabel="Delete"
+            destructive
+            onConfirm={confirmClear}
           />
         </>
       )}
