@@ -46,8 +46,6 @@ export default function NutritionPage() {
   const [calorieTarget, setCalorieTarget] = useState(DEFAULT_CAL_TARGET);
   const [weeklyBudget, setWeeklyBudget] = useState<number | null>(null);
   const [currency, setCurrency] = useState<Currency | null>(null);
-  const [water, setWaterState] = useState(0);
-  const [waterTarget, setWaterTargetState] = useState(DEFAULT_WATER_TARGET);
   const [loading, setLoading] = useState(true);
   const [dialog, setDialog] = useState<{ open: boolean; meal: NutritionMeal | null; seed?: MealFoodEntry[] }>({ open: false, meal: null });
   const [dragId, setDragId] = useState<string | null>(null);
@@ -84,11 +82,9 @@ export default function NutritionPage() {
     return list.sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt);
   }, [all, date, mealSort]);
   const dayLog = useMemo(() => (all?.logs ?? []).find((l) => l.date === date) ?? null, [all, date]);
-
-  useEffect(() => {
-    setWaterState(dayLog?.water ?? 0);
-    setWaterTargetState(dayLog?.waterTarget ?? DEFAULT_WATER_TARGET);
-  }, [dayLog]);
+  // Derived straight from the day's log — single source of truth, no effect race.
+  const water = dayLog?.water ?? 0;
+  const waterTarget = dayLog?.waterTarget ?? DEFAULT_WATER_TARGET;
 
   const totals = useMemo(() => dayTotals(meals, foodMap), [meals, foodMap]);
   const cur = currency ?? resolveCurrency(null);
@@ -132,26 +128,27 @@ export default function NutritionPage() {
   const shoppingTop = useMemo(() => (all?.shopping ?? []).slice(0, 6), [all]);
   const recommended = useMemo(() => [...(all?.recipes ?? [])].filter((r) => !r.archived && r.items.length > 0).sort((a, b) => Number(b.favorite) - Number(a.favorite) || b.createdAt - a.createdAt).slice(0, 4), [all]);
 
-  function changeWater(next: number) {
+  function patchLog(patch: Partial<{ water: number; waterTarget: number }>) {
     if (!user) return;
-    const clamped = Math.max(0, Math.round(next * 100) / 100);
-    setWaterState(clamped);
     setAll((prev) => {
       if (!prev) return prev;
       const logs = [...prev.logs];
       const i = logs.findIndex((l) => l.date === date);
-      if (i >= 0) logs[i] = { ...logs[i], water: clamped };
-      else logs.push({ id: `${user.uid}_${date}`, userId: user.uid, date, water: clamped, waterTarget, breakfast: false, lunch: false, dinner: false, calories: null, protein: null, carbs: null, fat: null, cost: null, notes: null, createdAt: 0 });
+      if (i >= 0) logs[i] = { ...logs[i], ...patch };
+      else logs.push({ id: `${user.uid}_${date}`, userId: user.uid, date, water: 0, waterTarget, breakfast: false, lunch: false, dinner: false, calories: null, protein: null, carbs: null, fat: null, cost: null, notes: null, createdAt: 0, ...patch });
       return { ...prev, logs };
     });
-    void upsertNutritionLog(user.uid, date, { water: clamped }).catch(() => void load({ quiet: true }));
+    void upsertNutritionLog(user.uid, date, patch).catch(() => void load({ quiet: true }));
+  }
+  function changeWater(next: number) {
+    patchLog({ water: Math.max(0, Math.round(next * 100) / 100) });
   }
   function commit(field: "protein" | "calorie" | "budget" | "waterTarget", n: number) {
     if (!user) return;
     if (field === "protein") { setProteinTarget(n); void upsertPrefs(user.uid, { proteinTarget: n }); }
     else if (field === "calorie") { setCalorieTarget(n); void upsertPrefs(user.uid, { calorieTarget: n }); }
     else if (field === "budget") { setWeeklyBudget(n); void upsertPrefs(user.uid, { foodBudgetWeekly: n }); }
-    else { setWaterTargetState(n); void upsertNutritionLog(user.uid, date, { waterTarget: n }).catch(() => void load({ quiet: true })); }
+    else patchLog({ waterTarget: n });
   }
   function addQuickFood(f: FoodItem) {
     const serving = f.servings[0] ?? { id: genId(), label: `100 ${f.unit}`, grams: 100 };
