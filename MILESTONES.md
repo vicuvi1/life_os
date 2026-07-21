@@ -406,8 +406,9 @@ Built for a student watching every leu/dollar.
   monthly total, and per-category limits.
 - **Update:** fixed same-day transaction entry so the Finance page can accept both
   income and expense values for the same date, enlarged the transactions table for
-  a more readable layout, and made the transactions history panel vertically
-  scrollable so you can browse older entries without the page growing too tall.
+  a more readable layout, made the transactions history panel vertically scrollable,
+  and added autosave for inline amount and note edits so values are persisted even
+  if you leave the page before explicitly blurring the field.
 
 **How to use.**
 1. Open **Expenses → the gear icon** and set your currency and a monthly budget

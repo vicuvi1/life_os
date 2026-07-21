@@ -1101,16 +1101,38 @@ function Heatmap({ year, month, byDay, todayKey }: {
 function AmountInput({ value, tone, onCommit }: { value: number | null; tone: "income" | "expense"; onCommit: (num: number | null) => void }) {
   const [draft, setDraft] = useState(value != null ? String(value) : "");
   const dirty = useRef(false);
+  const commitRef = useRef<() => void>(() => {});
   useEffect(() => { if (!dirty.current) setDraft(value != null ? String(value) : ""); }, [value]);
   function commit() {
     dirty.current = false;
     const raw = draft.trim();
     const num = raw === "" ? null : Number(raw);
-    if (num != null && (Number.isNaN(num) || num < 0)) { setDraft(value != null ? String(value) : ""); return; }
+    if (num != null && (Number.isNaN(num) || num < 0)) {
+      setDraft(value != null ? String(value) : "");
+      return;
+    }
     const normalized = num && num > 0 ? Math.round(num * 100) / 100 : null;
     if (normalized === (value ?? null)) return;
     onCommit(normalized);
   }
+  useEffect(() => {
+    commitRef.current = commit;
+  }, [commit]);
+  useEffect(() => {
+    if (!dirty.current) return;
+    const timer = window.setTimeout(() => commitRef.current(), 800);
+    return () => window.clearTimeout(timer);
+  }, [draft]);
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (dirty.current) commitRef.current();
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      if (dirty.current) commitRef.current();
+    };
+  }, []);
   return (
     <input
       type="number" min={0} step="0.01" inputMode="decimal" value={draft} placeholder="—"
@@ -1127,12 +1149,35 @@ function NoteInput({ entry, onCommit }: { entry: Expense; onCommit: (text: strin
   const value = entry.note ?? "";
   const [draft, setDraft] = useState(value);
   const dirty = useRef(false);
+  const commitRef = useRef<() => void>(() => {});
   useEffect(() => { if (!dirty.current) setDraft(value); }, [value]);
+  function commit() {
+    dirty.current = false;
+    onCommit(draft);
+  }
+  useEffect(() => {
+    commitRef.current = commit;
+  }, [commit]);
+  useEffect(() => {
+    if (!dirty.current) return;
+    const timer = window.setTimeout(() => commitRef.current(), 800);
+    return () => window.clearTimeout(timer);
+  }, [draft]);
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (dirty.current) commitRef.current();
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      if (dirty.current) commitRef.current();
+    };
+  }, []);
   return (
     <input
       type="text" value={draft} placeholder="add note"
       onChange={(e) => { dirty.current = true; setDraft(e.target.value); }}
-      onBlur={() => { dirty.current = false; onCommit(draft); }}
+      onBlur={commit}
       onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") { dirty.current = false; setDraft(value); e.currentTarget.blur(); } }}
       className="w-full rounded bg-transparent px-2 py-1 outline-none transition-colors placeholder:text-muted-foreground/30 hover:bg-background/70 focus:bg-background focus:ring-1 focus:ring-primary"
     />
