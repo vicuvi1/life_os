@@ -563,23 +563,6 @@ export default function FinancePage() {
     };
   }, [budget?.monthlyTotal, spent, isCurrentMonth, now, dim]);
 
-  const financialScore = useMemo(() => {
-    let score = 45;
-    if (net >= 0) score += 15;
-    if (savingsRate >= 10) score += 10;
-    if (savingsRate >= 25) score += 10;
-    if (budgetStatus?.pctUsed != null && budgetStatus.pctUsed < 75) score += 10;
-    if (savingsTarget && savingsProgress != null) score += Math.min(20, Math.round(savingsProgress / 5));
-    return Math.min(100, Math.max(0, score));
-  }, [net, savingsRate, budgetStatus?.pctUsed, savingsTarget, savingsProgress]);
-
-  const financialScoreLabel = useMemo(() => {
-    if (financialScore >= 85) return { label: "Excellent", tone: "good" as const };
-    if (financialScore >= 65) return { label: "Strong", tone: "info" as const };
-    if (financialScore >= 45) return { label: "Solid", tone: "warn" as const };
-    return { label: "Needs attention", tone: "destructive" as const };
-  }, [financialScore]);
-
   // --- Mutations -------------------------------------------------------------
   async function commitAmount(dateKey: string, kind: EntryKind, entry: Expense | undefined, num: number | null) {
     if (!user) return;
@@ -1099,7 +1082,9 @@ export default function FinancePage() {
                   </div>
                 </Panel>
               </div>
+            </div>
 
+            <div className="xl:col-span-2 xl:order-last">
               <Panel
                 title="Transactions"
                 bodyClassName="p-0"
@@ -1485,30 +1470,6 @@ export default function FinancePage() {
                       <Button variant="secondary" size="sm" onClick={() => setBudgetOpen(true)}>Set goal</Button>
                     </div>
                   )}
-                </div>
-              </Card>
-
-              <Card className="overflow-hidden">
-                <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Financial score</span>
-                  <span
-                    className={cn(
-                      "rounded-full px-2 py-0.5 text-[11px] font-semibold",
-                      financialScoreLabel.tone === "good" && "bg-emerald-500/10 text-emerald-500",
-                      financialScoreLabel.tone === "info" && "bg-sky-500/10 text-sky-500",
-                      financialScoreLabel.tone === "warn" && "bg-amber-500/10 text-amber-500",
-                      financialScoreLabel.tone === "destructive" && "bg-rose-500/10 text-rose-500"
-                    )}
-                  >
-                    {financialScoreLabel.label}
-                  </span>
-                </div>
-                <div className="space-y-4 p-4">
-                  <div className="text-4xl font-bold tabular-nums">{financialScore}</div>
-                  <p className="text-sm text-muted-foreground">A quick snapshot of your current financial momentum.</p>
-                  <div className="h-3 overflow-hidden rounded-full bg-muted">
-                    <div className="h-full rounded-full bg-emerald-500" style={{ width: `${financialScore}%` }} />
-                  </div>
                 </div>
               </Card>
 
