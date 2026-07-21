@@ -502,12 +502,16 @@ export async function updateHabit(
   await updateDoc(doc(db, COLLECTIONS.habits, id), { ...input });
 }
 
-export async function deleteHabit(id: string): Promise<void> {
+export async function deleteHabit(userId: string, id: string): Promise<void> {
   const batch = writeBatch(db);
+  // Query by userId (owner-scoped rules deny a query filtered only by habitId),
+  // then filter to this habit's logs client-side.
   const logSnap = await getDocs(
-    query(collection(db, COLLECTIONS.habitLogs), where("habitId", "==", id))
+    query(collection(db, COLLECTIONS.habitLogs), where("userId", "==", userId))
   );
-  logSnap.forEach((l) => batch.delete(l.ref));
+  logSnap.forEach((l) => {
+    if (l.data().habitId === id) batch.delete(l.ref);
+  });
   batch.delete(doc(db, COLLECTIONS.habits, id));
   await batch.commit();
 }
@@ -515,9 +519,10 @@ export async function deleteHabit(id: string): Promise<void> {
 /**
  * Recompute a habit's streaks from its full log history, honoring completion
  * semantics: count/duration habits only count a day once the logged value
- * reaches the target.
+ * reaches the target. Queried by userId (owner-scoped rules reject a habitId-only
+ * query) and filtered to this habit client-side.
  */
-async function recomputeHabitStreaks(habitId: string): Promise<void> {
+async function recomputeHabitStreaks(userId: string, habitId: string): Promise<void> {
   const habitRef = doc(db, COLLECTIONS.habits, habitId);
   const habitSnap = await getDoc(habitRef);
   if (!habitSnap.exists()) return;
@@ -528,10 +533,10 @@ async function recomputeHabitStreaks(habitId: string): Promise<void> {
   };
 
   const snap = await getDocs(
-    query(collection(db, COLLECTIONS.habitLogs), where("habitId", "==", habitId))
+    query(collection(db, COLLECTIONS.habitLogs), where("userId", "==", userId))
   );
   const dates = snap.docs
-    .filter((d) => isLogDone(habit, { value: d.data().value ?? null }))
+    .filter((d) => d.data().habitId === habitId && isLogDone(habit, { value: d.data().value ?? null }))
     .map((d) => d.data().completedDate as string);
   const today = toDateKey(new Date());
   const streak = habitCurrentStreak(habit, dates, today);
@@ -567,7 +572,7 @@ export async function toggleHabitLog(
   } else {
     await deleteDoc(logRef);
   }
-  await recomputeHabitStreaks(habitId);
+  await recomputeHabitStreaks(userId, habitId);
 }
 
 /** Log a partial/exact value for a count or duration habit on a given date. */
@@ -589,7 +594,7 @@ export async function setHabitLogValue(
       createdAt: serverTimestamp(),
     });
   }
-  await recomputeHabitStreaks(habitId);
+  await recomputeHabitStreaks(userId, habitId);
 }
 
 // ---------------------------------------------------------------------------

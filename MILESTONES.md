@@ -1349,3 +1349,11 @@ heatmap for your year at a glance.
 All views share the quick-add row and the ⋯ menu (Statistics · Note · Edit ·
 Archive · Delete); tap cells to toggle and right-click for a note in Table and
 Compact.
+
+**Fix — the check-in "blink."** Tapping a cell flashed the whole grid to the
+loading skeleton and back. Root cause: the streak-recompute (and habit-delete)
+queried habit logs by `habitId` only, which Firestore's owner-scoped rules
+**reject**, so the toggle threw and the error path did a full (skeleton) reload.
+Those queries are now scoped by `userId` (filtered to the habit client-side), and
+the toggle's fallback reconciles **silently** — so check-ins are instant with no
+flash.

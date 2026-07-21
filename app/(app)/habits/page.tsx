@@ -119,9 +119,9 @@ export default function HabitsPage() {
 
   const today = toDateKey(new Date());
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { quiet?: boolean }) => {
     if (!user) return;
-    setLoading(true);
+    if (!opts?.quiet) setLoading(true);
     try {
       const [h, logs] = await Promise.all([getHabits(user.uid), getHabitLogs(user.uid)]);
       const byHabit: Record<string, HabitLog[]> = {};
@@ -129,7 +129,7 @@ export default function HabitsPage() {
       setHabits(h);
       setLogsByHabit(byHabit);
     } finally {
-      setLoading(false);
+      if (!opts?.quiet) setLoading(false);
     }
   }, [user]);
 
@@ -283,7 +283,7 @@ export default function HabitsPage() {
       return { ...prev, [habit.id]: logs };
     });
     void toggleHabitLog(user.uid, habit.id, key, done, fullValue).catch(() => {
-      void load(); // reconcile only if the write actually failed
+      void load({ quiet: true }); // reconcile silently — never flash the skeleton
     });
   }
 
@@ -771,7 +771,7 @@ export default function HabitsPage() {
         description="This permanently deletes the habit and its entire check-in history."
         onConfirm={async () => {
           if (deleting) {
-            await deleteHabit(deleting.id);
+            await deleteHabit(deleting.userId, deleting.id);
             setDeleting(null);
             await load();
           }
