@@ -1332,3 +1332,20 @@ heatmap for your year at a glance.
   today's column never disappears if the tab is left open past midnight.
 - **Honest success trend.** Brand-new habits with no prior 4 weeks show **"New"**
   instead of an inflated "+X%" against an empty baseline.
+
+---
+
+## Habits — view modes (Table · Cards · Compact · Calendar)
+
+**What it is.** A view switcher in the filter bar lets you see the same habits four ways:
+- **Table** — the full habit × date grid (default).
+- **Cards** — one card per habit with its completion %, streak, tags, and a big
+  **Mark today / Done today** button.
+- **Compact** — a dense list: each habit with a 14-day dot strip, streak, and %,
+  for a fast scan.
+- **Calendar** — a month grid where each day is shaded by how many habits you
+  completed that day (with the completed/total count), for a monthly overview.
+
+All views share the quick-add row and the ⋯ menu (Statistics · Note · Edit ·
+Archive · Delete); tap cells to toggle and right-click for a note in Table and
+Compact.

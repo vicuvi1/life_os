@@ -86,6 +86,15 @@ function rangeLabel(first: string, last: string): string {
   const b = fmtDay(last);
   return `${a.day} ${a.month} – ${b.day} ${b.month}`;
 }
+function monthKeysOf(anchorKey: string): { keys: string[]; label: string } {
+  const d = new Date(anchorKey + "T00:00:00");
+  const y = d.getFullYear();
+  const m = d.getMonth();
+  const dim = new Date(y, m + 1, 0).getDate();
+  const keys: string[] = [];
+  for (let i = 1; i <= dim; i++) keys.push(`${y}-${String(m + 1).padStart(2, "0")}-${String(i).padStart(2, "0")}`);
+  return { keys, label: `${MONTHS_SHORT[m]} ${y}` };
+}
 
 export default function HabitsPage() {
   const { user } = useAuth();
@@ -102,6 +111,7 @@ export default function HabitsPage() {
   const [noteTarget, setNoteTarget] = useState<{ habit: Habit; date: string } | null>(null);
 
   const [windowOffset, setWindowOffset] = useState(0); // 0 = current window (ends today)
+  const [viewMode, setViewMode] = useState<"table" | "cards" | "compact" | "calendar">("table");
   const [showNumbers, setShowNumbers] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [filterCategory, setFilterCategory] = useState<"all" | HabitCategory>("all");
@@ -304,6 +314,23 @@ export default function HabitsPage() {
     setFormOpen(true);
   }
 
+  const renderMenu = (habit: Habit) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Habit menu"><MoreVertical className="h-4 w-4" /></Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => setStatsHabit(habit)}><BarChart3 className="h-4 w-4" /> Statistics</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setNoteTarget({ habit, date: today })}><StickyNote className="h-4 w-4" /> Note for today</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => { setEditing(habit); setFormOpen(true); }}><Pencil className="h-4 w-4" /> Edit</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setArchived(habit, !habit.archived)}>
+          {habit.archived ? <><ArchiveRestore className="h-4 w-4" /> Unarchive</> : <><Archive className="h-4 w-4" /> Archive</>}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setDeleting(habit)} className="text-destructive focus:text-destructive"><Trash2 className="h-4 w-4" /> Delete</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   return (
     <div className="mx-auto max-w-[1500px] space-y-5">
       {/* Header */}
@@ -393,6 +420,15 @@ export default function HabitsPage() {
               </SelectContent>
             </Select>
             <Input placeholder="Search name or tag…" value={search} onChange={(e) => setSearch(e.target.value)} className="h-9 min-w-[150px] flex-1" />
+            <Select value={viewMode} onValueChange={(v) => setViewMode(v as typeof viewMode)}>
+              <SelectTrigger className="h-9 w-[120px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="table">Table</SelectItem>
+                <SelectItem value="cards">Cards</SelectItem>
+                <SelectItem value="compact">Compact</SelectItem>
+                <SelectItem value="calendar">Calendar</SelectItem>
+              </SelectContent>
+            </Select>
             <label className="flex items-center gap-2 px-2 text-sm text-muted-foreground">
               <input type="checkbox" checked={showNumbers} onChange={(e) => setShowNumbers(e.target.checked)} className="h-4 w-4 rounded border-input" />
               Show numbers
@@ -409,7 +445,7 @@ export default function HabitsPage() {
           <Card className="overflow-hidden">
             {grid.length === 0 ? (
               <CardContent className="p-10 text-center text-sm text-muted-foreground">No habits match this filter.</CardContent>
-            ) : (
+            ) : viewMode === "table" ? (
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse text-sm">
                   <thead>
@@ -477,20 +513,7 @@ export default function HabitsPage() {
                                 <div className="h-full rounded-full" style={{ width: `${Math.round(tally.rate)}%`, backgroundColor: color }} />
                               </div>
                               <span className="w-9 text-right text-xs tabular-nums text-muted-foreground">{Math.round(tally.rate)}%</span>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Habit menu"><MoreVertical className="h-4 w-4" /></Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => setStatsHabit(habit)}><BarChart3 className="h-4 w-4" /> Statistics</DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => setNoteTarget({ habit, date: today })}><StickyNote className="h-4 w-4" /> Note for today</DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => { setEditing(habit); setFormOpen(true); }}><Pencil className="h-4 w-4" /> Edit</DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => setArchived(habit, !habit.archived)}>
-                                    {habit.archived ? <><ArchiveRestore className="h-4 w-4" /> Unarchive</> : <><Archive className="h-4 w-4" /> Archive</>}
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => setDeleting(habit)} className="text-destructive focus:text-destructive"><Trash2 className="h-4 w-4" /> Delete</DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
+                              {renderMenu(habit)}
                             </div>
                           </td>
                         </tr>
@@ -499,6 +522,129 @@ export default function HabitsPage() {
                   </tbody>
                 </table>
               </div>
+            ) : viewMode === "compact" ? (
+              <div className="divide-y">
+                {grid.map(({ habit, cells, tally }) => {
+                  const color = habit.color ?? DEFAULT_HABIT_COLOR;
+                  const streak = streaksByHabit.get(habit.id)?.streak ?? 0;
+                  const recent = cells.slice(-14);
+                  return (
+                    <div key={habit.id} className={cn("flex items-center gap-3 px-4 py-2.5", habit.archived && "opacity-50")}>
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base" style={{ backgroundColor: `${color}22` }}>
+                        {habit.emoji || <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="flex items-center gap-1.5 truncate text-sm font-medium">
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: DIFFICULTY_META[habit.difficulty].color }} />
+                          {habit.title}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">{Math.round(tally.rate)}%{(habit.tags ?? []).length > 0 ? ` · ${habit.tags.slice(0, 2).join(", ")}` : ""}</p>
+                      </div>
+                      <div className="hidden items-center gap-0.5 md:flex">
+                        {recent.map((c) => (
+                          <StatusCell key={c.key} status={c.status} color={color} value={c.log?.value ?? null} showNumber={false} disabled={c.key > today} hasNote={Boolean(c.log?.note)} onClick={() => toggleCell(habit, c.key, c.status)} onNote={() => setNoteTarget({ habit, date: c.key })} />
+                        ))}
+                      </div>
+                      <span className="flex shrink-0 items-center gap-1 text-sm font-semibold text-orange-500"><Flame className="h-3.5 w-3.5" />{streak}</span>
+                      {renderMenu(habit)}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : viewMode === "cards" ? (
+              <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+                {grid.map(({ habit, cells, tally }) => {
+                  const color = habit.color ?? DEFAULT_HABIT_COLOR;
+                  const streak = streaksByHabit.get(habit.id)?.streak ?? 0;
+                  const todayCell = cells.find((c) => c.key === today);
+                  const doneTodayCard = todayCell?.status === "completed";
+                  return (
+                    <div key={habit.id} className={cn("rounded-2xl border bg-background p-4", habit.archived && "opacity-50")}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-lg" style={{ backgroundColor: `${color}22` }}>
+                            {habit.emoji || <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold">{habit.title}</p>
+                            <p className="text-xs text-muted-foreground">{DIFFICULTY_META[habit.difficulty].label} · 🔥 {streak}</p>
+                          </div>
+                        </div>
+                        {renderMenu(habit)}
+                      </div>
+                      {(habit.tags ?? []).length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {habit.tags.slice(0, 4).map((t) => <span key={t} className="rounded-full bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">{t}</span>)}
+                        </div>
+                      )}
+                      <div className="mt-3 flex items-center justify-between">
+                        <div>
+                          <p className="text-2xl font-bold tabular-nums">{Math.round(tally.rate)}%</p>
+                          <p className="text-xs text-muted-foreground">this period</p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant={doneTodayCard ? "default" : "outline"}
+                          onClick={() => todayCell && toggleCell(habit, today, todayCell.status)}
+                          style={doneTodayCard ? { backgroundColor: color, borderColor: color } : undefined}
+                        >
+                          {doneTodayCard ? <><Check className="h-4 w-4" /> Done today</> : "Mark today"}
+                        </Button>
+                      </div>
+                      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
+                        <div className="h-full rounded-full" style={{ width: `${Math.round(tally.rate)}%`, backgroundColor: color }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              (() => {
+                const { keys: mKeys, label } = monthKeysOf(anchorEnd);
+                const dayAgg = new Map<string, { completed: number; scheduled: number }>();
+                for (const k of mKeys) dayAgg.set(k, { completed: 0, scheduled: 0 });
+                for (const h of filteredHabits) {
+                  const createdKey = toDateKey(new Date(h.createdAt));
+                  const perDate = logMap.get(h.id) ?? new Map<string, HabitLog>();
+                  for (const k of mKeys) {
+                    const st = dayStatus(h, perDate.get(k), k, today, createdKey);
+                    if (st === "none") continue;
+                    const e = dayAgg.get(k)!;
+                    e.scheduled++;
+                    if (st === "completed") e.completed++;
+                  }
+                }
+                const offset = (new Date(mKeys[0] + "T00:00:00").getDay() + 6) % 7;
+                const cal: (string | null)[] = [...Array(offset).fill(null), ...mKeys];
+                return (
+                  <div className="p-4">
+                    <p className="mb-3 text-sm font-semibold">{label}</p>
+                    <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-muted-foreground">
+                      {WEEK_HEADS.map((d) => <span key={d}>{d}</span>)}
+                    </div>
+                    <div className="mt-1 grid grid-cols-7 gap-1">
+                      {cal.map((k, i) => {
+                        if (k == null) return <span key={`b${i}`} />;
+                        const e = dayAgg.get(k)!;
+                        const rate = e.scheduled > 0 ? e.completed / e.scheduled : 0;
+                        const intensity = e.scheduled === 0 ? 0 : 0.18 + rate * 0.82;
+                        const isT = k === today;
+                        return (
+                          <div
+                            key={k}
+                            title={`${fmtDay(k).day} ${fmtDay(k).month}: ${e.completed}/${e.scheduled}`}
+                            className={cn("flex aspect-square flex-col items-center justify-center rounded-lg text-xs", e.scheduled === 0 && "bg-muted/40 text-muted-foreground", isT && "ring-2 ring-primary")}
+                            style={e.scheduled > 0 ? { backgroundColor: `rgba(16,185,129,${intensity})`, color: rate > 0.5 ? "#fff" : undefined } : undefined}
+                          >
+                            <span className="tabular-nums">{fmtDay(k).day}</span>
+                            {e.scheduled > 0 && <span className="text-[9px] opacity-80">{e.completed}/{e.scheduled}</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()
             )}
             {/* Quick-add right where the habits are */}
             <div className="flex items-center gap-2 border-t px-4 py-2.5">
@@ -513,13 +659,15 @@ export default function HabitsPage() {
               <Button size="sm" onClick={quickAdd} disabled={!quickName.trim()}>Add</Button>
               <Button size="sm" variant="ghost" onClick={openCreate}>More options</Button>
             </div>
-            <div className="flex flex-wrap items-center gap-4 border-t px-4 py-2.5 text-xs text-muted-foreground">
-              <LegendDot cls="bg-emerald-500" label="Completed" />
-              <LegendDot cls="bg-amber-500" label="Partial" />
-              <LegendDot cls="bg-rose-500" label="Missed" />
-              <LegendDot cls="border border-muted-foreground/30" label="Not done" />
-              <span className="ml-auto">Tap a cell to toggle completion</span>
-            </div>
+            {viewMode !== "calendar" && (
+              <div className="flex flex-wrap items-center gap-4 border-t px-4 py-2.5 text-xs text-muted-foreground">
+                <LegendDot cls="bg-emerald-500" label="Completed" />
+                <LegendDot cls="bg-amber-500" label="Partial" />
+                <LegendDot cls="bg-rose-500" label="Missed" />
+                <LegendDot cls="border border-muted-foreground/30" label="Not done" />
+                <span className="ml-auto">Tap a cell to toggle · right-click for a note</span>
+              </div>
+            )}
           </Card>
 
           {/* 365-day activity — GitHub-style, full width */}
