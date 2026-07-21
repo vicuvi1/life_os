@@ -95,6 +95,26 @@ export const NAV_FOOTER: NavItem[] = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
+/**
+ * Contextual sub-navigation. When the current route is inside one of these
+ * modules, the sidebar reveals these shortcuts beneath the module — VS Code /
+ * Notion style — without leaving the page.
+ */
+export interface SubNavItem {
+  href: string;
+  label: string;
+}
+export const SUBNAV: Record<string, SubNavItem[]> = {
+  "/nutrition": [
+    { href: "/nutrition", label: "Today" },
+    { href: "/nutrition/foods", label: "Foods" },
+    { href: "/nutrition/pantry", label: "Pantry" },
+    { href: "/nutrition/shopping", label: "Shopping" },
+    { href: "/nutrition/recipes", label: "Recipes" },
+    { href: "/nutrition/analytics", label: "Insights" },
+  ],
+};
+
 /** Flattened list of every nav item (kept for any consumer that needs it). */
 export const NAV: NavItem[] = [
   ...NAV_SECTIONS.flatMap((s) => s.items),

@@ -17,7 +17,7 @@ export function Topbar({ email }: { email?: string | null }) {
   }
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b bg-background/80 px-4 backdrop-blur md:px-6">
+    <header className="flex h-16 shrink-0 items-center justify-between border-b border-border/40 bg-gradient-to-b from-card/60 to-card/30 px-4 backdrop-blur-xl md:px-6">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <MobileNav />
         {email ? <span className="hidden sm:inline">{email}</span> : null}
@@ -28,6 +28,7 @@ export function Topbar({ email }: { email?: string | null }) {
           variant="ghost"
           size="icon"
           aria-label="Log out"
+          className="text-muted-foreground hover:text-foreground"
           onClick={handleLogout}
         >
           <LogOut className="h-5 w-5" />

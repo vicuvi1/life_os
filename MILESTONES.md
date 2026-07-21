@@ -2305,3 +2305,28 @@ Visual + layout overhaul of the Today dashboard from design feedback:
 - **Nicer empty state** and a **richer Quick Add** (Favorites + Recent foods,
   one tap to a prefilled meal).
 - Goals stay editable inline; water is logged from the progress card.
+
+---
+
+## 🧭 Premium sidebar — command center
+
+The sidebar was rebuilt from a plain link list into a command center that feels
+like Linear / Arc / Raycast, keeping the dark Life OS theme.
+
+- **Premium layout** — wider (248px), generous padding and section spacing,
+  cleaner typography hierarchy, aligned icons, soft low-contrast borders and a
+  subtle glass/gradient surface. Section titles are quiet; separators are thin.
+- **Sliding active pill** — a single rounded indicator smoothly animates between
+  items (measured position, ~240ms easing) instead of an instant rectangle.
+- **Microinteractions** — icons scale, text brightens, and backgrounds fade on
+  hover with 150–240ms easing; nothing flashy.
+- **"Today" widget** — greeting (Good morning/afternoon/evening) + date, a
+  today's-progress bar (habit completion), and Tasks-left / Habits-left counts.
+  It answers "what should I do today?" at a glance.
+- **Contextual navigation** — inside a module (e.g. Nutrition) the sidebar
+  reveals shortcuts beneath it (Today · Foods · Pantry · Shopping · Recipes ·
+  Insights), VS Code / Notion style, without leaving the page.
+- **Collapse + hover-expand** — a pin toggle collapses to an icons-only rail;
+  hovering the rail smoothly expands it as an overlay (content doesn't reflow).
+- **Unified top bar** — matching soft border + glass treatment so the shell
+  feels like one system.
