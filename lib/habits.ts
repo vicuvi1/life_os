@@ -20,6 +20,12 @@ export const HABIT_CATEGORY_LABEL: Record<HabitCategory, string> = {
   health: "Health",
 };
 
+/** Display label for a category — built-in label, or a Capitalized custom name. */
+export function categoryLabel(cat: string | null | undefined): string {
+  if (!cat) return "";
+  return HABIT_CATEGORY_LABEL[cat as HabitCategory] ?? cat.charAt(0).toUpperCase() + cat.slice(1);
+}
+
 /** Preset colors offered in the habit form (hex). */
 export const HABIT_COLORS: { name: string; value: string }[] = [
   { name: "Violet", value: "#8b5cf6" },

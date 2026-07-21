@@ -9,8 +9,8 @@ import {
 } from "@/components/ui/dialog";
 import {
   doneDates,
-  currentStreak,
-  longestStreak,
+  habitCurrentStreak,
+  habitLongestStreak,
   addDays,
   dayStatus,
   tallyStatuses,
@@ -76,8 +76,8 @@ export function HabitStatsDialog({ open, onOpenChange, habit, logs }: Props) {
     }
 
     return {
-      current: currentStreak(set, today),
-      longest: longestStreak(done),
+      current: habitCurrentStreak(habit, done, today),
+      longest: habitLongestStreak(habit, done),
       avgStreak,
       successPct: tally.rate,
       missedPct: tally.scheduled > 0 ? (tally.missed / tally.scheduled) * 100 : 0,

@@ -129,8 +129,11 @@ export interface Habit {
   /** Free-form tags for grouping/filtering (e.g. ["health", "morning"]). */
   tags: string[];
   frequency: HabitFrequency;
-  category: HabitCategory | null;
+  /** Built-in key (HabitCategory) or any custom category name; null = none. */
+  category: string | null;
   color: string | null;
+  /** Manual sort position (lower = earlier). Defaults to createdAt order. */
+  sortOrder: number;
   /** How completion is measured. Defaults to "check" (yes/no). */
   targetType: HabitTargetType;
   /** For count/duration habits: the daily target (glasses, minutes, …). */

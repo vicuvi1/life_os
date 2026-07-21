@@ -34,7 +34,6 @@ import { NumberField } from "@/components/ui/number-field";
 import { cn } from "@/lib/utils";
 import type {
   Habit,
-  HabitCategory,
   HabitDifficulty,
   HabitFrequency,
   HabitTargetType,
@@ -81,7 +80,7 @@ export function HabitFormDialog({
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [frequency, setFrequency] = useState<HabitFrequency>("daily");
-  const [category, setCategory] = useState<HabitCategory>("morning");
+  const [category, setCategory] = useState<string>("");
   const [color, setColor] = useState(DEFAULT_HABIT_COLOR);
   const [targetType, setTargetType] = useState<HabitTargetType>("check");
   const [targetValue, setTargetValue] = useState<number | null>(null);
@@ -97,7 +96,7 @@ export function HabitFormDialog({
     setTags(habit?.tags ?? []);
     setTagInput("");
     setFrequency(habit?.frequency ?? "daily");
-    setCategory(habit?.category ?? "morning");
+    setCategory(habit?.category ?? "");
     setColor(habit?.color ?? DEFAULT_HABIT_COLOR);
     setTargetType(habit?.targetType ?? "check");
     setTargetValue(habit?.targetValue ?? null);
@@ -134,7 +133,7 @@ export function HabitFormDialog({
       emoji: emoji.trim() || null,
       tags,
       frequency,
-      category,
+      category: category.trim().toLowerCase() || null,
       color,
       targetType,
       targetValue: targetType === "check" ? null : targetValue,
@@ -241,22 +240,19 @@ export function HabitFormDialog({
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Category</Label>
-              <Select
+              <Label htmlFor="h-category">Category</Label>
+              <Input
+                id="h-category"
+                list="habit-category-suggestions"
                 value={category}
-                onValueChange={(v) => setCategory(v as HabitCategory)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {HABIT_CATEGORIES.map((c) => (
-                    <SelectItem key={c} value={c}>
-                      {HABIT_CATEGORY_LABEL[c]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                onChange={(e) => setCategory(e.target.value)}
+                placeholder="Type or pick — e.g. Finance"
+              />
+              <datalist id="habit-category-suggestions">
+                {HABIT_CATEGORIES.map((c) => (
+                  <option key={c} value={HABIT_CATEGORY_LABEL[c]} />
+                ))}
+              </datalist>
             </div>
             <div className="space-y-2">
               <Label>Frequency</Label>
@@ -332,7 +328,7 @@ export function HabitFormDialog({
 
           <div className="space-y-2">
             <Label>Color</Label>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {HABIT_COLORS.map((c) => (
                 <button
                   key={c.value}
@@ -350,6 +346,9 @@ export function HabitFormDialog({
                   )}
                 </button>
               ))}
+              <label className="flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-input" title="Custom color" style={{ backgroundColor: color }}>
+                <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="h-10 w-10 cursor-pointer opacity-0" aria-label="Custom color" />
+              </label>
             </div>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}

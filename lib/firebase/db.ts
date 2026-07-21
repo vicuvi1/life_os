@@ -129,6 +129,7 @@ function mapHabit(snap: QueryDocumentSnapshot<DocumentData>): Habit {
     frequency: d.frequency ?? "daily",
     category: d.category ?? null,
     color: d.color ?? null,
+    sortOrder: typeof d.sortOrder === "number" ? d.sortOrder : toMillis(d.createdAt),
     targetType: d.targetType ?? "check",
     targetValue: d.targetValue ?? null,
     difficulty:
@@ -421,7 +422,7 @@ export async function getHabits(userId: string): Promise<Habit[]> {
     where("userId", "==", userId)
   );
   const snap = await getDocs(q);
-  return snap.docs.map(mapHabit).sort((a, b) => a.createdAt - b.createdAt);
+  return snap.docs.map(mapHabit).sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt);
 }
 
 export async function getDailyHabits(userId: string): Promise<Habit[]> {
@@ -464,6 +465,7 @@ export async function createHabit(
     tags: input.tags ?? [],
     difficulty: input.difficulty ?? "medium",
     archived: input.archived ?? false,
+    sortOrder: Date.now(),
     streak: 0,
     bestStreak: 0,
     lastCompleted: null,
@@ -497,7 +499,7 @@ export async function setHabitLogNote(
 
 export async function updateHabit(
   id: string,
-  input: Partial<HabitInput>
+  input: Partial<HabitInput> & { sortOrder?: number }
 ): Promise<void> {
   await updateDoc(doc(db, COLLECTIONS.habits, id), { ...input });
 }

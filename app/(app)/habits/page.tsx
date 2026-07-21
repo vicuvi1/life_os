@@ -22,6 +22,8 @@ import {
   ArchiveRestore,
   StickyNote,
   LayoutTemplate,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -42,15 +44,15 @@ import {
   habitCurrentStreak,
   habitLongestStreak,
   streakMilestoneMessage,
+  categoryLabel,
   HABIT_CATEGORIES,
-  HABIT_CATEGORY_LABEL,
   DEFAULT_HABIT_COLOR,
   DIFFICULTY_META,
   type DayStatus,
 } from "@/lib/habits";
 import { HabitStatsDialog } from "@/components/habits/habit-stats-dialog";
 import { TemplatesDialog } from "@/components/habits/templates-dialog";
-import { NoteDialog } from "@/components/habits/note-dialog";
+import { DayEditorDialog } from "@/components/habits/day-editor-dialog";
 import { toDateKey } from "@/lib/greeting";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -71,7 +73,7 @@ import {
 import { HabitFormDialog } from "@/components/habits/habit-form-dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { cn } from "@/lib/utils";
-import type { Habit, HabitCategory, HabitLog } from "@/lib/types";
+import type { Habit, HabitLog } from "@/lib/types";
 import type { LucideIcon } from "lucide-react";
 
 const WINDOW = 28; // 4 weeks
@@ -114,13 +116,40 @@ export default function HabitsPage() {
   const [celebrate, setCelebrate] = useState<{ message: string; habit: string } | null>(null);
 
   const [windowOffset, setWindowOffset] = useState(0); // 0 = current window (ends today)
+  const [windowDays, setWindowDays] = useState(WINDOW);
+  const [weekStart, setWeekStart] = useState<"mon" | "sun">("mon");
   const [viewMode, setViewMode] = useState<"table" | "cards" | "compact" | "calendar">("table");
   const [showNumbers, setShowNumbers] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
-  const [filterCategory, setFilterCategory] = useState<"all" | HabitCategory>("all");
+  const [filterCategory, setFilterCategory] = useState<string>("all");
   const [search, setSearch] = useState("");
 
   const today = toDateKey(new Date());
+
+  // Load & persist tracker preferences (per device).
+  useEffect(() => {
+    try {
+      const w = Number(window.localStorage.getItem("habits:windowDays"));
+      if ([14, 28, 56, 84].includes(w)) setWindowDays(w);
+      const v = window.localStorage.getItem("habits:viewMode");
+      if (v === "table" || v === "cards" || v === "compact" || v === "calendar") setViewMode(v);
+      const ws = window.localStorage.getItem("habits:weekStart");
+      if (ws === "mon" || ws === "sun") setWeekStart(ws);
+      if (window.localStorage.getItem("habits:showNumbers") === "1") setShowNumbers(true);
+    } catch {
+      // ignore
+    }
+  }, []);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("habits:windowDays", String(windowDays));
+      window.localStorage.setItem("habits:viewMode", viewMode);
+      window.localStorage.setItem("habits:weekStart", weekStart);
+      window.localStorage.setItem("habits:showNumbers", showNumbers ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, [windowDays, viewMode, weekStart, showNumbers]);
 
   const load = useCallback(async (opts?: { quiet?: boolean }) => {
     if (!user) return;
@@ -157,26 +186,34 @@ export default function HabitsPage() {
   }, [logsByHabit]);
 
   // Window end is derived from the LIVE today, so it never goes stale at midnight.
-  const anchorEnd = useMemo(() => addDays(today, -windowOffset * WINDOW), [today, windowOffset]);
-  const keys = useMemo(() => lastNDays(anchorEnd, WINDOW), [anchorEnd]);
-  const prevKeys = useMemo(() => lastNDays(addDays(keys[0], -1), WINDOW), [keys]);
+  const anchorEnd = useMemo(() => addDays(today, -windowOffset * windowDays), [today, windowOffset, windowDays]);
+  const keys = useMemo(() => lastNDays(anchorEnd, windowDays), [anchorEnd, windowDays]);
+  const prevKeys = useMemo(() => lastNDays(addDays(keys[0], -1), windowDays), [keys, windowDays]);
 
   const activeHabits = useMemo(() => habits.filter((h) => !h.archived), [habits]);
   const archivedCount = habits.length - activeHabits.length;
 
   const filteredHabits = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return habits.filter((h) => {
-      if (!showArchived && h.archived) return false;
-      if (filterCategory !== "all" && h.category !== filterCategory) return false;
-      if (!q) return true;
-      return (
-        h.title.toLowerCase().includes(q) ||
-        (h.tags ?? []).some((t) => t.includes(q)) ||
-        (h.description ?? "").toLowerCase().includes(q)
-      );
-    });
+    return habits
+      .filter((h) => {
+        if (!showArchived && h.archived) return false;
+        if (filterCategory !== "all" && h.category !== filterCategory) return false;
+        if (!q) return true;
+        return (
+          h.title.toLowerCase().includes(q) ||
+          (h.tags ?? []).some((t) => t.includes(q)) ||
+          (h.description ?? "").toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt);
   }, [habits, filterCategory, search, showArchived]);
+
+  const categoryOptions = useMemo(() => {
+    const set = new Set<string>(HABIT_CATEGORIES);
+    for (const h of habits) if (h.category) set.add(h.category);
+    return Array.from(set);
+  }, [habits]);
 
   // Per-habit cells + tally for the current window.
   const grid = useMemo(() => {
@@ -275,7 +312,24 @@ export default function HabitsPage() {
     try {
       await updateHabit(habit.id, { archived });
     } catch {
-      await load();
+      await load({ quiet: true });
+    }
+  }
+
+  async function moveHabit(habit: Habit, dir: -1 | 1) {
+    const list = filteredHabits;
+    const i = list.findIndex((h) => h.id === habit.id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= list.length) return;
+    const a = list[i];
+    const b = list[j];
+    const aOrder = a.sortOrder;
+    const bOrder = b.sortOrder;
+    setHabits((prev) => prev.map((h) => (h.id === a.id ? { ...h, sortOrder: bOrder } : h.id === b.id ? { ...h, sortOrder: aOrder } : h)));
+    try {
+      await Promise.all([updateHabit(a.id, { sortOrder: bOrder }), updateHabit(b.id, { sortOrder: aOrder })]);
+    } catch {
+      await load({ quiet: true });
     }
   }
 
@@ -329,6 +383,14 @@ export default function HabitsPage() {
   }
   const atToday = windowOffset === 0;
 
+  // Week-start-aware helpers (display only; streak math stays Monday-based).
+  const weekdayOrder = weekStart === "mon" ? [1, 2, 3, 4, 5, 6, 0] : [0, 1, 2, 3, 4, 5, 6];
+  const weekHeadLabels = weekStart === "mon" ? WEEK_HEADS : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const startOffset = (dateKey: string) => {
+    const d = new Date(dateKey + "T00:00:00").getDay();
+    return weekStart === "mon" ? (d + 6) % 7 : d;
+  };
+
   function openCreate() {
     setEditing(null);
     setFormOpen(true);
@@ -341,8 +403,10 @@ export default function HabitsPage() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={() => setStatsHabit(habit)}><BarChart3 className="h-4 w-4" /> Statistics</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setNoteTarget({ habit, date: today })}><StickyNote className="h-4 w-4" /> Note for today</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => { setEditing(habit); setFormOpen(true); }}><Pencil className="h-4 w-4" /> Edit</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setNoteTarget({ habit, date: today })}><StickyNote className="h-4 w-4" /> Edit today</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => { setEditing(habit); setFormOpen(true); }}><Pencil className="h-4 w-4" /> Edit habit</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => moveHabit(habit, -1)}><ArrowUp className="h-4 w-4" /> Move up</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => moveHabit(habit, 1)}><ArrowDown className="h-4 w-4" /> Move down</DropdownMenuItem>
         <DropdownMenuItem onClick={() => setArchived(habit, !habit.archived)}>
           {habit.archived ? <><ArchiveRestore className="h-4 w-4" /> Unarchive</> : <><Archive className="h-4 w-4" /> Archive</>}
         </DropdownMenuItem>
@@ -376,10 +440,19 @@ export default function HabitsPage() {
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="min-w-[130px] text-center text-sm font-medium">{keys.length > 0 ? rangeLabel(keys[0], keys[keys.length - 1]) : ""}</span>
-            <Button variant="ghost" size="icon" aria-label="Next 4 weeks" onClick={() => shiftWindow(1)} disabled={atToday} className="h-9 w-9">
+            <Button variant="ghost" size="icon" aria-label="Next window" onClick={() => shiftWindow(1)} disabled={atToday} className="h-9 w-9">
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
+          <Select value={String(windowDays)} onValueChange={(v) => { setWindowDays(Number(v)); setWindowOffset(0); }}>
+            <SelectTrigger className="h-9 w-[104px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="14">2 weeks</SelectItem>
+              <SelectItem value="28">4 weeks</SelectItem>
+              <SelectItem value="56">8 weeks</SelectItem>
+              <SelectItem value="84">12 weeks</SelectItem>
+            </SelectContent>
+          </Select>
           {user && (
             <>
               <Button variant="outline" onClick={() => setTemplatesOpen(true)}>
@@ -441,11 +514,11 @@ export default function HabitsPage() {
 
           {/* Filter bar */}
           <div className="flex flex-wrap items-center gap-2 rounded-2xl border bg-surface p-2">
-            <Select value={filterCategory} onValueChange={(v) => setFilterCategory(v as "all" | HabitCategory)}>
+            <Select value={filterCategory} onValueChange={(v) => setFilterCategory(v)}>
               <SelectTrigger className="h-9 w-[150px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All habits</SelectItem>
-                {HABIT_CATEGORIES.map((c) => <SelectItem key={c} value={c}>{HABIT_CATEGORY_LABEL[c]}</SelectItem>)}
+                {categoryOptions.map((c) => <SelectItem key={c} value={c}>{categoryLabel(c)}</SelectItem>)}
               </SelectContent>
             </Select>
             <Input placeholder="Search name or tag…" value={search} onChange={(e) => setSearch(e.target.value)} className="h-9 min-w-[150px] flex-1" />
@@ -456,6 +529,13 @@ export default function HabitsPage() {
                 <SelectItem value="cards">Cards</SelectItem>
                 <SelectItem value="compact">Compact</SelectItem>
                 <SelectItem value="calendar">Calendar</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={weekStart} onValueChange={(v) => setWeekStart(v as "mon" | "sun")}>
+              <SelectTrigger className="h-9 w-[116px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="mon">Week: Mon</SelectItem>
+                <SelectItem value="sun">Week: Sun</SelectItem>
               </SelectContent>
             </Select>
             <label className="flex items-center gap-2 px-2 text-sm text-muted-foreground">
@@ -644,13 +724,13 @@ export default function HabitsPage() {
                     if (st === "completed") e.completed++;
                   }
                 }
-                const offset = (new Date(mKeys[0] + "T00:00:00").getDay() + 6) % 7;
+                const offset = startOffset(mKeys[0]);
                 const cal: (string | null)[] = [...Array(offset).fill(null), ...mKeys];
                 return (
                   <div className="p-4">
                     <p className="mb-3 text-sm font-semibold">{label}</p>
                     <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-muted-foreground">
-                      {WEEK_HEADS.map((d) => <span key={d}>{d}</span>)}
+                      {weekHeadLabels.map((d) => <span key={d}>{d}</span>)}
                     </div>
                     <div className="mt-1 grid grid-cols-7 gap-1">
                       {cal.map((k, i) => {
@@ -714,7 +794,7 @@ export default function HabitsPage() {
               </span>
             </div>
             <div className="p-4">
-              <YearHeatmap keys={yearKeys} heat={yearHeat} today={today} />
+              <YearHeatmap keys={yearKeys} heat={yearHeat} today={today} weekStart={weekStart} />
             </div>
           </Card>
 
@@ -722,7 +802,7 @@ export default function HabitsPage() {
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
             <Panel title="Weekly completion">
               <div className="flex h-32 items-end justify-between gap-1.5">
-                {[1, 2, 3, 4, 5, 6, 0].map((wd) => {
+                {weekdayOrder.map((wd) => {
                   const a = weekday[wd];
                   const rate = a.scheduled > 0 ? (a.completed / a.scheduled) * 100 : 0;
                   return (
@@ -783,14 +863,14 @@ export default function HabitsPage() {
       )}
 
       {user && (
-        <NoteDialog
+        <DayEditorDialog
           open={noteTarget !== null}
           onOpenChange={(o) => { if (!o) setNoteTarget(null); }}
           userId={user.uid}
           habit={noteTarget?.habit ?? null}
           date={noteTarget?.date ?? null}
-          currentNote={noteTarget ? (logsByHabit[noteTarget.habit.id]?.find((l) => l.completedDate === noteTarget.date)?.note ?? null) : null}
-          onSaved={load}
+          log={noteTarget ? (logsByHabit[noteTarget.habit.id]?.find((l) => l.completedDate === noteTarget.date) ?? null) : null}
+          onSaved={() => load({ quiet: true })}
         />
       )}
 
@@ -877,10 +957,11 @@ function StatusCell({ status, color, value, showNumber, disabled, hasNote, anima
   );
 }
 
-function YearHeatmap({ keys, heat, today }: { keys: string[]; heat: Map<string, { completed: number; scheduled: number }>; today: string }) {
+function YearHeatmap({ keys, heat, today, weekStart }: { keys: string[]; heat: Map<string, { completed: number; scheduled: number }>; today: string; weekStart: "mon" | "sun" }) {
   if (keys.length === 0) return null;
-  // Pad the start so column 0 begins on a Monday, then chunk into week-columns.
-  const offset = (new Date(keys[0] + "T00:00:00").getDay() + 6) % 7;
+  // Pad the start so column 0 begins on the chosen week-start, then chunk into weeks.
+  const firstDay = new Date(keys[0] + "T00:00:00").getDay();
+  const offset = weekStart === "mon" ? (firstDay + 6) % 7 : firstDay;
   const cells: (string | null)[] = [...Array(offset).fill(null), ...keys];
   const weeks: (string | null)[][] = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));

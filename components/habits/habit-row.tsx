@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { HABIT_CATEGORY_LABEL, type HabitState } from "@/lib/habits";
+import { categoryLabel, type HabitState } from "@/lib/habits";
 import { cn } from "@/lib/utils";
 import type { Habit } from "@/lib/types";
 
@@ -79,7 +79,7 @@ export function HabitRow({
           <span className="truncate text-sm font-medium">{habit.title}</span>
           {habit.category && (
             <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
-              {HABIT_CATEGORY_LABEL[habit.category]}
+              {categoryLabel(habit.category)}
             </span>
           )}
         </div>

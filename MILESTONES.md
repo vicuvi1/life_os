@@ -1373,3 +1373,24 @@ flash.
   Night).
 - **Bigger emoji picker.** The habit form's emoji presets went from ~18 to ~70,
   in a compact scrollable grid (you can still type or paste any emoji).
+
+---
+
+## Habits — full flexibility (edit any day · custom categories/colors · reorder · settings)
+
+**What it is.** Make everything about habits editable and configurable.
+- **Edit any day.** Right-click (or long-press) any cell — past or present — to open
+  a day editor: mark done/not-done, set an **exact value** for count/duration
+  habits (e.g. 6 of 8 glasses), and add a **note**. ⋯ → **Edit today** opens the
+  same editor for today. (Left-click still instant-toggles.)
+- **Custom categories.** The category field is now free text with suggestions —
+  type your own (Finance, Family, Faith…) beyond the built-ins. The filter lists
+  every category you actually use.
+- **Any color.** Alongside the 8 presets, a **color picker** lets you choose any
+  color for a habit.
+- **Reorder.** ⋯ → **Move up / Move down** arranges habits in exactly the order you
+  want (saved per habit).
+- **Flexible tracker settings.** Choose the grid **range** (2 / 4 / 8 / 12 weeks),
+  the **week start** (Mon or Sun — applies to the weekly bars, heatmaps, and
+  calendar), plus your **view** and **show-numbers** preference — all remembered
+  on your device.

@@ -1349,7 +1349,7 @@ export default function DashboardPage() {
                   .sort((a, b) => (b.bestStreak ?? 0) - (a.bestStreak ?? 0))
                   .slice(0, 6)
                   .map((h) => {
-                    const Icon = h.category ? HABIT_CATEGORY_ICON[h.category] : Flame;
+                    const Icon = (h.category && HABIT_CATEGORY_ICON[h.category as HabitCategory]) || Flame;
                     return (
                       <div key={h.id} className="flex items-center gap-2">
                         <Icon className="h-3.5 w-3.5 shrink-0 text-primary" />
