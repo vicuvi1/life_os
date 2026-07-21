@@ -138,6 +138,21 @@ export default function NutritionPage() {
   const shoppingTop = useMemo(() => (all?.shopping ?? []).slice(0, 6), [all]);
   const recommended = useMemo(() => [...(all?.recipes ?? [])].filter((r) => !r.archived && r.items.length > 0).sort((a, b) => Number(b.favorite) - Number(a.favorite) || b.createdAt - a.createdAt).slice(0, 4), [all]);
 
+  // "What should I eat next?" — recipes that fit the remaining calories.
+  const suggestions = useMemo(() => {
+    if (!calorieTarget || meals.length === 0) return null;
+    const remaining = calorieTarget - totals.calories;
+    if (remaining < 100) return null;
+    const fits = (all?.recipes ?? [])
+      .filter((r) => !r.archived && r.items.length > 0)
+      .map((r) => ({ r, cal: recipeTotals(r, foodMap).calories }))
+      .filter((x) => x.cal > 0 && x.cal >= remaining * 0.4 && x.cal <= remaining * 1.15)
+      .sort((a, b) => Math.abs(a.cal - remaining) - Math.abs(b.cal - remaining))
+      .slice(0, 4)
+      .map((x) => ({ recipe: x.r, perfect: Math.abs(x.cal - remaining) <= remaining * 0.15 }));
+    return fits.length ? { remaining: Math.round(remaining), fits } : null;
+  }, [all, calorieTarget, meals.length, totals.calories, foodMap]);
+
   function patchLog(patch: Partial<{ water: number; waterTarget: number }>) {
     if (!user) return;
     setAll((prev) => {
@@ -241,6 +256,7 @@ export default function NutritionPage() {
                   <ProgressStat emoji="🔥" label="Calories" value={fmt(totals.calories)} goal={`/ ${fmt(calorieTarget)}`} pct={calorieTarget ? (totals.calories / calorieTarget) * 100 : 0} bar="bg-violet-500" />
                   <ProgressStat emoji="🥩" label="Protein" value={`${totals.protein}`} goal={`/ ${proteinTarget}g`} pct={proteinTarget ? (totals.protein / proteinTarget) * 100 : 0} bar="bg-fuchsia-500" />
                   <ProgressStat emoji="💧" label="Water" value={`${water}`} goal={`/ ${waterTarget}${unitLabel === "glasses" ? "" : unitLabel}`} pct={waterTarget ? (water / waterTarget) * 100 : 0} bar="bg-sky-500"
+                    barOverride={<WaterSegments water={water} target={waterTarget} step={step} onSet={changeWater} />}
                     controls={
                       <span className="flex items-center gap-1">
                         <button type="button" onClick={() => changeWater(water - step)} disabled={water <= 0} className="flex h-5 w-5 items-center justify-center rounded-md border border-border/50 text-muted-foreground transition hover:bg-accent disabled:opacity-40" aria-label="Less water"><Minus className="h-3 w-3" /></button>
@@ -250,6 +266,11 @@ export default function NutritionPage() {
                   <ProgressStat emoji="❤️" label="Health" value={`${hs}`} goal="/ 100" pct={hs} barStyle={hm.color} />
                   <ProgressStat emoji="💰" label="Food Cost" value={formatAmount(totals.cost, cur)} goal="today" pct={weeklyBudget ? (weekSpend / weeklyBudget) * 100 : 0} bar="bg-emerald-500" />
                 </div>
+                {(totals.protein > 0 || totals.carbs > 0 || totals.fat > 0) && (
+                  <div className="mt-4 border-t border-border/40 pt-4">
+                    <MacroSplit protein={totals.protein} carbs={totals.carbs} fat={totals.fat} />
+                  </div>
+                )}
                 <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/40 pt-4 text-xs text-muted-foreground">
                   <span className="font-medium">Goals</span>
                   <label className="flex items-center gap-1">Calories <NumberField value={calorieTarget} onCommit={(n) => commit("calorie", n)} min={0} aria-label="Calorie goal" inputClassName="w-14" /></label>
@@ -343,12 +364,14 @@ export default function NutritionPage() {
                 </div>
               </div>
 
-              {/* Recommended */}
-              {recommended.length > 0 && (
+              {/* Recommended / calorie-fit suggestions */}
+              {(suggestions ? suggestions.fits.length > 0 : recommended.length > 0) && (
                 <div className="space-y-3">
-                  <h2 className="text-sm font-semibold text-muted-foreground">Recommended for you</h2>
+                  <h2 className="text-sm font-semibold text-muted-foreground">
+                    {suggestions ? <>🎯 Fits your remaining ~{fmt(suggestions.remaining)} kcal</> : "Recommended for you"}
+                  </h2>
                   <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-                    {recommended.map((r) => {
+                    {(suggestions ? suggestions.fits : recommended.map((r) => ({ recipe: r, perfect: false }))).map(({ recipe: r, perfect }) => {
                       const rt = recipeTotals(r, foodMap);
                       return (
                         <Card key={r.id} className={cn(soft, "flex flex-col overflow-hidden")}>
@@ -359,6 +382,9 @@ export default function NutritionPage() {
                             ) : (r.kind === "template" ? "🍽️" : "🥘")}
                             {r.prepMinutes != null && (
                               <span className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white"><Clock className="h-3 w-3" /> {r.prepMinutes} min</span>
+                            )}
+                            {perfect && (
+                              <span className="absolute right-2 top-2 rounded-full bg-emerald-500/90 px-1.5 py-0.5 text-[10px] font-semibold text-white">Perfect fit</span>
                             )}
                           </div>
                           <div className="flex flex-1 flex-col gap-1.5 p-3">
@@ -462,7 +488,7 @@ export default function NutritionPage() {
   );
 }
 
-function ProgressStat({ emoji, label, value, goal, pct, bar, barStyle, controls }: { emoji: string; label: string; value: string; goal: string; pct: number; bar?: string; barStyle?: string; controls?: React.ReactNode }) {
+function ProgressStat({ emoji, label, value, goal, pct, bar, barStyle, controls, barOverride }: { emoji: string; label: string; value: string; goal: string; pct: number; bar?: string; barStyle?: string; controls?: React.ReactNode; barOverride?: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-1">
@@ -470,8 +496,70 @@ function ProgressStat({ emoji, label, value, goal, pct, bar, barStyle, controls 
         {controls}
       </div>
       <p className="text-xl font-bold tabular-nums leading-none">{value}<span className="ml-1 text-xs font-normal text-muted-foreground">{goal}</span></p>
+      {barOverride ?? (
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div className={cn("h-full rounded-full transition-all", bar)} style={{ width: `${Math.min(100, Math.max(0, pct))}%`, ...(barStyle ? { backgroundColor: barStyle } : {}) }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Tappable water segments — one per glass / 0.25L. Click a segment to fill up
+ * to it; click the current level to step back down. Falls back to a plain bar
+ * when the target would need too many segments to read comfortably. */
+function WaterSegments({ water, target, step, onSet }: { water: number; target: number; step: number; onSet: (v: number) => void }) {
+  const count = Math.round(target / step);
+  if (count < 2 || count > 16) {
+    return (
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-        <div className={cn("h-full rounded-full transition-all", bar)} style={{ width: `${Math.min(100, Math.max(0, pct))}%`, ...(barStyle ? { backgroundColor: barStyle } : {}) }} />
+        <div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${Math.min(100, (water / (target || 1)) * 100)}%` }} />
+      </div>
+    );
+  }
+  const filled = Math.round(water / step);
+  return (
+    <div className="flex gap-0.5">
+      {Array.from({ length: count }, (_, i) => {
+        const level = Math.round((i + 1) * step * 100) / 100;
+        const isFilled = i < filled;
+        return (
+          <button
+            key={i}
+            type="button"
+            aria-label={`Set water to ${level}`}
+            onClick={() => onSet(isFilled && filled === i + 1 ? Math.round((level - step) * 100) / 100 : level)}
+            className={cn("h-2.5 flex-1 rounded-sm transition-colors", isFilled ? "bg-sky-500 hover:bg-sky-400" : "bg-muted hover:bg-sky-500/30")}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+/** Where today's calories come from — protein/carbs/fat split with % labels. */
+function MacroSplit({ protein, carbs, fat }: { protein: number; carbs: number; fat: number }) {
+  const kcal = { protein: protein * 4, carbs: carbs * 4, fat: fat * 9 };
+  const total = kcal.protein + kcal.carbs + kcal.fat;
+  if (total <= 0) return null;
+  const pct = (n: number) => Math.round((n / total) * 100);
+  const parts = [
+    { label: "Protein", grams: protein, pct: pct(kcal.protein), color: "bg-fuchsia-500", text: "text-fuchsia-500" },
+    { label: "Carbs", grams: carbs, pct: pct(kcal.carbs), color: "bg-amber-500", text: "text-amber-500" },
+    { label: "Fat", grams: fat, pct: pct(kcal.fat), color: "bg-sky-500", text: "text-sky-500" },
+  ];
+  return (
+    <div className="space-y-2">
+      <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted">
+        {parts.map((p) => p.pct > 0 && <div key={p.label} className={cn("h-full", p.color)} style={{ width: `${p.pct}%` }} />)}
+      </div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs tabular-nums">
+        {parts.map((p) => (
+          <span key={p.label} className="flex items-center gap-1.5 text-muted-foreground">
+            <span className={cn("h-2 w-2 rounded-full", p.color)} />
+            {p.label} <span className="font-semibold text-foreground">{p.grams}g</span> · {p.pct}%
+          </span>
+        ))}
       </div>
     </div>
   );
