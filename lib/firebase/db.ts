@@ -18,6 +18,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { normalizeRecurringRule } from "@/lib/recurring";
+import { entryGrams } from "@/lib/food";
 import {
   estimateDocBytes,
   collectionLabel,
@@ -49,6 +50,9 @@ import {
   type MealFoodEntry,
   type FoodItem,
   type FoodServing,
+  type PantryItem,
+  type ShoppingItem,
+  type Recipe,
   type Outfit,
   type PackingList,
   type Project,
@@ -977,11 +981,6 @@ function mapMealEntry(e: Record<string, unknown>, i: number): MealFoodEntry {
     quantity: typeof e.quantity === "number" ? e.quantity : 1,
     servingLabel: typeof e.servingLabel === "string" ? e.servingLabel : "",
     servingGrams: typeof e.servingGrams === "number" ? e.servingGrams : 100,
-    calories: numOrNull(e.calories),
-    protein: numOrNull(e.protein),
-    carbs: numOrNull(e.carbs),
-    fat: numOrNull(e.fat),
-    costPerBase: numOrNull(e.costPerBase),
     sortOrder: typeof e.sortOrder === "number" ? e.sortOrder : i,
   };
 }
@@ -1085,15 +1084,31 @@ export async function createNutritionMeal(userId: string, date: string, input: N
     ...input,
     createdAt: serverTimestamp(),
   });
+  if (input.items?.length) await applyPantryConsumption(userId, consumptionMap(input.items));
   return ref.id;
 }
 
 export async function updateNutritionMeal(id: string, input: Partial<NutritionMealInput>): Promise<void> {
-  await updateDoc(doc(db, COLLECTIONS.nutritionLogs, id), { ...input });
+  const ref = doc(db, COLLECTIONS.nutritionLogs, id);
+  // Only reconcile the pantry when the food list actually changed.
+  if (input.items !== undefined) {
+    const before = await getDoc(ref);
+    const d = before.data();
+    const oldItems: MealFoodEntry[] = before.exists() && Array.isArray(d?.items) ? d!.items.map((e: Record<string, unknown>, i: number) => mapMealEntry(e, i)) : [];
+    await updateDoc(ref, { ...input });
+    if (d?.userId) await applyPantryConsumption(d.userId as string, deltaConsumption(oldItems, input.items));
+  } else {
+    await updateDoc(ref, { ...input });
+  }
 }
 
 export async function deleteNutritionMeal(id: string): Promise<void> {
-  await deleteDoc(doc(db, COLLECTIONS.nutritionLogs, id));
+  const ref = doc(db, COLLECTIONS.nutritionLogs, id);
+  const before = await getDoc(ref);
+  const d = before.data();
+  const oldItems: MealFoodEntry[] = before.exists() && Array.isArray(d?.items) ? d!.items.map((e: Record<string, unknown>, i: number) => mapMealEntry(e, i)) : [];
+  await deleteDoc(ref);
+  if (d?.userId && oldItems.length) await applyPantryConsumption(d.userId as string, negateMap(consumptionMap(oldItems)));
 }
 
 /** Persist a new order (sortOrder = position) after a drag reorder. */
@@ -1203,6 +1218,253 @@ export async function reorderFoods(ids: string[]): Promise<void> {
   const batch = writeBatch(db);
   ids.forEach((id, i) => batch.update(doc(db, COLLECTIONS.nutritionLogs, id), { sortOrder: i }));
   await batch.commit();
+}
+
+// ---------------------------------------------------------------------------
+// Pantry — lots of food on hand (docType "pantry"), auto-decremented by meals
+// ---------------------------------------------------------------------------
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** grams consumed per foodId across a set of meal/recipe entries. */
+function consumptionMap(items: MealFoodEntry[]): Record<string, number> {
+  const m: Record<string, number> = {};
+  for (const e of items) {
+    if (!e.foodId) continue;
+    m[e.foodId] = (m[e.foodId] ?? 0) + entryGrams(e);
+  }
+  return m;
+}
+function deltaConsumption(oldItems: MealFoodEntry[], newItems: MealFoodEntry[]): Record<string, number> {
+  const o = consumptionMap(oldItems);
+  const n = consumptionMap(newItems);
+  const out: Record<string, number> = {};
+  for (const k of new Set([...Object.keys(o), ...Object.keys(n)])) out[k] = (n[k] ?? 0) - (o[k] ?? 0);
+  return out;
+}
+function negateMap(m: Record<string, number>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(m)) out[k] = -v;
+  return out;
+}
+
+function mapPantry(snap: QueryDocumentSnapshot<DocumentData>): PantryItem {
+  const d = snap.data();
+  return {
+    id: snap.id,
+    userId: d.userId,
+    foodId: d.foodId ?? null,
+    name: d.name ?? "Item",
+    unit: d.unit === "ml" ? "ml" : "g",
+    quantity: numOrNull(d.quantity),
+    quantityRemaining: typeof d.quantityRemaining === "number" ? d.quantityRemaining : 0,
+    purchaseDate: d.purchaseDate ?? null,
+    expirationDate: d.expirationDate ?? null,
+    purchasePrice: numOrNull(d.purchasePrice),
+    lowThreshold: numOrNull(d.lowThreshold),
+    sortOrder: d.sortOrder ?? 0,
+    createdAt: toMillis(d.createdAt),
+  };
+}
+
+/** Earliest-expiring, then earliest-purchased first (FEFO) — reduce waste. */
+function fefo(a: PantryItem, b: PantryItem): number {
+  const ax = a.expirationDate ?? "9999-12-31";
+  const bx = b.expirationDate ?? "9999-12-31";
+  if (ax !== bx) return ax < bx ? -1 : 1;
+  const ap = a.purchaseDate ?? "9999-12-31";
+  const bp = b.purchaseDate ?? "9999-12-31";
+  return ap < bp ? -1 : ap > bp ? 1 : a.createdAt - b.createdAt;
+}
+
+/**
+ * Apply a consumption delta (grams per foodId; positive = used, negative =
+ * restocked) to the pantry. Positive amounts are drawn FEFO across lots and
+ * clamped at 0; negative amounts are returned to the earliest-expiring lot.
+ * Best-effort: foods with no matching lot are ignored. Never throws.
+ */
+export async function applyPantryConsumption(userId: string, delta: Record<string, number>): Promise<void> {
+  const entries = Object.entries(delta).filter(([, g]) => g);
+  if (!entries.length) return;
+  try {
+    const snap = await getDocs(query(collection(db, COLLECTIONS.nutritionLogs), where("userId", "==", userId)));
+    const lots = snap.docs.filter((x) => x.data().docType === "pantry").map(mapPantry);
+    const batch = writeBatch(db);
+    let touched = 0;
+    for (const [foodId, grams] of entries) {
+      const foodLots = lots.filter((l) => l.foodId === foodId).sort(fefo);
+      if (!foodLots.length) continue;
+      if (grams > 0) {
+        let need = grams;
+        for (const lot of foodLots) {
+          if (need <= 0) break;
+          const take = Math.min(lot.quantityRemaining, need);
+          if (take > 0) {
+            batch.update(doc(db, COLLECTIONS.nutritionLogs, lot.id), { quantityRemaining: round2(lot.quantityRemaining - take) });
+            need -= take;
+            touched++;
+          }
+        }
+      } else {
+        const lot = foodLots[0];
+        batch.update(doc(db, COLLECTIONS.nutritionLogs, lot.id), { quantityRemaining: round2(lot.quantityRemaining - grams) });
+        touched++;
+      }
+    }
+    if (touched) await batch.commit();
+  } catch {
+    /* pantry sync is best-effort; never block a meal save */
+  }
+}
+
+export type PantryInput = Pick<PantryItem, "foodId" | "name" | "unit" | "quantity" | "quantityRemaining" | "purchaseDate" | "expirationDate" | "purchasePrice" | "lowThreshold"> &
+  Partial<Pick<PantryItem, "sortOrder">>;
+
+export async function getPantry(userId: string): Promise<PantryItem[]> {
+  const snap = await getDocs(query(collection(db, COLLECTIONS.nutritionLogs), where("userId", "==", userId)));
+  return snap.docs.filter((d) => d.data().docType === "pantry").map(mapPantry).sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt);
+}
+
+export async function createPantryItem(userId: string, input: PantryInput): Promise<string> {
+  const ref = await addDoc(collection(db, COLLECTIONS.nutritionLogs), { userId, docType: "pantry", sortOrder: 0, ...input, createdAt: serverTimestamp() });
+  return ref.id;
+}
+export async function updatePantryItem(id: string, input: Partial<PantryInput>): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.nutritionLogs, id), { ...input });
+}
+export async function deletePantryItem(id: string): Promise<void> {
+  await deleteDoc(doc(db, COLLECTIONS.nutritionLogs, id));
+}
+export async function reorderPantry(ids: string[]): Promise<void> {
+  const batch = writeBatch(db);
+  ids.forEach((id, i) => batch.update(doc(db, COLLECTIONS.nutritionLogs, id), { sortOrder: i }));
+  await batch.commit();
+}
+
+// ---------------------------------------------------------------------------
+// Shopping list (docType "shopping")
+// ---------------------------------------------------------------------------
+function mapShopping(snap: QueryDocumentSnapshot<DocumentData>): ShoppingItem {
+  const d = snap.data();
+  return {
+    id: snap.id,
+    userId: d.userId,
+    foodId: d.foodId ?? null,
+    name: d.name ?? "Item",
+    unit: d.unit === "ml" ? "ml" : d.unit === "g" ? "g" : null,
+    quantity: numOrNull(d.quantity),
+    estCost: numOrNull(d.estCost),
+    purchased: d.purchased === true,
+    sortOrder: d.sortOrder ?? 0,
+    createdAt: toMillis(d.createdAt),
+  };
+}
+
+export type ShoppingInput = Pick<ShoppingItem, "foodId" | "name" | "unit" | "quantity" | "estCost"> &
+  Partial<Pick<ShoppingItem, "purchased" | "sortOrder">>;
+
+export async function getShopping(userId: string): Promise<ShoppingItem[]> {
+  const snap = await getDocs(query(collection(db, COLLECTIONS.nutritionLogs), where("userId", "==", userId)));
+  return snap.docs.filter((d) => d.data().docType === "shopping").map(mapShopping).sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt);
+}
+
+export async function createShoppingItem(userId: string, input: ShoppingInput): Promise<string> {
+  const ref = await addDoc(collection(db, COLLECTIONS.nutritionLogs), { userId, docType: "shopping", purchased: false, sortOrder: 0, ...input, createdAt: serverTimestamp() });
+  return ref.id;
+}
+export async function updateShoppingItem(id: string, input: Partial<ShoppingInput>): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.nutritionLogs, id), { ...input });
+}
+export async function deleteShoppingItem(id: string): Promise<void> {
+  await deleteDoc(doc(db, COLLECTIONS.nutritionLogs, id));
+}
+export async function reorderShopping(ids: string[]): Promise<void> {
+  const batch = writeBatch(db);
+  ids.forEach((id, i) => batch.update(doc(db, COLLECTIONS.nutritionLogs, id), { sortOrder: i }));
+  await batch.commit();
+}
+export async function clearPurchasedShopping(ids: string[]): Promise<void> {
+  const batch = writeBatch(db);
+  ids.forEach((id) => batch.delete(doc(db, COLLECTIONS.nutritionLogs, id)));
+  await batch.commit();
+}
+
+// ---------------------------------------------------------------------------
+// Recipes & meal templates (docType "recipe")
+// ---------------------------------------------------------------------------
+function mapRecipe(snap: QueryDocumentSnapshot<DocumentData>): Recipe {
+  const d = snap.data();
+  return {
+    id: snap.id,
+    userId: d.userId,
+    kind: d.kind === "template" ? "template" : "recipe",
+    name: d.name ?? "Recipe",
+    imageData: d.imageData ?? null,
+    notes: d.notes ?? null,
+    items: Array.isArray(d.items) ? d.items.map((e, i) => mapMealEntry(e as Record<string, unknown>, i)).sort((a, b) => a.sortOrder - b.sortOrder) : [],
+    collection: d.collection ?? null,
+    tags: Array.isArray(d.tags) ? (d.tags as string[]) : [],
+    favorite: d.favorite === true,
+    archived: d.archived === true,
+    sortOrder: d.sortOrder ?? 0,
+    createdAt: toMillis(d.createdAt),
+  };
+}
+
+export type RecipeInput = Pick<Recipe, "kind" | "name" | "imageData" | "notes" | "items" | "collection" | "tags"> &
+  Partial<Pick<Recipe, "favorite" | "archived" | "sortOrder">>;
+
+export async function getRecipes(userId: string): Promise<Recipe[]> {
+  const snap = await getDocs(query(collection(db, COLLECTIONS.nutritionLogs), where("userId", "==", userId)));
+  return snap.docs.filter((d) => d.data().docType === "recipe").map(mapRecipe).sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt);
+}
+
+export async function createRecipe(userId: string, input: RecipeInput): Promise<string> {
+  const ref = await addDoc(collection(db, COLLECTIONS.nutritionLogs), { userId, docType: "recipe", favorite: false, archived: false, sortOrder: 0, ...input, createdAt: serverTimestamp() });
+  return ref.id;
+}
+export async function updateRecipe(id: string, input: Partial<RecipeInput>): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.nutritionLogs, id), { ...input });
+}
+export async function deleteRecipe(id: string): Promise<void> {
+  await deleteDoc(doc(db, COLLECTIONS.nutritionLogs, id));
+}
+export async function reorderRecipes(ids: string[]): Promise<void> {
+  const batch = writeBatch(db);
+  ids.forEach((id, i) => batch.update(doc(db, COLLECTIONS.nutritionLogs, id), { sortOrder: i }));
+  await batch.commit();
+}
+
+// ---------------------------------------------------------------------------
+// One-shot loader for cross-feature pages (analytics, shopping-from-pantry)
+// ---------------------------------------------------------------------------
+export interface NutritionAll {
+  logs: NutritionLog[];
+  meals: NutritionMeal[];
+  foods: FoodItem[];
+  pantry: PantryItem[];
+  shopping: ShoppingItem[];
+  recipes: Recipe[];
+}
+
+/** Load the entire nutrition dataset in a single query (all docTypes at once). */
+export async function getNutritionAll(userId: string): Promise<NutritionAll> {
+  const snap = await getDocs(query(collection(db, COLLECTIONS.nutritionLogs), where("userId", "==", userId)));
+  const all: NutritionAll = { logs: [], meals: [], foods: [], pantry: [], shopping: [], recipes: [] };
+  for (const ds of snap.docs) {
+    const t = ds.data().docType;
+    if (t === "meal") all.meals.push(mapNutritionMeal(ds));
+    else if (t === "food") all.foods.push(mapFood(ds));
+    else if (t === "pantry") all.pantry.push(mapPantry(ds));
+    else if (t === "shopping") all.shopping.push(mapShopping(ds));
+    else if (t === "recipe") all.recipes.push(mapRecipe(ds));
+    else all.logs.push(mapNutritionLog(ds));
+  }
+  all.meals.sort((a, b) => (a.date < b.date ? 1 : -1) || a.sortOrder - b.sortOrder);
+  all.foods.sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt);
+  all.pantry.sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt);
+  all.shopping.sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt);
+  all.recipes.sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt);
+  return all;
 }
 
 // ---------------------------------------------------------------------------

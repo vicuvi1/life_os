@@ -325,25 +325,20 @@ export interface NutritionMeal {
 }
 
 /**
- * One food line inside a meal. Macros/cost are snapshotted from the Food Library
- * at add time (per 100 base units) so a meal's totals stay stable even if the
- * library food is later edited, archived, or deleted — and so rendering a day
- * needs no extra food lookups.
+ * One food line inside a meal or recipe. Per the nutrition architecture, this is
+ * a pure REFERENCE — it stores only the food id and how much (quantity × serving),
+ * never the nutrition itself. Macros/cost are always resolved live from the
+ * referenced Food Library item, so editing a food updates everything that uses it.
+ * `name` is a display cache only (shown if the food is later deleted).
  */
 export interface MealFoodEntry {
   id: string;
   foodId: string;
-  name: string; // snapshot for display + fallback
+  name: string; // display cache (NOT a source of truth)
   unit: FoodUnit;
   quantity: number; // number of servings, e.g. 2
   servingLabel: string; // e.g. "1 Egg"
   servingGrams: number; // base units per one serving
-  // Snapshot, per 100 base units:
-  calories: number | null;
-  protein: number | null;
-  carbs: number | null;
-  fat: number | null;
-  costPerBase: number | null; // cost per single base unit (g/ml)
   sortOrder: number;
 }
 
@@ -388,6 +383,58 @@ export interface FoodItem {
   favorite: boolean;
   tags: string[];
   archived: boolean;
+  sortOrder: number;
+  createdAt: number;
+}
+
+/** A recipe (a dish) or a meal template (a quick-log preset). Both are just a
+ * named set of food references + quantities; macros/cost resolve from the foods. */
+export type RecipeKind = "recipe" | "template";
+
+export interface Recipe {
+  id: string;
+  userId: string;
+  kind: RecipeKind;
+  name: string;
+  imageData: string | null;
+  notes: string | null;
+  items: MealFoodEntry[]; // references foods + quantities only
+  collection: string | null; // folder / collection grouping
+  tags: string[];
+  favorite: boolean;
+  archived: boolean;
+  sortOrder: number;
+  createdAt: number;
+}
+
+/** A lot of food currently on hand. References a Food Library item; macros/cost
+ * are never stored here. Quantities decrease automatically as meals use the food. */
+export interface PantryItem {
+  id: string;
+  userId: string;
+  foodId: string | null; // Food Library reference (null = ad-hoc, name only)
+  name: string; // display cache / ad-hoc name
+  unit: FoodUnit;
+  quantity: number | null; // originally purchased (base units) — for value math
+  quantityRemaining: number; // current amount on hand (base units)
+  purchaseDate: string | null; // YYYY-MM-DD
+  expirationDate: string | null; // YYYY-MM-DD
+  purchasePrice: number | null;
+  lowThreshold: number | null; // "running low" when remaining <= this
+  sortOrder: number;
+  createdAt: number;
+}
+
+/** One line on the shopping list. May reference a food or be a free-text item. */
+export interface ShoppingItem {
+  id: string;
+  userId: string;
+  foodId: string | null;
+  name: string;
+  unit: FoodUnit | null;
+  quantity: number | null;
+  estCost: number | null; // manual estimate; falls back to food pricing when null
+  purchased: boolean;
   sortOrder: number;
   createdAt: number;
 }
@@ -825,6 +872,8 @@ export interface UserPrefs {
   sleepTarget: number;
   /** Daily protein goal in grams (Nutrition Workspace). */
   proteinTarget?: number | null;
+  /** Weekly food budget (Nutrition analytics). */
+  foodBudgetWeekly?: number | null;
   /** Target bedtime "HH:mm" (null = not set). */
   bedtimeTarget?: string | null;
   /** Target wake-up time "HH:mm" (null = not set). */

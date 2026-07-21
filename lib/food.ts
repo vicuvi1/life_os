@@ -1,4 +1,4 @@
-import type { FoodItem, FoodServing, FoodUnit, MealFoodEntry, NutritionMeal } from "@/lib/types";
+import type { FoodItem, FoodServing, FoodUnit, MealFoodEntry, NutritionMeal, PantryItem, ShoppingItem, Recipe } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Categories, units, serving defaults
@@ -67,22 +67,33 @@ export function costPerServing(
 }
 
 // ---------------------------------------------------------------------------
-// Meal-food entries (Meal Builder)
+// Meal/recipe food entries — pure references, resolved live against the library
 // ---------------------------------------------------------------------------
+/** foodId → FoodItem, for resolving references. */
+export type FoodMap = Map<string, FoodItem>;
+
+export function toFoodMap(foods: FoodItem[]): FoodMap {
+  return new Map(foods.map((f) => [f.id, f]));
+}
+
 /** Total base units an entry represents (quantity × serving size). */
 export function entryGrams(e: Pick<MealFoodEntry, "quantity" | "servingGrams">): number {
   return e.quantity * e.servingGrams;
 }
 
-export function entryMacros(e: MealFoodEntry): Macros {
-  return macrosForGrams(e, entryGrams(e));
+/** Macros for one entry, resolved from the referenced food (0 if food missing). */
+export function entryMacros(e: MealFoodEntry, food: FoodItem | undefined): Macros {
+  if (!food) return { calories: 0, protein: 0, carbs: 0, fat: 0 };
+  return macrosForGrams(food, entryGrams(e));
 }
 
-export function entryCost(e: MealFoodEntry): number {
-  return (e.costPerBase ?? 0) * entryGrams(e);
+/** Cost for one entry, resolved from the referenced food (0 if unpriced/missing). */
+export function entryCost(e: MealFoodEntry, food: FoodItem | undefined): number {
+  const cpb = food ? costPerBase(food) : null;
+  return cpb == null ? 0 : cpb * entryGrams(e);
 }
 
-/** Snapshot a library food into a meal line at add time. */
+/** Reference a library food from a meal/recipe line — quantities only, no macros. */
 export function foodToEntry(food: FoodItem, serving: FoodServing, quantity: number, sortOrder: number): MealFoodEntry {
   return {
     id: genId(),
@@ -92,37 +103,39 @@ export function foodToEntry(food: FoodItem, serving: FoodServing, quantity: numb
     quantity,
     servingLabel: serving.label,
     servingGrams: serving.grams,
-    calories: food.calories,
-    protein: food.protein,
-    carbs: food.carbs,
-    fat: food.fat,
-    costPerBase: costPerBase(food),
     sortOrder,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Meal + day totals (feed the meal cards, daily summary, dashboard)
+// Meal / recipe / day totals (feed the cards, daily summary, dashboard)
 // ---------------------------------------------------------------------------
 export interface MealTotals { calories: number; protein: number; carbs: number; fat: number; cost: number; hasData: boolean }
 
+/** Sum a set of food references against the library. */
+export function entriesTotals(items: MealFoodEntry[], foods: FoodMap): Omit<MealTotals, "hasData"> {
+  const t = items.reduce(
+    (a, e) => {
+      const food = foods.get(e.foodId);
+      const m = entryMacros(e, food);
+      a.calories += m.calories;
+      a.protein += m.protein;
+      a.carbs += m.carbs;
+      a.fat += m.fat;
+      a.cost += entryCost(e, food);
+      return a;
+    },
+    { calories: 0, protein: 0, carbs: 0, fat: 0, cost: 0 }
+  );
+  return { calories: r0(t.calories), protein: r1(t.protein), carbs: r1(t.carbs), fat: r1(t.fat), cost: r2(t.cost) };
+}
+
 export function mealTotals(
-  meal: Pick<NutritionMeal, "items" | "calories" | "protein" | "carbs" | "fat" | "cost">
+  meal: Pick<NutritionMeal, "items" | "calories" | "protein" | "carbs" | "fat" | "cost">,
+  foods: FoodMap
 ): MealTotals {
   if (meal.items && meal.items.length > 0) {
-    const t = meal.items.reduce(
-      (a, e) => {
-        const m = entryMacros(e);
-        a.calories += m.calories;
-        a.protein += m.protein;
-        a.carbs += m.carbs;
-        a.fat += m.fat;
-        a.cost += entryCost(e);
-        return a;
-      },
-      { calories: 0, protein: 0, carbs: 0, fat: 0, cost: 0 }
-    );
-    return { calories: r0(t.calories), protein: r1(t.protein), carbs: r1(t.carbs), fat: r1(t.fat), cost: r2(t.cost), hasData: true };
+    return { ...entriesTotals(meal.items, foods), hasData: true };
   }
   const hasData = meal.calories != null || meal.protein != null || meal.carbs != null || meal.fat != null || meal.cost != null;
   return {
@@ -131,10 +144,10 @@ export function mealTotals(
   };
 }
 
-export function dayTotals(meals: NutritionMeal[]): Omit<MealTotals, "hasData"> {
+export function dayTotals(meals: NutritionMeal[], foods: FoodMap): Omit<MealTotals, "hasData"> {
   const t = meals.reduce(
     (a, m) => {
-      const mt = mealTotals(m);
+      const mt = mealTotals(m, foods);
       a.calories += mt.calories;
       a.protein += mt.protein;
       a.carbs += mt.carbs;
@@ -150,6 +163,71 @@ export function dayTotals(meals: NutritionMeal[]): Omit<MealTotals, "hasData"> {
 // ---------------------------------------------------------------------------
 // Library search / filter / sort
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Recipes & templates (same food-reference resolution as meals)
+// ---------------------------------------------------------------------------
+export function recipeTotals(recipe: Pick<Recipe, "items">, foods: FoodMap): Omit<MealTotals, "hasData"> {
+  return entriesTotals(recipe.items, foods);
+}
+
+// ---------------------------------------------------------------------------
+// Pantry helpers — value, stock level, expiry (all reference the food library)
+// ---------------------------------------------------------------------------
+function parseKey(k: string): number {
+  const [y, m, d] = k.split("-").map(Number);
+  return Date.UTC(y, (m || 1) - 1, d || 1);
+}
+/** Whole days from `fromKey` to `toKey` (negative = in the past). */
+export function daysBetween(fromKey: string, toKey: string): number {
+  return Math.round((parseKey(toKey) - parseKey(fromKey)) / 86_400_000);
+}
+
+export type StockStatus = "out" | "low" | "ok";
+export function stockStatus(item: Pick<PantryItem, "quantityRemaining" | "lowThreshold">): StockStatus {
+  if (item.quantityRemaining <= 0) return "out";
+  if (item.lowThreshold != null && item.quantityRemaining <= item.lowThreshold) return "low";
+  return "ok";
+}
+
+export type ExpiryStatus = "expired" | "soon" | "ok" | "none";
+export function expiryStatus(item: Pick<PantryItem, "expirationDate">, todayKey: string, withinDays = 5): ExpiryStatus {
+  if (!item.expirationDate) return "none";
+  const d = daysBetween(todayKey, item.expirationDate);
+  if (d < 0) return "expired";
+  if (d <= withinDays) return "soon";
+  return "ok";
+}
+
+/** Estimated value of one lot: prefer its own unit price, else the food's. */
+export function pantryItemValue(item: PantryItem, food: FoodItem | undefined): number {
+  if (item.purchasePrice != null && item.quantity && item.quantity > 0) {
+    return r2((item.purchasePrice / item.quantity) * item.quantityRemaining);
+  }
+  const cpb = food ? costPerBase(food) : null;
+  return cpb == null ? 0 : r2(cpb * item.quantityRemaining);
+}
+export function pantryValue(items: PantryItem[], foods: FoodMap): number {
+  return r2(items.reduce((s, it) => s + pantryItemValue(it, foods.get(it.foodId ?? "")), 0));
+}
+
+// ---------------------------------------------------------------------------
+// Shopping helpers
+// ---------------------------------------------------------------------------
+/** Line cost: manual estimate if set, else derived from the food's price. */
+export function shoppingItemCost(item: ShoppingItem, food: FoodItem | undefined): number {
+  if (item.estCost != null) return item.estCost;
+  const cpb = food ? costPerBase(food) : null;
+  if (cpb == null || item.quantity == null) return 0;
+  return r2(cpb * item.quantity);
+}
+export function shoppingCost(items: ShoppingItem[], foods: FoodMap, opts?: { unpurchasedOnly?: boolean }): number {
+  return r2(
+    items
+      .filter((it) => (opts?.unpurchasedOnly ? !it.purchased : true))
+      .reduce((s, it) => s + shoppingItemCost(it, foods.get(it.foodId ?? "")), 0)
+  );
+}
+
 export type FoodSort = "custom" | "name" | "calories" | "cost" | "recent";
 
 export const FOOD_SORTS: { value: FoodSort; label: string }[] = [

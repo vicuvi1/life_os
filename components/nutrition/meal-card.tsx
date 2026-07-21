@@ -6,13 +6,14 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { mealTotals, entryMacros, entryCost } from "@/lib/food";
+import { mealTotals, entryMacros, entryCost, type FoodMap } from "@/lib/food";
 import { formatAmount, type Currency } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import type { NutritionMeal } from "@/lib/types";
 
 interface Props {
   meal: NutritionMeal;
+  foods: FoodMap;
   currency: Currency;
   dragging?: boolean;
   onToggleCollapse: () => void;
@@ -25,9 +26,9 @@ interface Props {
   onDrop: (e: React.DragEvent) => void;
 }
 
-export function MealCard({ meal, currency, dragging, onToggleCollapse, onEdit, onDuplicate, onDelete, onDragStart, onDragEnd, onDragOver, onDrop }: Props) {
+export function MealCard({ meal, foods, currency, dragging, onToggleCollapse, onEdit, onDuplicate, onDelete, onDragStart, onDragEnd, onDragOver, onDrop }: Props) {
   const accent = meal.color ?? "#6366f1";
-  const t = mealTotals(meal);
+  const t = mealTotals(meal, foods);
   const chips = t.hasData
     ? ([
         t.calories > 0 ? `${t.calories} kcal` : null,
@@ -81,15 +82,18 @@ export function MealCard({ meal, currency, dragging, onToggleCollapse, onEdit, o
         <div className="space-y-2 border-t px-3 py-2.5 pl-[52px] text-sm">
           {meal.items.length > 0 && (
             <div className="space-y-1">
-              {meal.items.map((e) => (
-                <div key={e.id} className="flex items-center justify-between gap-2 text-xs">
-                  <span className="min-w-0 flex-1 truncate">
-                    <span className="text-foreground">{e.name}</span>
-                    <span className="text-muted-foreground"> · {e.quantity} × {e.servingLabel || `${e.servingGrams}${e.unit}`}</span>
-                  </span>
-                  <span className="shrink-0 tabular-nums text-muted-foreground">{Math.round(entryMacros(e).calories)} kcal · {formatAmount(entryCost(e), currency)}</span>
-                </div>
-              ))}
+              {meal.items.map((e) => {
+                const food = foods.get(e.foodId);
+                return (
+                  <div key={e.id} className="flex items-center justify-between gap-2 text-xs">
+                    <span className="min-w-0 flex-1 truncate">
+                      <span className={food ? "text-foreground" : "text-muted-foreground line-through"}>{food?.name ?? e.name}</span>
+                      <span className="text-muted-foreground"> · {e.quantity} × {e.servingLabel || `${e.servingGrams}${e.unit}`}</span>
+                    </span>
+                    <span className="shrink-0 tabular-nums text-muted-foreground">{Math.round(entryMacros(e, food).calories)} kcal · {formatAmount(entryCost(e, food), currency)}</span>
+                  </div>
+                );
+              })}
             </div>
           )}
           {t.hasData && (

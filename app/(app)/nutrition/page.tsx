@@ -3,7 +3,8 @@
 import { SkeletonCard } from "@/components/ui/skeleton";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Plus, Minus, GlassWater, Flame, Beef, Wallet, HeartPulse, Utensils, Library } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Minus, GlassWater, Flame, Beef, Wallet, HeartPulse, Utensils } from "lucide-react";
+import { NutritionNav } from "@/components/nutrition/nutrition-nav";
 import { useAuth } from "@/components/auth-provider";
 import {
   getNutritionDay, upsertNutritionLog, updateNutritionMeal, createNutritionMeal,
@@ -13,7 +14,7 @@ import { toDateKey } from "@/lib/greeting";
 import { addDays } from "@/lib/habits";
 import { formatLongDate } from "@/lib/dates";
 import { DEFAULT_WATER_TARGET, DEFAULT_PROTEIN_TARGET, nutritionSummary, healthMeta } from "@/lib/nutrition";
-import { dayTotals } from "@/lib/food";
+import { dayTotals, toFoodMap } from "@/lib/food";
 import { resolveCurrency, formatAmount, type Currency } from "@/lib/currency";
 import { NumberField } from "@/components/ui/number-field";
 import { Button } from "@/components/ui/button";
@@ -48,7 +49,7 @@ export default function NutritionPage() {
       setCurrency(resolveCurrency(budget));
       // Roll the day's meal macros up onto the per-day log doc so the dashboard
       // and insights read live totals without loading every meal.
-      if (opts?.sync) void upsertNutritionLog(user.uid, d, dayTotals(day.meals)).catch(() => {});
+      if (opts?.sync) void upsertNutritionLog(user.uid, d, dayTotals(day.meals, toFoodMap(day.foods))).catch(() => {});
     } finally {
       if (!opts?.quiet) setLoading(false);
     }
@@ -57,9 +58,10 @@ export default function NutritionPage() {
   useEffect(() => { load(date); }, [load, date]);
 
   const meals = data.meals;
+  const foodMap = useMemo(() => toFoodMap(data.foods), [data.foods]);
   const water = data.log?.water ?? 0;
   const waterTarget = data.log?.waterTarget ?? DEFAULT_WATER_TARGET;
-  const summary = useMemo(() => nutritionSummary(meals, water, waterTarget, proteinTarget), [meals, water, waterTarget, proteinTarget]);
+  const summary = useMemo(() => nutritionSummary(meals, water, waterTarget, proteinTarget, foodMap), [meals, water, waterTarget, proteinTarget, foodMap]);
   const hm = healthMeta(summary.healthScore);
   const cur = currency ?? resolveCurrency(null);
   const step = waterUnit === "liters" ? 0.25 : 1;
@@ -125,10 +127,11 @@ export default function NutritionPage() {
             <button type="button" onClick={() => setDate(today)} className="min-w-[140px] text-center text-sm font-medium">{formatLongDate(date)}</button>
             <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Next day" disabled={isToday} onClick={() => setDate((d) => addDays(d, 1))}><ChevronRight className="h-4 w-4" /></Button>
           </div>
-          <Button variant="outline" onClick={() => router.push("/nutrition/foods")}><Library className="h-4 w-4" /> Food Library</Button>
           <Button onClick={() => setDialog({ open: true, meal: null })}><Plus className="h-4 w-4" /> Add meal</Button>
         </div>
       </div>
+
+      <NutritionNav />
 
       {loading ? (
         <div className="space-y-3"><SkeletonCard lines={3} /><SkeletonCard lines={6} /></div>
@@ -186,6 +189,7 @@ export default function NutritionPage() {
                   <MealCard
                     key={m.id}
                     meal={m}
+                    foods={foodMap}
                     currency={cur}
                     dragging={dragId === m.id}
                     onToggleCollapse={() => toggleCollapse(m)}

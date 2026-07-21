@@ -1,5 +1,5 @@
 import type { NutritionLog, NutritionMeal } from "@/lib/types";
-import { dayTotals } from "@/lib/food";
+import { dayTotals, type FoodMap } from "@/lib/food";
 
 export const DEFAULT_WATER_TARGET = 8;
 export const DEFAULT_PROTEIN_TARGET = 100; // grams/day
@@ -62,9 +62,10 @@ export function nutritionSummary(
   meals: NutritionMeal[],
   water: number,
   waterTarget: number,
-  proteinTarget: number
+  proteinTarget: number,
+  foods: FoodMap
 ): NutritionSummary {
-  const t = dayTotals(meals);
+  const t = dayTotals(meals, foods);
   return {
     calories: t.calories,
     protein: t.protein,

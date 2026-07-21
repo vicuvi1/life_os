@@ -2,8 +2,8 @@
 
 import { SkeletonCard } from "@/components/ui/skeleton";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, Plus, Search, Star, Archive, Library } from "lucide-react";
+import { Plus, Search, Star, Archive, Library } from "lucide-react";
+import { NutritionNav } from "@/components/nutrition/nutrition-nav";
 import { useAuth } from "@/components/auth-provider";
 import { getFoods, getBudget, createFood, setFoodFavorite, setFoodArchived, deleteFood, reorderFoods } from "@/lib/firebase/db";
 import { resolveCurrency, type Currency } from "@/lib/currency";
@@ -90,9 +90,9 @@ export default function FoodLibraryPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
+      <NutritionNav />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <Link href="/nutrition" className="mb-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="h-3.5 w-3.5" /> Nutrition</Link>
           <h1 className="flex items-center gap-2 text-2xl font-bold md:text-3xl"><Library className="h-6 w-6 text-primary" /> Food Library</h1>
           <p className="text-muted-foreground">Reusable foods with auto-calculated cost. {activeCount > 0 && `${activeCount} food${activeCount > 1 ? "s" : ""}.`}</p>
         </div>

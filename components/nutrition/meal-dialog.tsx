@@ -64,7 +64,7 @@ export function MealDialog({ open, onOpenChange, userId, date, meal, foods, curr
   }, [open, meal]);
 
   const foodById = useMemo(() => new Map(foods.map((f) => [f.id, f])), [foods]);
-  const totals = useMemo(() => mealTotals({ items, calories: null, protein: null, carbs: null, fat: null, cost: null }), [items]);
+  const totals = useMemo(() => mealTotals({ items, calories: null, protein: null, carbs: null, fat: null, cost: null }, foodById), [items, foodById]);
 
   function addFood(food: FoodItem) {
     const serving = food.servings[0] ?? { id: genId(), label: `100 ${food.unit}`, grams: 100 };
@@ -203,7 +203,7 @@ export function MealDialog({ open, onOpenChange, userId, date, meal, foods, curr
               <div className="space-y-1.5">
                 {items.map((e) => {
                   const food = foodById.get(e.foodId);
-                  const m = entryMacros(e);
+                  const m = entryMacros(e, food);
                   const currentServingId = food?.servings.find((s) => s.label === e.servingLabel && s.grams === e.servingGrams)?.id;
                   return (
                     <div
@@ -238,7 +238,7 @@ export function MealDialog({ open, onOpenChange, userId, date, meal, foods, curr
                         ) : (
                           <span className="flex-1 truncate text-xs text-muted-foreground">{e.servingLabel || `${e.servingGrams} ${e.unit}`}</span>
                         )}
-                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{Math.round(m.calories)} kcal · {formatAmount(entryCost(e), currency)}</span>
+                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{Math.round(m.calories)} kcal · {formatAmount(entryCost(e, food), currency)}</span>
                       </div>
                     </div>
                   );
