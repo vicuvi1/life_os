@@ -51,6 +51,8 @@ function AgentsInner() {
     setLoading(true);
     try {
       setHub(await loadHub(user.uid));
+    } catch {
+      // Leave hub null — the page renders its empty state instead of crashing.
     } finally {
       setLoading(false);
     }
@@ -81,7 +83,7 @@ function AgentsInner() {
     if (!user || !agent) return;
     setMessages([]);
     setChatError(null);
-    getConversation(user.uid, agent.id).then(setMessages);
+    getConversation(user.uid, agent.id).then(setMessages).catch(() => setMessages([]));
   }, [user, agent]);
 
   useEffect(() => {

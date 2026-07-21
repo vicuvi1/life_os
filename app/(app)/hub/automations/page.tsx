@@ -33,6 +33,8 @@ export default function AutomationsPage() {
     if (!opts?.quiet) setLoading(true);
     try {
       setHub(await loadHub(user.uid));
+    } catch {
+      // Leave hub null — render the empty state instead of crashing.
     } finally {
       if (!opts?.quiet) setLoading(false);
     }

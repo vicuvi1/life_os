@@ -839,8 +839,7 @@ export async function upsertSleepMeta(
   patch: Partial<Pick<SleepMeta, "eveningDone" | "morningDone" | "energy" | "mood" | "checkinNotes">>
 ): Promise<void> {
   const ref = doc(db, COLLECTIONS.sleepLogs, `${userId}_meta_${date}`);
-  const existing = await getDoc(ref);
-  const created = existing.exists() ? {} : { createdAt: serverTimestamp() };
+  const created = (await docExists(ref)) ? {} : { createdAt: serverTimestamp() };
   await setDoc(ref, { userId, date, docType: "meta", ...patch, ...created }, { merge: true });
 }
 
@@ -863,15 +862,23 @@ export type SleepLogInput = Pick<SleepLog, "hours" | "quality" | "notes"> &
   Partial<Pick<SleepLog, "bedtime" | "wakeTime" | "awakeMinutes">>;
 
 /** Upsert the main night sleep for a day (one per day; deterministic id). */
+/** getDoc that treats a rules-denied read of a missing doc as "doesn't exist". */
+async function docExists(ref: ReturnType<typeof doc>): Promise<boolean> {
+  try {
+    return (await getDoc(ref)).exists();
+  } catch {
+    return false; // owner-scoped rules deny reads of nonexistent docs
+  }
+}
+
 export async function upsertSleepLog(
   userId: string,
   date: string,
   input: SleepLogInput
 ): Promise<void> {
   const ref = doc(db, COLLECTIONS.sleepLogs, `${userId}_${date}`);
-  const existing = await getDoc(ref);
   // Only stamp createdAt on first creation so merge-writes don't reset it.
-  const created = existing.exists() ? {} : { createdAt: serverTimestamp() };
+  const created = (await docExists(ref)) ? {} : { createdAt: serverTimestamp() };
   await setDoc(ref, { userId, date, kind: "sleep", ...input, ...created }, { merge: true });
 }
 
@@ -1910,10 +1917,16 @@ export async function clearNotifications(ids: string[]): Promise<void> {
 
 /** Chat history for one agent (deterministic doc id; capped by the caller). */
 export async function getConversation(userId: string, agentId: string): Promise<ChatMessage[]> {
-  const snap = await getDoc(doc(db, COLLECTIONS.decisions, `hub_conv_${userId}_${agentId}`));
-  if (!snap.exists()) return [];
-  const d = snap.data();
-  return Array.isArray(d.messages) ? (d.messages as ChatMessage[]) : [];
+  try {
+    const snap = await getDoc(doc(db, COLLECTIONS.decisions, `hub_conv_${userId}_${agentId}`));
+    if (!snap.exists()) return [];
+    const d = snap.data();
+    return Array.isArray(d.messages) ? (d.messages as ChatMessage[]) : [];
+  } catch {
+    // Owner-scoped rules deny reads of NONEXISTENT docs (resource is null), so a
+    // first-ever open lands here — treat it as an empty conversation.
+    return [];
+  }
 }
 
 export async function saveConversation(userId: string, agentId: string, messages: ChatMessage[]): Promise<void> {

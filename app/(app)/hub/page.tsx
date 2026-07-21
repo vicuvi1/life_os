@@ -32,6 +32,8 @@ export default function HubPage() {
     setLoading(true);
     try {
       setHub(await loadHub(user.uid));
+    } catch {
+      // Leave hub null — render the skeleton state instead of crashing.
     } finally {
       setLoading(false);
     }
@@ -82,7 +84,7 @@ export default function HubPage() {
         }
       }
       await load();
-    })();
+    })().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attention, user, data, docs]);
 
