@@ -54,6 +54,18 @@ export function scoreMeta(score: number): { label: string; color: string } {
   return { label: "Poor", color: "#f43f5e" };
 }
 
+/** Consecutive dates present in `set`, counting back from today (or yesterday). */
+function streakCount(set: Set<string>, today: string): number {
+  let cursor = set.has(today) ? today : addDays(today, -1);
+  if (!set.has(cursor)) return 0;
+  let n = 0;
+  while (set.has(cursor)) {
+    n++;
+    cursor = addDays(cursor, -1);
+  }
+  return n;
+}
+
 /**
  * Consecutive nights (ending today or yesterday) that met the sleep goal. Naps
  * are ignored. Returns 0 if neither last night nor the night before hit the goal.
@@ -64,17 +76,246 @@ export function sleepGoalStreak(
   today: string
 ): number {
   const met = new Set(
-    logs.filter((l) => l.kind !== "nap" && l.hours >= target).map((l) => l.date)
+    logs.filter((l) => l.kind !== "nap" && l.hours >= target && l.hours > 0).map((l) => l.date)
   );
-  let cursor = met.has(today) ? today : addDays(today, -1);
-  if (!met.has(cursor)) return 0;
-  let streak = 0;
-  while (met.has(cursor)) {
-    streak++;
-    cursor = addDays(cursor, -1);
-  }
-  return streak;
+  return streakCount(met, today);
 }
+
+// ---------------------------------------------------------------------------
+// Time-of-day statistics (circular — so times wrapping midnight average right)
+// ---------------------------------------------------------------------------
+/** Bedtimes before noon are treated as after-midnight (e.g. 00:30 → 24:30). */
+function normalizeBedtimeMin(min: number): number {
+  return min < 12 * 60 ? min + 24 * 60 : min;
+}
+
+function circularMeanMin(mins: number[]): number | null {
+  if (!mins.length) return null;
+  let sx = 0;
+  let sy = 0;
+  for (const m of mins) {
+    const a = (m / 1440) * 2 * Math.PI;
+    sx += Math.cos(a);
+    sy += Math.sin(a);
+  }
+  let mean = (Math.atan2(sy / mins.length, sx / mins.length) / (2 * Math.PI)) * 1440;
+  if (mean < 0) mean += 1440;
+  return Math.round(mean);
+}
+
+function circularDiff(a: number, b: number): number {
+  const d = Math.abs(a - b) % 1440;
+  return d > 720 ? 1440 - d : d;
+}
+
+/** "HH:mm" from minutes since midnight. */
+export function minutesToHM(min: number): string {
+  const h = Math.floor(min / 60) % 24;
+  const m = Math.round(min % 60);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/** Average bedtime as "HH:mm" (circular mean), or null when none logged. */
+export function averageBedtime(logs: Pick<SleepLog, "bedtime" | "kind">[]): string | null {
+  const mins = logs.filter((l) => l.kind !== "nap").map((l) => parseHM(l.bedtime)).filter((m): m is number => m != null);
+  const mean = circularMeanMin(mins);
+  return mean == null ? null : minutesToHM(mean);
+}
+
+/** Average wake-up as "HH:mm" (circular mean), or null when none logged. */
+export function averageWake(logs: Pick<SleepLog, "wakeTime" | "kind">[]): string | null {
+  const mins = logs.filter((l) => l.kind !== "nap").map((l) => parseHM(l.wakeTime)).filter((m): m is number => m != null);
+  const mean = circularMeanMin(mins);
+  return mean == null ? null : minutesToHM(mean);
+}
+
+/**
+ * Sleep consistency 0-100 — how tightly bedtime and wake cluster around their
+ * own averages (100 = identical every night). Null until ≥3 nights have times.
+ */
+export function sleepConsistency(logs: Pick<SleepLog, "bedtime" | "wakeTime" | "kind">[]): number | null {
+  const nights = logs.filter((l) => l.kind !== "nap");
+  const bed = nights.map((l) => parseHM(l.bedtime)).filter((m): m is number => m != null);
+  const wake = nights.map((l) => parseHM(l.wakeTime)).filter((m): m is number => m != null);
+  if (bed.length < 3 || wake.length < 3) return null;
+  const mad = (vals: number[]) => {
+    const mean = circularMeanMin(vals)!;
+    return vals.reduce((s, v) => s + circularDiff(v, mean), 0) / vals.length;
+  };
+  const avgMad = (mad(bed) + mad(wake)) / 2; // minutes
+  return Math.round(clamp01(1 - avgMad / 180) * 100); // 3h spread → 0
+}
+
+/** Best (longest) logged night. */
+export function bestNight(logs: Pick<SleepLog, "date" | "hours" | "kind">[]): { date: string; hours: number } | null {
+  const nights = logs.filter((l) => l.kind !== "nap" && l.hours > 0);
+  if (!nights.length) return null;
+  const b = nights.reduce((a, l) => (l.hours > a.hours ? l : a));
+  return { date: b.date, hours: b.hours };
+}
+
+/** Worst (shortest) logged night. */
+export function worstNight(logs: Pick<SleepLog, "date" | "hours" | "kind">[]): { date: string; hours: number } | null {
+  const nights = logs.filter((l) => l.kind !== "nap" && l.hours > 0);
+  if (!nights.length) return null;
+  const w = nights.reduce((a, l) => (l.hours < a.hours ? l : a));
+  return { date: w.date, hours: w.hours };
+}
+
+// ---------------------------------------------------------------------------
+// Averages, debt, extra streaks
+// ---------------------------------------------------------------------------
+/** Average hours across the last `days` nights that were logged (0 if none). */
+export function averageOverDays(
+  logs: Pick<SleepLog, "date" | "hours" | "kind">[],
+  today: string,
+  days: number
+): number {
+  const cutoff = addDays(today, -(days - 1));
+  const recent = logs.filter((l) => l.kind !== "nap" && l.hours > 0 && l.date >= cutoff);
+  return averageHours(recent);
+}
+
+/**
+ * Net sleep debt over the last `days` nights: sum of (hours − target). Negative
+ * = debt (slept less than goal overall), positive = surplus.
+ */
+export function sleepDebt(
+  logs: Pick<SleepLog, "date" | "hours" | "kind">[],
+  target: number,
+  today: string,
+  days = 7
+): number {
+  const cutoff = addDays(today, -(days - 1));
+  const recent = logs.filter((l) => l.kind !== "nap" && l.hours > 0 && l.date >= cutoff);
+  return Math.round(recent.reduce((s, l) => s + (l.hours - target), 0) * 10) / 10;
+}
+
+/** Consecutive nights you were in bed by the target bedtime (± grace minutes). */
+export function bedtimeStreak(
+  logs: Pick<SleepLog, "date" | "bedtime" | "kind">[],
+  targetBedtime: string | null,
+  today: string,
+  graceMin = 30
+): number {
+  const t = parseHM(targetBedtime);
+  if (t == null) return 0;
+  const limit = normalizeBedtimeMin(t) + graceMin;
+  const ok = new Set(
+    logs
+      .filter((l) => l.kind !== "nap")
+      .filter((l) => {
+        const b = parseHM(l.bedtime);
+        return b != null && normalizeBedtimeMin(b) <= limit;
+      })
+      .map((l) => l.date)
+  );
+  return streakCount(ok, today);
+}
+
+/** Consecutive mornings you woke by the target wake time (± grace minutes). */
+export function wakeStreak(
+  logs: Pick<SleepLog, "date" | "wakeTime" | "kind">[],
+  targetWake: string | null,
+  today: string,
+  graceMin = 30
+): number {
+  const t = parseHM(targetWake);
+  if (t == null) return 0;
+  const ok = new Set(
+    logs
+      .filter((l) => l.kind !== "nap")
+      .filter((l) => {
+        const w = parseHM(l.wakeTime);
+        return w != null && w <= t + graceMin;
+      })
+      .map((l) => l.date)
+  );
+  return streakCount(ok, today);
+}
+
+/** Consecutive nights with a consistent schedule (bedtime & wake within ± tol of your averages). */
+export function consistencyStreak(
+  logs: Pick<SleepLog, "date" | "bedtime" | "wakeTime" | "kind">[],
+  today: string,
+  tolMin = 45
+): number {
+  const nights = logs.filter((l) => l.kind !== "nap");
+  const bedMean = circularMeanMin(nights.map((l) => parseHM(l.bedtime)).filter((m): m is number => m != null));
+  const wakeMean = circularMeanMin(nights.map((l) => parseHM(l.wakeTime)).filter((m): m is number => m != null));
+  if (bedMean == null || wakeMean == null) return 0;
+  const ok = new Set(
+    nights
+      .filter((l) => {
+        const b = parseHM(l.bedtime);
+        const w = parseHM(l.wakeTime);
+        return b != null && w != null && circularDiff(b, bedMean) <= tolMin && circularDiff(w, wakeMean) <= tolMin;
+      })
+      .map((l) => l.date)
+  );
+  return streakCount(ok, today);
+}
+
+// ---------------------------------------------------------------------------
+// Recovery, energy, recommendation
+// ---------------------------------------------------------------------------
+/** Recovery 0-100 for last night: sleep score minus a penalty for recent debt. */
+export function recoveryScore(
+  lastLog: Pick<SleepLog, "hours" | "quality" | "bedtime" | "wakeTime" | "awakeMinutes"> | null,
+  netDebtHours: number,
+  target = 8
+): number {
+  if (!lastLog) return 0;
+  const base = sleepScore(lastLog, target);
+  const debtPenalty = Math.min(25, Math.max(0, -netDebtHours) * 6);
+  const surplusBonus = Math.min(6, Math.max(0, netDebtHours) * 2);
+  return Math.round(clamp01((base - debtPenalty + surplusBonus) / 100) * 100);
+}
+
+/** Predicted energy % today from recovery, nudged by a goal streak. */
+export function energyToday(recovery: number, goalStreak: number): number {
+  return Math.round(clamp01((recovery + Math.min(8, goalStreak)) / 100) * 100);
+}
+
+/** One actionable sleep tip based on the recent picture. */
+export function sleepRecommendation(ctx: {
+  lastLog: SleepLog | null;
+  netDebtHours: number;
+  target: number;
+  bedtimeTarget: string | null;
+  goalStreak: number;
+}): string {
+  const { lastLog, netDebtHours, target, bedtimeTarget, goalStreak } = ctx;
+  if (!lastLog) return "Log last night to get a personalised recommendation.";
+  if (netDebtHours <= -2) {
+    return `You're carrying ${Math.abs(netDebtHours)}h of sleep debt${bedtimeTarget ? ` — aim to be in bed by ${bedtimeTarget} tonight.` : " — try an earlier night."}`;
+  }
+  if (lastLog.quality <= 4) return "Last night's quality was low — cut screens an hour before bed and keep the room cool.";
+  if (lastLog.hours < target - 1) return `You slept ${formatHours(lastLog.hours)} — under your ${target}h goal. An earlier bedtime tonight will help.`;
+  if (goalStreak >= 5) return `${goalStreak} nights on goal — great consistency. Keep the same bedtime tonight.`;
+  return "You're on track — hold your bedtime and wake time steady to build consistency.";
+}
+
+// ---------------------------------------------------------------------------
+// Default routines (used until the user customizes them)
+// ---------------------------------------------------------------------------
+export const DEFAULT_EVENING_ROUTINE = [
+  { id: "e-screens", label: "No screens 1h before bed", time: "21:30" },
+  { id: "e-magnesium", label: "Magnesium", time: "21:45" },
+  { id: "e-journal", label: "Journaling", time: "21:55" },
+  { id: "e-read", label: "Read", time: "22:10" },
+  { id: "e-lights", label: "Lights off", time: "22:30" },
+];
+
+export const DEFAULT_MORNING_ROUTINE = [
+  { id: "m-water", label: "Drink water", time: "06:55" },
+  { id: "m-stretch", label: "Stretch", time: "07:00" },
+  { id: "m-sunlight", label: "Sunlight", time: "07:10" },
+  { id: "m-bed", label: "Make bed", time: "07:15" },
+  { id: "m-meditate", label: "Meditation", time: "07:20" },
+];
+
+export const MOODS = ["😣", "😕", "😐", "🙂", "😄"];
 
 type BadgeVariant =
   | "default"

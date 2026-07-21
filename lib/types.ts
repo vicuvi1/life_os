@@ -495,6 +495,36 @@ export interface StorageConfig {
   autoCleanup: boolean;
 }
 
+/** One step in an evening/morning routine checklist. */
+export interface RoutineStep {
+  id: string;
+  label: string;
+  /** Optional target clock time "HH:mm". */
+  time: string | null;
+}
+
+/** User-customizable sleep routines (stored on the prefs doc). */
+export interface SleepRoutine {
+  evening: RoutineStep[];
+  morning: RoutineStep[];
+}
+
+/**
+ * Per-day sleep meta: routine completion + the morning check-in. Stored in the
+ * `sleepLogs` collection with docType "meta" (id `${userId}_meta_${date}`), so
+ * it never mixes with the night's sleep/nap records.
+ */
+export interface SleepMeta {
+  date: string;
+  /** Ids of completed evening/morning routine steps. */
+  eveningDone: string[];
+  morningDone: string[];
+  /** Morning check-in. */
+  energy: number | null; // 1-5
+  mood: string | null;
+  checkinNotes: string | null;
+}
+
 /** Lightweight per-user preferences (doc id = userId). */
 export interface UserPrefs {
   userId: string;
@@ -507,6 +537,8 @@ export interface UserPrefs {
   bedtimeTarget?: string | null;
   /** Target wake-up time "HH:mm" (null = not set). */
   wakeTarget?: string | null;
+  /** Custom evening/morning sleep routines. */
+  sleepRoutine?: SleepRoutine | null;
   /** Week-score scale for the Weekly Review: rate out of 10 or out of 100. */
   reviewScale: 10 | 100;
   /** Storage monitoring & data-retention config. */

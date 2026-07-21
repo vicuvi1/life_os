@@ -1745,3 +1745,44 @@ the dashboard/insights/calendar keep working unchanged); naps are extra docs in
 the same `sleepLogs` collection and are excluded from the legacy night-only
 queries. Sleep scores/streaks are computed client-side — no schema migration
 needed, and older logs (hours + quality only) still render correctly.
+
+---
+
+## 🌙 Sleep — Analytics, Insights, Routine & Recovery (Milestones 2 & 3)
+
+A full dashboard rebuild toward a proper sleep app, with a date navigator that
+focuses the top cards on any day.
+
+**Top cards.** Sleep Score ring · Sleep Duration (time-in-bed, ± vs goal, a 7-day
+mini-bar, bedtime→wake) · **Recovery** ring (sleep score adjusted for recent
+sleep debt) · **Energy today** % (predicted from recovery + goal streak). Plus a
+one-line **daily recommendation** driven by your data.
+
+**Analytics (Milestone 2).**
+- **365-day heatmap** of nightly duration (tap a day to log/edit it).
+- **Current streaks**: sleep-goal, bedtime, wake-up, and consistency.
+- **Sleep summary**: average sleep, **average bedtime / wake-up** (circular means,
+  so times that wrap midnight average correctly), **sleep consistency %**, and
+  best / worst nights with dates.
+- **Trends (this week)**: sleep-duration line vs the goal, and a **bedtime &
+  wake-up** dual-line chart.
+- **Monthly goal**: % of tracked nights on goal + a per-day dot grid.
+- **Sleep debt / surplus** feeds recovery and the recommendation.
+
+**Routine & Recovery (Milestone 3).**
+- **Evening & morning routines** — fully customisable checklists (add / rename /
+  remove / time each step; sensible defaults to start). Per-day completion is
+  tracked (tap to check off).
+- **Morning check-in** — one-tap mood/energy for the day.
+- **Recovery score, energy prediction, and daily recommendation** as above.
+- **Recent sleep sessions** table (duration, time in bed, score, quality, notes).
+
+**Storage.** Routine definitions live on the prefs doc; per-day routine
+completion + check-in live in a `docType: "meta"` doc in `sleepLogs`
+(`${userId}_meta_${date}`), excluded from sleep/nap queries — so nothing needed
+new security rules.
+
+**Deferred — reminders.** Bedtime / wake / goal *targets* are set here, but true
+push **reminders/notifications** need a backend (FCM / service-worker scheduling)
+that this client-only setup can't provide honestly, so they're intentionally not
+faked. The targets drive the streaks and recommendations in the meantime.

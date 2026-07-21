@@ -45,6 +45,8 @@ import {
   type Session,
   type ShoppingCheck,
   type SleepLog,
+  type SleepMeta,
+  type SleepRoutine,
   type StorageConfig,
   type Task,
   type Tracker,
@@ -776,7 +778,19 @@ function mapSleepLog(snap: QueryDocumentSnapshot<DocumentData>): SleepLog {
   };
 }
 
-/** Every sleep doc (main sleeps + naps), newest date first. */
+function mapSleepMeta(snap: QueryDocumentSnapshot<DocumentData>): SleepMeta {
+  const d = snap.data();
+  return {
+    date: d.date,
+    eveningDone: Array.isArray(d.eveningDone) ? d.eveningDone : [],
+    morningDone: Array.isArray(d.morningDone) ? d.morningDone : [],
+    energy: typeof d.energy === "number" ? d.energy : null,
+    mood: d.mood ?? null,
+    checkinNotes: d.checkinNotes ?? null,
+  };
+}
+
+/** Every sleep doc (main sleeps + naps), newest date first — meta docs excluded. */
 export async function getSleepEntries(userId: string): Promise<SleepLog[]> {
   const q = query(
     collection(db, COLLECTIONS.sleepLogs),
@@ -784,8 +798,44 @@ export async function getSleepEntries(userId: string): Promise<SleepLog[]> {
   );
   const snap = await getDocs(q);
   return snap.docs
+    .filter((ds) => ds.data().docType !== "meta")
     .map(mapSleepLog)
     .sort((a, b) => (a.date < b.date ? 1 : -1));
+}
+
+export interface SleepData {
+  entries: SleepLog[]; // sleeps + naps, newest first
+  metas: Record<string, SleepMeta>; // by date
+}
+
+/** One query for the whole sleep area: sleep/nap entries + per-day meta. */
+export async function getSleepData(userId: string): Promise<SleepData> {
+  const q = query(collection(db, COLLECTIONS.sleepLogs), where("userId", "==", userId));
+  const snap = await getDocs(q);
+  const entries: SleepLog[] = [];
+  const metas: Record<string, SleepMeta> = {};
+  for (const ds of snap.docs) {
+    if (ds.data().docType === "meta") {
+      const m = mapSleepMeta(ds);
+      metas[m.date] = m;
+    } else {
+      entries.push(mapSleepLog(ds));
+    }
+  }
+  entries.sort((a, b) => (a.date < b.date ? 1 : -1));
+  return { entries, metas };
+}
+
+/** Merge-write a day's routine completion / morning check-in. */
+export async function upsertSleepMeta(
+  userId: string,
+  date: string,
+  patch: Partial<Pick<SleepMeta, "eveningDone" | "morningDone" | "energy" | "mood" | "checkinNotes">>
+): Promise<void> {
+  const ref = doc(db, COLLECTIONS.sleepLogs, `${userId}_meta_${date}`);
+  const existing = await getDoc(ref);
+  const created = existing.exists() ? {} : { createdAt: serverTimestamp() };
+  await setDoc(ref, { userId, date, docType: "meta", ...patch, ...created }, { merge: true });
 }
 
 /** Main night sleeps only (naps excluded) — the shape existing consumers expect. */
@@ -1709,6 +1759,7 @@ export async function getPrefs(userId: string): Promise<UserPrefs> {
     sleepTarget: d.sleepTarget ?? 8,
     bedtimeTarget: d.bedtimeTarget ?? null,
     wakeTarget: d.wakeTarget ?? null,
+    sleepRoutine: d.sleepRoutine && typeof d.sleepRoutine === "object" ? (d.sleepRoutine as SleepRoutine) : null,
     reviewScale: d.reviewScale === 10 ? 10 : 100,
     storage: d.storage && typeof d.storage === "object" ? (d.storage as StorageConfig) : null,
   };
@@ -1775,7 +1826,7 @@ export async function deleteDocsByIds(collectionName: string, ids: string[]): Pr
 export async function upsertPrefs(
   userId: string,
   input: Partial<
-    Pick<UserPrefs, "waterUnit" | "hiddenTrackers" | "sleepTarget" | "bedtimeTarget" | "wakeTarget" | "reviewScale">
+    Pick<UserPrefs, "waterUnit" | "hiddenTrackers" | "sleepTarget" | "bedtimeTarget" | "wakeTarget" | "sleepRoutine" | "reviewScale">
   >
 ): Promise<void> {
   const ref = doc(db, COLLECTIONS.prefs, userId);
