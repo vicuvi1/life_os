@@ -1786,3 +1786,26 @@ new security rules.
 push **reminders/notifications** need a backend (FCM / service-worker scheduling)
 that this client-only setup can't provide honestly, so they're intentionally not
 faked. The targets drive the streaks and recommendations in the meantime.
+
+---
+
+## 📲 Telegram notifications
+
+**What it is.** Connect a personal Telegram bot and get Life OS notifications on
+your phone — no app-store install, no backend.
+
+**How it works.**
+- **Settings → Telegram notifications**: create a bot with **@BotFather**, paste
+  the token (stored only in your own private prefs), tap **Check** to verify it,
+  message your bot once and tap **Detect** to auto-find your chat, then **Send
+  test**. Toggles enable notifications and "send a summary when I log sleep".
+- The Telegram Bot API is CORS-enabled, so messages are sent **directly from the
+  browser** — nothing server-side to run or pay for.
+- **Sleep integration**: logging a night pushes a summary (duration, quality, ±
+  vs goal); the dashboard's recommendation card has a **Send to Telegram** button
+  for last night's score/recovery/energy/tip on demand.
+
+**Honest limitation.** These fire when the app sends them (logging, test, or the
+Send buttons). Truly *scheduled* reminders while the app is closed still need a
+small server component (a Vercel cron + Firebase Admin, Hobby-plan-friendly at
+once-a-day) — a clean next step, not faked today.

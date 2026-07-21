@@ -44,6 +44,7 @@ import {
   DEFAULT_MORNING_ROUTINE,
   MOODS,
 } from "@/lib/sleep";
+import { tgSend } from "@/lib/telegram";
 import { SleepLogDialog } from "@/components/sleep/sleep-log-dialog";
 import { YearHeatmap } from "@/components/sleep/year-heatmap";
 import { TrendChart } from "@/components/sleep/trend-chart";
@@ -54,7 +55,8 @@ import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import type { SleepKind, SleepLog, SleepRoutine } from "@/lib/types";
+import { Send } from "lucide-react";
+import type { SleepKind, SleepLog, SleepRoutine, TelegramConfig } from "@/lib/types";
 
 function weekdayShort(dateKey: string): string {
   return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date(`${dateKey}T00:00:00`).getDay()];
@@ -73,6 +75,8 @@ export default function SleepPage() {
   const [bedtimeTarget, setBedtimeTarget] = useState("");
   const [wakeTarget, setWakeTarget] = useState("");
   const [routine, setRoutine] = useState<SleepRoutine>({ evening: DEFAULT_EVENING_ROUTINE, morning: DEFAULT_MORNING_ROUTINE });
+  const [telegram, setTelegram] = useState<TelegramConfig | null>(null);
+  const [tgSent, setTgSent] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const [focusDate, setFocusDate] = useState(today);
@@ -89,6 +93,7 @@ export default function SleepPage() {
       setBedtimeTarget(prefs.bedtimeTarget ?? "");
       setWakeTarget(prefs.wakeTarget ?? "");
       setRoutine(prefs.sleepRoutine ?? { evening: DEFAULT_EVENING_ROUTINE, morning: DEFAULT_MORNING_ROUTINE });
+      setTelegram(prefs.telegram ?? null);
     } finally {
       if (!opts?.quiet) setLoading(false);
     }
@@ -129,6 +134,24 @@ export default function SleepPage() {
     () => sleepRecommendation({ lastLog: heroLog, netDebtHours: netDebt, target, bedtimeTarget: bedtimeTarget || avgBed, goalStreak }),
     [heroLog, netDebt, target, bedtimeTarget, avgBed, goalStreak]
   );
+
+  const tgConnected = Boolean(telegram?.enabled && telegram.botToken && telegram.chatId);
+  const notify = tgConnected && telegram!.onSleepLog ? { token: telegram!.botToken, chatId: telegram!.chatId, target } : null;
+
+  async function sendTelegramSummary() {
+    if (!telegram || !heroLog) return;
+    const text =
+      `🌙 <b>Sleep summary</b> — ${formatLongDate(focusDate)}\n` +
+      `Score ${score}/100 · ${meta.label}\n` +
+      `${formatHours(heroLog.hours)} slept${heroLog.bedtime ? ` (${heroLog.bedtime}–${heroLog.wakeTime})` : ""}\n` +
+      `Recovery ${recovery} · Energy ${energy}%\n` +
+      `💡 ${recommendation}`;
+    const r = await tgSend(telegram.botToken, telegram.chatId, text);
+    if (r.ok) {
+      setTgSent(true);
+      window.setTimeout(() => setTgSent(false), 2500);
+    }
+  }
 
   // Monthly goal
   const monthPrefix = today.slice(0, 7);
@@ -266,7 +289,12 @@ export default function SleepPage() {
           {heroLog && (
             <Card className="flex items-start gap-2 border-primary/20 bg-primary/5 p-3 text-sm">
               <span>💡</span>
-              <p>{recommendation}</p>
+              <p className="flex-1">{recommendation}</p>
+              {tgConnected && (
+                <Button size="sm" variant="ghost" className="shrink-0" onClick={sendTelegramSummary}>
+                  <Send className="h-3.5 w-3.5" /> {tgSent ? "Sent ✓" : "Send to Telegram"}
+                </Button>
+              )}
             </Card>
           )}
 
@@ -450,7 +478,7 @@ export default function SleepPage() {
 
       {user && (
         <>
-          <SleepLogDialog open={dialog.open} onOpenChange={(o) => setDialog((s) => ({ ...s, open: o }))} userId={user.uid} date={dialog.date} kind={dialog.kind} entry={dialog.entry} onSaved={() => load({ quiet: true })} />
+          <SleepLogDialog open={dialog.open} onOpenChange={(o) => setDialog((s) => ({ ...s, open: o }))} userId={user.uid} date={dialog.date} kind={dialog.kind} entry={dialog.entry} notify={notify} onSaved={() => load({ quiet: true })} />
           <RoutineEditDialog open={routineEdit === "evening"} onOpenChange={(o) => !o && setRoutineEdit(null)} title="Evening routine" steps={routine.evening} onSave={(s) => saveRoutine("evening", s)} />
           <RoutineEditDialog open={routineEdit === "morning"} onOpenChange={(o) => !o && setRoutineEdit(null)} title="Morning routine" steps={routine.morning} onSave={(s) => saveRoutine("morning", s)} />
         </>

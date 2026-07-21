@@ -47,6 +47,7 @@ import {
   type SleepLog,
   type SleepMeta,
   type SleepRoutine,
+  type TelegramConfig,
   type StorageConfig,
   type Task,
   type Tracker,
@@ -1760,6 +1761,7 @@ export async function getPrefs(userId: string): Promise<UserPrefs> {
     bedtimeTarget: d.bedtimeTarget ?? null,
     wakeTarget: d.wakeTarget ?? null,
     sleepRoutine: d.sleepRoutine && typeof d.sleepRoutine === "object" ? (d.sleepRoutine as SleepRoutine) : null,
+    telegram: d.telegram && typeof d.telegram === "object" ? (d.telegram as TelegramConfig) : null,
     reviewScale: d.reviewScale === 10 ? 10 : 100,
     storage: d.storage && typeof d.storage === "object" ? (d.storage as StorageConfig) : null,
   };
@@ -1826,7 +1828,7 @@ export async function deleteDocsByIds(collectionName: string, ids: string[]): Pr
 export async function upsertPrefs(
   userId: string,
   input: Partial<
-    Pick<UserPrefs, "waterUnit" | "hiddenTrackers" | "sleepTarget" | "bedtimeTarget" | "wakeTarget" | "sleepRoutine" | "reviewScale">
+    Pick<UserPrefs, "waterUnit" | "hiddenTrackers" | "sleepTarget" | "bedtimeTarget" | "wakeTarget" | "sleepRoutine" | "telegram" | "reviewScale">
   >
 ): Promise<void> {
   const ref = doc(db, COLLECTIONS.prefs, userId);

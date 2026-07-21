@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { NotificationsCard } from "@/components/settings/notifications-card";
+import { TelegramCard } from "@/components/settings/telegram-card";
 import { CurrencyCard } from "@/components/settings/currency-card";
 import { ProfileNameField } from "@/components/settings/profile-name";
 import { useAuth } from "@/components/auth-provider";
@@ -63,6 +64,8 @@ export default function SettingsPage() {
       <CurrencyCard />
 
       <NotificationsCard />
+
+      <TelegramCard />
 
       <Card>
         <CardHeader>

@@ -525,6 +525,15 @@ export interface SleepMeta {
   checkinNotes: string | null;
 }
 
+/** Telegram bot connection + which events push to the phone. */
+export interface TelegramConfig {
+  botToken: string;
+  chatId: string;
+  enabled: boolean;
+  /** Push a summary to Telegram whenever a night's sleep is logged. */
+  onSleepLog: boolean;
+}
+
 /** Lightweight per-user preferences (doc id = userId). */
 export interface UserPrefs {
   userId: string;
@@ -539,6 +548,8 @@ export interface UserPrefs {
   wakeTarget?: string | null;
   /** Custom evening/morning sleep routines. */
   sleepRoutine?: SleepRoutine | null;
+  /** Telegram notification connection. */
+  telegram?: TelegramConfig | null;
   /** Week-score scale for the Weekly Review: rate out of 10 or out of 100. */
   reviewScale: 10 | 100;
   /** Storage monitoring & data-retention config. */

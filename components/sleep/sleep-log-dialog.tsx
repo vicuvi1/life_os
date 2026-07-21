@@ -21,6 +21,7 @@ import {
   deleteSleepEntry,
 } from "@/lib/firebase/db";
 import { durationHours, formatHours, qualityRating } from "@/lib/sleep";
+import { tgSend } from "@/lib/telegram";
 import { formatLongDate } from "@/lib/dates";
 import type { SleepKind, SleepLog } from "@/lib/types";
 
@@ -35,10 +36,12 @@ interface Props {
   entry?: SleepLog | null;
   /** Smart default quality for a fresh entry. */
   defaultQuality?: number;
+  /** When set, a summary is pushed to Telegram after logging a night's sleep. */
+  notify?: { token: string; chatId: string; target: number } | null;
   onSaved: () => void;
 }
 
-export function SleepLogDialog({ open, onOpenChange, userId, date, kind, entry, defaultQuality, onSaved }: Props) {
+export function SleepLogDialog({ open, onOpenChange, userId, date, kind, entry, defaultQuality, notify, onSaved }: Props) {
   const effectiveKind: SleepKind = entry?.kind ?? kind;
   const isNap = effectiveKind === "nap";
 
@@ -91,6 +94,15 @@ export function SleepLogDialog({ open, onOpenChange, userId, date, kind, entry, 
       if (entry) await updateSleepEntry(entry.id, input);
       else if (isNap) await addNap(userId, date, input);
       else await upsertSleepLog(userId, date, input);
+      // Best-effort phone notification for a logged night (never blocks the save).
+      if (!isNap && notify) {
+        const diff = hours - notify.target;
+        const text =
+          `😴 <b>Sleep logged</b> — ${formatLongDate(date)}\n` +
+          `${formatHours(hours)} slept${hasTimes ? ` (${bedtime}–${wakeTime})` : ""} · quality ${Math.round(quality)}/10\n` +
+          `${diff >= 0 ? "✅ +" : "⚠️ −"}${formatHours(Math.abs(Math.round(diff * 100) / 100))} vs your ${notify.target}h goal`;
+        void tgSend(notify.token, notify.chatId, text);
+      }
       onOpenChange(false);
       onSaved();
     } catch {
