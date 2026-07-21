@@ -15,7 +15,7 @@ import {
 import { greetingFor, resolveFirstName, toDateKey } from "@/lib/greeting";
 import { addDays } from "@/lib/habits";
 import { formatLongDate, startOfWeekKey } from "@/lib/dates";
-import { DEFAULT_WATER_TARGET, DEFAULT_PROTEIN_TARGET, healthScore, healthMeta } from "@/lib/nutrition";
+import { DEFAULT_WATER_TARGET, DEFAULT_PROTEIN_TARGET, healthScore, healthMeta, mealBucket, MEAL_BUCKETS } from "@/lib/nutrition";
 import { dayTotals, toFoodMap, mealTotals, recipeTotals, foodToEntry, genId, stockStatus, expiryStatus, daysBetween } from "@/lib/food";
 import { resolveCurrency, formatAmount, type Currency } from "@/lib/currency";
 import { NumberField } from "@/components/ui/number-field";
@@ -49,7 +49,7 @@ export default function NutritionPage() {
   const [loading, setLoading] = useState(true);
   const [dialog, setDialog] = useState<{ open: boolean; meal: NutritionMeal | null; seed?: MealFoodEntry[] }>({ open: false, meal: null });
   const [dragId, setDragId] = useState<string | null>(null);
-  const [mealSort, setMealSort] = useState<"time" | "custom">("time");
+  const [mealSort, setMealSort] = useState<"group" | "time" | "custom">("group");
   const [foodQuery, setFoodQuery] = useState("");
   const [newShop, setNewShop] = useState("");
 
@@ -78,13 +78,23 @@ export default function NutritionPage() {
   const foodMap = useMemo(() => toFoodMap(all?.foods ?? []), [all]);
   const meals = useMemo(() => {
     const list = (all?.meals ?? []).filter((m) => m.date === date);
-    if (mealSort === "time") return list.sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99") || a.sortOrder - b.sortOrder);
-    return list.sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt);
+    if (mealSort === "custom") return list.sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt);
+    return list.sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99") || a.sortOrder - b.sortOrder);
   }, [all, date, mealSort]);
   const dayLog = useMemo(() => (all?.logs ?? []).find((l) => l.date === date) ?? null, [all, date]);
   // Derived straight from the day's log — single source of truth, no effect race.
   const water = dayLog?.water ?? 0;
   const waterTarget = dayLog?.waterTarget ?? DEFAULT_WATER_TARGET;
+
+  // Timeline sections (group mode): derived buckets, only non-empty ones render.
+  const sections = useMemo(() => {
+    if (mealSort !== "group") return null;
+    return MEAL_BUCKETS.map((b) => {
+      const ms = meals.filter((m) => mealBucket(m) === b.key);
+      const t = dayTotals(ms, foodMap);
+      return { ...b, meals: ms, calories: t.calories, protein: t.protein };
+    }).filter((s) => s.meals.length > 0);
+  }, [mealSort, meals, foodMap]);
 
   const totals = useMemo(() => dayTotals(meals, foodMap), [meals, foodMap]);
   const cur = currency ?? resolveCurrency(null);
@@ -265,9 +275,9 @@ export default function NutritionPage() {
               <Card className={cn(soft, "overflow-hidden")}>
                 <div className="flex items-center justify-between px-5 py-4">
                   <h2 className="text-lg font-semibold">Today&apos;s Timeline {meals.length > 0 && <span className="text-sm font-normal text-muted-foreground">· {meals.length}</span>}</h2>
-                  <Select value={mealSort} onValueChange={(v) => setMealSort(v as "time" | "custom")}>
-                    <SelectTrigger className="h-8 w-[140px] border-border/40 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent><SelectItem value="time">Sort by time</SelectItem><SelectItem value="custom">Custom order</SelectItem></SelectContent>
+                  <Select value={mealSort} onValueChange={(v) => setMealSort(v as "group" | "time" | "custom")}>
+                    <SelectTrigger className="h-8 w-[150px] border-border/40 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="group">Group by meal</SelectItem><SelectItem value="time">Sort by time</SelectItem><SelectItem value="custom">Custom order</SelectItem></SelectContent>
                   </Select>
                 </div>
                 {meals.length === 0 ? (
@@ -284,15 +294,37 @@ export default function NutritionPage() {
                   </div>
                 ) : (
                   <>
-                    <div className="divide-y divide-border/40 border-t border-border/40">
-                      {meals.map((m) => (
-                        <MealRow key={m.id} meal={m} foods={foodMap} currency={cur} dragging={dragId === m.id}
-                          onEdit={() => setDialog({ open: true, meal: m })} onDuplicate={() => duplicate(m)} onDelete={() => remove(m)}
-                          onDragStart={() => setDragId(m.id)} onDragEnd={() => setDragId(null)}
-                          onDragOver={(e) => { if (mealSort === "custom" && dragId) e.preventDefault(); }}
-                          onDrop={(e) => { e.preventDefault(); dropOn(m.id); }} />
-                      ))}
-                    </div>
+                    {sections ? (
+                      <div className="border-t border-border/40">
+                        {sections.map((s) => (
+                          <div key={s.key}>
+                            <div className="flex items-center justify-between bg-muted/20 px-5 py-2">
+                              <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><span className="text-sm">{s.emoji}</span> {s.label}</p>
+                              <p className="text-xs tabular-nums text-muted-foreground"><span className="font-semibold text-foreground">{s.calories} kcal</span> · {s.protein}g protein</p>
+                            </div>
+                            <div className="divide-y divide-border/40 border-t border-border/40">
+                              {s.meals.map((m) => (
+                                <MealRow key={m.id} meal={m} foods={foodMap} currency={cur} dragging={dragId === m.id}
+                                  onEdit={() => setDialog({ open: true, meal: m })} onDuplicate={() => duplicate(m)} onDelete={() => remove(m)}
+                                  onDragStart={() => setDragId(m.id)} onDragEnd={() => setDragId(null)}
+                                  onDragOver={(e) => { if (mealSort === "custom" && dragId) e.preventDefault(); }}
+                                  onDrop={(e) => { e.preventDefault(); dropOn(m.id); }} />
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-border/40 border-t border-border/40">
+                        {meals.map((m) => (
+                          <MealRow key={m.id} meal={m} foods={foodMap} currency={cur} dragging={dragId === m.id}
+                            onEdit={() => setDialog({ open: true, meal: m })} onDuplicate={() => duplicate(m)} onDelete={() => remove(m)}
+                            onDragStart={() => setDragId(m.id)} onDragEnd={() => setDragId(null)}
+                            onDragOver={(e) => { if (mealSort === "custom" && dragId) e.preventDefault(); }}
+                            onDrop={(e) => { e.preventDefault(); dropOn(m.id); }} />
+                        ))}
+                      </div>
+                    )}
                     <button type="button" onClick={() => setDialog({ open: true, meal: null })} className="flex w-full items-center justify-center gap-1.5 border-t border-border/40 py-3 text-sm font-medium text-primary transition hover:bg-primary/5">
                       <Plus className="h-4 w-4" /> Add meal
                     </button>

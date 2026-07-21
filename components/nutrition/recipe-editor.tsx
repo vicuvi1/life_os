@@ -12,7 +12,7 @@ import { FoodEntryBuilder } from "@/components/nutrition/food-entry-builder";
 import { compressImageToThumbnail } from "@/lib/images";
 import { createRecipe, updateRecipe, deleteRecipe, type RecipeInput } from "@/lib/firebase/db";
 import { type Currency } from "@/lib/currency";
-import type { Recipe, RecipeKind, MealFoodEntry, FoodItem } from "@/lib/types";
+import type { Recipe, RecipeKind, RecipeMealType, MealFoodEntry, FoodItem } from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -34,6 +34,7 @@ export function RecipeEditor({ open, onOpenChange, userId, recipe, defaultKind =
   const [collection, setCollection] = useState("");
   const [tags, setTags] = useState("");
   const [prep, setPrep] = useState("");
+  const [mealType, setMealType] = useState<RecipeMealType | "none">("none");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<MealFoodEntry[]>([]);
   const [busy, setBusy] = useState(false);
@@ -48,6 +49,7 @@ export function RecipeEditor({ open, onOpenChange, userId, recipe, defaultKind =
     setCollection(recipe?.collection ?? "");
     setTags(recipe?.tags?.length ? recipe.tags.join(", ") : "");
     setPrep(recipe?.prepMinutes != null ? String(recipe.prepMinutes) : "");
+    setMealType(recipe?.mealType ?? "none");
     setNotes(recipe?.notes ?? "");
     setItems(recipe?.items ? recipe.items.map((e) => ({ ...e })) : []);
     setImgError(null);
@@ -66,6 +68,7 @@ export function RecipeEditor({ open, onOpenChange, userId, recipe, defaultKind =
     const input: RecipeInput = {
       kind, name: name.trim(), imageData, notes: notes.trim() || null,
       prepMinutes: prep.trim() === "" ? null : Math.max(0, Math.round(Number(prep))) || (Number(prep) === 0 ? 0 : null),
+      mealType: mealType === "none" ? null : mealType,
       items: items.map((e, idx) => ({ ...e, sortOrder: idx })),
       collection: collection.trim() || null,
       tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
@@ -116,7 +119,7 @@ export function RecipeEditor({ open, onOpenChange, userId, recipe, defaultKind =
           {imageData && <button type="button" onClick={() => setImageData(null)} className="text-xs text-muted-foreground underline">Remove image</button>}
           {imgError && <p className="text-xs text-rose-500">{imgError}</p>}
 
-          <div className="grid grid-cols-[1fr_1fr_110px] gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Collection</Label>
               <Input value={collection} onChange={(e) => setCollection(e.target.value)} placeholder="e.g. Cheap dinners" list="recipe-collections" />
@@ -125,6 +128,19 @@ export function RecipeEditor({ open, onOpenChange, userId, recipe, defaultKind =
             <div className="space-y-1.5">
               <Label>Tags</Label>
               <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="high-protein" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Meal type <span className="font-normal text-muted-foreground">(optional)</span></Label>
+              <Select value={mealType} onValueChange={(v) => setMealType(v as RecipeMealType | "none")}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Any</SelectItem>
+                  <SelectItem value="breakfast">🍳 Breakfast</SelectItem>
+                  <SelectItem value="lunch">🥗 Lunch</SelectItem>
+                  <SelectItem value="dinner">🍽️ Dinner</SelectItem>
+                  <SelectItem value="snack">🍎 Snack</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label>Prep (min)</Label>

@@ -24,6 +24,41 @@ export function mealDefaultsByTime(date = new Date()): { name: string; icon: str
   return { name: "Late night", icon: "🌙", color: "#a855f7" };
 }
 
+// ---------------------------------------------------------------------------
+// Timeline grouping — meals stay fully custom; sections are derived, never enforced
+// ---------------------------------------------------------------------------
+export type MealBucket = "breakfast" | "lunch" | "snack" | "dinner" | "late" | "anytime";
+
+export const MEAL_BUCKETS: { key: MealBucket; label: string; emoji: string }[] = [
+  { key: "breakfast", label: "Breakfast", emoji: "🍳" },
+  { key: "lunch", label: "Lunch", emoji: "🥗" },
+  { key: "snack", label: "Snacks", emoji: "🍎" },
+  { key: "dinner", label: "Dinner", emoji: "🍽️" },
+  { key: "late", label: "Late night", emoji: "🌙" },
+  { key: "anytime", label: "Anytime", emoji: "🕘" },
+];
+
+/** Derive a timeline section for a meal. The meal's own name wins (so custom
+ * names like "Post-workout breakfast" group sensibly); otherwise its time; a
+ * meal with neither goes to "Anytime". Purely presentational — never stored. */
+export function mealBucket(meal: { name: string; time: string | null }): MealBucket {
+  const n = meal.name.toLowerCase();
+  if (/(breakfast|brunch)/.test(n)) return "breakfast";
+  if (/lunch/.test(n)) return "lunch";
+  if (/(snack|pre.?workout|post.?workout|shake)/.test(n)) return "snack";
+  if (/(dinner|supper)/.test(n)) return "dinner";
+  if (/(late|night)/.test(n)) return "late";
+  if (meal.time) {
+    const h = Number(meal.time.slice(0, 2));
+    if (h < 11) return "breakfast";
+    if (h < 15) return "lunch";
+    if (h < 18) return "snack";
+    if (h < 22) return "dinner";
+    return "late";
+  }
+  return "anytime";
+}
+
 export interface MealTemplate { name: string; icon: string; color: string; time: string }
 export const MEAL_TEMPLATES: MealTemplate[] = [
   { name: "Breakfast", icon: "🍳", color: "#f59e0b", time: "08:00" },

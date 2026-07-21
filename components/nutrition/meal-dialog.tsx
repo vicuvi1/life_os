@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, PencilLine } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronRight, PencilLine, Camera, Loader2 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -11,8 +11,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { TimeField } from "@/components/ui/time-field";
 import { FoodEntryBuilder } from "@/components/nutrition/food-entry-builder";
-import { createNutritionMeal, updateNutritionMeal, deleteNutritionMeal, type NutritionMealInput } from "@/lib/firebase/db";
+import { createNutritionMeal, updateNutritionMeal, deleteNutritionMeal, getPrefs, type NutritionMealInput } from "@/lib/firebase/db";
 import { MEAL_ICONS, MEAL_COLORS, mealDefaultsByTime } from "@/lib/nutrition";
+import { analyzeMealPhoto } from "@/lib/ai";
+import { compressImageToThumbnail } from "@/lib/images";
+import type { AIProviderType } from "@/lib/types";
 import { type Currency } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import type { NutritionMeal, MealFoodEntry, FoodItem } from "@/lib/types";
@@ -44,6 +47,9 @@ export function MealDialog({ open, onOpenChange, userId, date, meal, seedItems, 
   const [showManual, setShowManual] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const scanRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -62,9 +68,49 @@ export function MealDialog({ open, onOpenChange, userId, date, meal, seedItems, 
       cost: meal?.cost != null ? String(meal.cost) : "",
     });
     const hasManual = !!meal && !meal.items.length && (meal.calories != null || meal.protein != null || meal.cost != null);
-    setShowManual(hasManual);
+    // With an empty food library, manual entry IS the logging path — show it.
+    const libraryEmpty = foods.filter((f) => !f.archived).length === 0;
+    setShowManual(hasManual || (!meal && !seedItems?.length && libraryEmpty));
     setShowDetails(!!meal && (!!meal.notes || !!meal.time));
-  }, [open, meal, seedItems]);
+    setScanError(null);
+    setScanning(false);
+  }, [open, meal, seedItems, foods]);
+
+  async function scanPhoto(file?: File) {
+    if (!file) return;
+    setScanning(true);
+    setScanError(null);
+    try {
+      const imageDataUrl = await compressImageToThumbnail(file);
+      const prefs = await getPrefs(userId);
+      const providers = prefs.aiProviders ?? {};
+      const provider = (["anthropic", "gemini"] as AIProviderType[]).find((p) => providers[p]?.apiKey);
+      if (!provider) {
+        setScanError("No AI provider configured — add an Anthropic or Gemini key in Settings → AI providers.");
+        return;
+      }
+      const cfg = providers[provider]!;
+      const r = await analyzeMealPhoto({ provider, model: cfg.model, apiKey: cfg.apiKey, imageDataUrl });
+      if (!r.ok || !r.meal) {
+        setScanError(r.error ?? "Couldn't recognize the meal.");
+        return;
+      }
+      setName(r.meal.name);
+      setManual({
+        calories: r.meal.calories != null ? String(r.meal.calories) : "",
+        protein: r.meal.protein != null ? String(r.meal.protein) : "",
+        carbs: r.meal.carbs != null ? String(r.meal.carbs) : "",
+        fat: r.meal.fat != null ? String(r.meal.fat) : "",
+        cost: "",
+      });
+      setShowManual(true);
+    } catch (e) {
+      setScanError(e instanceof Error ? e.message : "Couldn't process the photo.");
+    } finally {
+      setScanning(false);
+      if (scanRef.current) scanRef.current.value = "";
+    }
+  }
 
   async function save() {
     setSaving(true);
@@ -109,24 +155,35 @@ export function MealDialog({ open, onOpenChange, userId, date, meal, seedItems, 
           {/* Food is the hero */}
           <FoodEntryBuilder items={items} onChange={setItems} foods={foods} currency={currency} onManageFoods={onManageFoods} />
 
-          {/* Manual entry — only when nothing selected, and only on request */}
+          {/* Manual entry + photo scan — only when no foods are selected */}
           {items.length === 0 && (
-            showManual ? (
-              <div className="space-y-1.5 rounded-lg border p-3">
-                <Label className="text-xs text-muted-foreground">Manual entry</Label>
-                <div className="grid grid-cols-5 gap-1.5">
-                  <Manual label="Cal" value={manual.calories} onChange={(v) => setManual((m) => ({ ...m, calories: v }))} />
-                  <Manual label="Protein" value={manual.protein} onChange={(v) => setManual((m) => ({ ...m, protein: v }))} />
-                  <Manual label="Carbs" value={manual.carbs} onChange={(v) => setManual((m) => ({ ...m, carbs: v }))} />
-                  <Manual label="Fat" value={manual.fat} onChange={(v) => setManual((m) => ({ ...m, fat: v }))} />
-                  <Manual label="Cost" value={manual.cost} onChange={(v) => setManual((m) => ({ ...m, cost: v }))} step="0.01" />
-                </div>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <button type="button" onClick={() => scanRef.current?.click()} disabled={scanning} className="flex items-center gap-1.5 text-xs text-muted-foreground underline disabled:opacity-60">
+                  {scanning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+                  {scanning ? "Analyzing photo…" : "Scan a photo (AI)"}
+                </button>
+                {!showManual && (
+                  <button type="button" onClick={() => setShowManual(true)} className="flex items-center gap-1.5 text-xs text-muted-foreground underline">
+                    <PencilLine className="h-3.5 w-3.5" /> Can&apos;t find a food? Enter it manually
+                  </button>
+                )}
               </div>
-            ) : (
-              <button type="button" onClick={() => setShowManual(true)} className="flex items-center gap-1.5 text-xs text-muted-foreground underline">
-                <PencilLine className="h-3.5 w-3.5" /> Can&apos;t find a food? Enter it manually
-              </button>
-            )
+              <input ref={scanRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => scanPhoto(e.target.files?.[0])} />
+              {scanError && <p className="text-xs text-rose-500">{scanError}</p>}
+              {showManual && (
+                <div className="space-y-1.5 rounded-lg border p-3">
+                  <Label className="text-xs text-muted-foreground">Manual entry <span className="normal-case">— AI estimates are editable</span></Label>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    <Manual label="Cal" value={manual.calories} onChange={(v) => setManual((m) => ({ ...m, calories: v }))} />
+                    <Manual label="Protein" value={manual.protein} onChange={(v) => setManual((m) => ({ ...m, protein: v }))} />
+                    <Manual label="Carbs" value={manual.carbs} onChange={(v) => setManual((m) => ({ ...m, carbs: v }))} />
+                    <Manual label="Fat" value={manual.fat} onChange={(v) => setManual((m) => ({ ...m, fat: v }))} />
+                    <Manual label="Cost" value={manual.cost} onChange={(v) => setManual((m) => ({ ...m, cost: v }))} step="0.01" />
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
           {/* Optional meal details */}

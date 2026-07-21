@@ -391,6 +391,9 @@ export interface FoodItem {
  * named set of food references + quantities; macros/cost resolve from the foods. */
 export type RecipeKind = "recipe" | "template";
 
+/** Optional meal-type shelf for browsing (never enforced). */
+export type RecipeMealType = "breakfast" | "lunch" | "dinner" | "snack";
+
 export interface Recipe {
   id: string;
   userId: string;
@@ -399,6 +402,7 @@ export interface Recipe {
   imageData: string | null;
   notes: string | null;
   prepMinutes: number | null; // optional prep/cook time
+  mealType: RecipeMealType | null; // optional browse shelf
   items: MealFoodEntry[]; // references foods + quantities only
   collection: string | null; // folder / collection grouping
   tags: string[];

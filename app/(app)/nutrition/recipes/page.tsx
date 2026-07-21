@@ -20,9 +20,15 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { NutritionNav } from "@/components/nutrition/nutrition-nav";
 import { RecipeEditor } from "@/components/nutrition/recipe-editor";
 import { cn } from "@/lib/utils";
-import type { Recipe, RecipeKind } from "@/lib/types";
+import type { Recipe, RecipeKind, RecipeMealType } from "@/lib/types";
 
 type KindFilter = "all" | "recipe" | "template";
+const MEAL_TYPE_CHIPS: { value: RecipeMealType; label: string }[] = [
+  { value: "breakfast", label: "🍳 Breakfast" },
+  { value: "lunch", label: "🥗 Lunch" },
+  { value: "dinner", label: "🍽️ Dinner" },
+  { value: "snack", label: "🍎 Snack" },
+];
 type Sort = "custom" | "name" | "cost" | "recent";
 
 export default function RecipesPage() {
@@ -33,6 +39,7 @@ export default function RecipesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState<KindFilter>("all");
+  const [mealTypeF, setMealTypeF] = useState<RecipeMealType | null>(null);
   const [collection, setCollection] = useState<string | null>(null);
   const [favorites, setFavorites] = useState(false);
   const [archived, setArchived] = useState(false);
@@ -65,6 +72,7 @@ export default function RecipesPage() {
     let list = recipes.filter((r) => {
       if (archived ? !r.archived : r.archived) return false;
       if (kind !== "all" && r.kind !== kind) return false;
+      if (mealTypeF && r.mealType !== mealTypeF) return false;
       if (favorites && !r.favorite) return false;
       if (collection && r.collection !== collection) return false;
       if (q && !`${r.name} ${r.tags.join(" ")} ${r.collection ?? ""}`.toLowerCase().includes(q)) return false;
@@ -77,9 +85,9 @@ export default function RecipesPage() {
       default: list = list.sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt);
     }
     return list;
-  }, [recipes, search, kind, favorites, collection, archived, sort, foodMap]);
+  }, [recipes, search, kind, mealTypeF, favorites, collection, archived, sort, foodMap]);
 
-  const canReorder = sort === "custom" && !search && kind === "all" && !collection && !favorites && !archived;
+  const canReorder = sort === "custom" && !search && kind === "all" && !mealTypeF && !collection && !favorites && !archived;
 
   async function toggleFavorite(r: Recipe) {
     setAll((p) => (p ? { ...p, recipes: p.recipes.map((x) => (x.id === r.id ? { ...x, favorite: !x.favorite } : x)) } : p));
@@ -95,7 +103,7 @@ export default function RecipesPage() {
   }
   async function duplicate(r: Recipe) {
     if (!user) return;
-    await createRecipe(user.uid, { kind: r.kind, name: `${r.name} (copy)`, imageData: r.imageData, notes: r.notes, prepMinutes: r.prepMinutes, items: r.items, collection: r.collection, tags: r.tags, favorite: false, sortOrder: recipes.length });
+    await createRecipe(user.uid, { kind: r.kind, name: `${r.name} (copy)`, imageData: r.imageData, notes: r.notes, prepMinutes: r.prepMinutes, mealType: r.mealType, items: r.items, collection: r.collection, tags: r.tags, favorite: false, sortOrder: recipes.length });
     await load({ quiet: true });
   }
   async function logToday(r: Recipe) {
@@ -156,6 +164,16 @@ export default function RecipesPage() {
           </Select>
           <Button variant={favorites ? "default" : "outline"} size="icon" aria-label="Favorites" onClick={() => setFavorites((v) => !v)}><Star className={cn("h-4 w-4", favorites && "fill-current")} /></Button>
           <Button variant={archived ? "default" : "outline"} size="icon" aria-label="Archived" onClick={() => setArchived((v) => !v)}><Archive className="h-4 w-4" /></Button>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <button type="button" onClick={() => setMealTypeF(null)}>
+            <Badge variant={mealTypeF === null ? "default" : "secondary"} className="cursor-pointer font-normal">All meals</Badge>
+          </button>
+          {MEAL_TYPE_CHIPS.map((c) => (
+            <button key={c.value} type="button" onClick={() => setMealTypeF((v) => (v === c.value ? null : c.value))}>
+              <Badge variant={mealTypeF === c.value ? "default" : "secondary"} className="cursor-pointer font-normal">{c.label}</Badge>
+            </button>
+          ))}
         </div>
         {tags.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
