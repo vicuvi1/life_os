@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Heart, Shirt } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { StatusSelect } from "@/components/wardrobe/status-select";
-import { relativeDay } from "@/lib/wardrobe";
+import { relativeDay, wearHealth } from "@/lib/wardrobe";
 import { toDateKey } from "@/lib/greeting";
 import { cn } from "@/lib/utils";
 import type { ClothingItem, WardrobeStatus } from "@/lib/types";
@@ -16,12 +16,15 @@ interface Props {
   /** Selection mode (laundry bulk actions / outfit picking). */
   selected?: boolean;
   onSelect?: (item: ClothingItem) => void;
+  /** When set (and not in selection mode), a tap opens this quick-view instead of navigating. */
+  onQuickView?: (item: ClothingItem) => void;
 }
 
-export function ItemCard({ item, onStatusChange, onToggleFavorite, selected, onSelect }: Props) {
+export function ItemCard({ item, onStatusChange, onToggleFavorite, selected, onSelect, onQuickView }: Props) {
   const worn = relativeDay(item.lastWorn, toDateKey(new Date()));
   const meta = [item.brand, item.category].filter(Boolean).join(" · ");
   const tagline = [item.seasons[0], item.styles[0]].filter(Boolean).join(" • ");
+  const health = wearHealth(item);
 
   const inner = (
     <Card
@@ -55,11 +58,23 @@ export function ItemCard({ item, onStatusChange, onToggleFavorite, selected, onS
         >
           <Heart className={cn("h-3.5 w-3.5", item.favorite && "fill-current")} />
         </button>
-        {item.needsIroning && !item.retired && (
-          <span className="absolute left-1.5 top-1.5 rounded-full bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white" title="Needs ironing">👔</span>
-        )}
-        {item.retired && (
+        {item.retired ? (
           <span className="absolute left-1.5 top-1.5 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-medium text-white">Retired</span>
+        ) : (
+          <div className="absolute left-1.5 top-1.5 flex flex-col items-start gap-1">
+            {health && (
+              <span
+                className="flex items-center gap-1 rounded-full bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur"
+                title={health.suggestWash ? "Time for a wash" : health.label}
+              >
+                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: health.color }} />
+                {health.suggestWash ? "🧺 Wash?" : health.label}
+              </span>
+            )}
+            {item.needsIroning && (
+              <span className="rounded-full bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur" title="Needs ironing">👔</span>
+            )}
+          </div>
         )}
         {/* Usage counter + last-worn, Apple-Photos style overlay */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-1 bg-gradient-to-t from-black/60 to-transparent px-1.5 pb-1 pt-5 text-[10px] font-medium text-white">
@@ -89,6 +104,13 @@ export function ItemCard({ item, onStatusChange, onToggleFavorite, selected, onS
   if (onSelect) {
     return (
       <button type="button" onClick={() => onSelect(item)} className="block w-full text-left">
+        {inner}
+      </button>
+    );
+  }
+  if (onQuickView) {
+    return (
+      <button type="button" onClick={() => onQuickView(item)} className="block w-full text-left">
         {inner}
       </button>
     );

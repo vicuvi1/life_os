@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Shirt } from "lucide-react";
+import { Check, Shirt, X, GripVertical } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -41,6 +41,7 @@ export function OutfitBuilderDialog({ open, onOpenChange, userId, items, outfit,
   const [category, setCategory] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -64,6 +65,18 @@ export function OutfitBuilderDialog({ open, onOpenChange, userId, items, outfit,
 
   function toggle(id: string) {
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  /** Insert (or move) an item to a position — powers add-by-drag and reorder. */
+  function insertAt(id: string, index: number) {
+    setSelected((prev) => {
+      const without = prev.filter((x) => x !== id);
+      const clamped = Math.max(0, Math.min(index, without.length));
+      return [...without.slice(0, clamped), id, ...without.slice(clamped)];
+    });
+  }
+  function remove(id: string) {
+    setSelected((prev) => prev.filter((x) => x !== id));
   }
 
   async function save() {
@@ -133,25 +146,56 @@ export function OutfitBuilderDialog({ open, onOpenChange, userId, items, outfit,
             </div>
           </div>
 
-          {/* Selected preview */}
-          {selected.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 rounded-xl border bg-muted/20 p-2">
-              {selected.map((id) => {
-                const it = byId.get(id);
-                if (!it) return null;
-                return (
-                  <button key={id} type="button" onClick={() => toggle(id)} title={`${it.name} — remove`} className="relative h-12 w-12 overflow-hidden rounded-lg border">
-                    {it.imageData ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={it.imageData} alt={it.name} className="h-full w-full object-cover" />
-                    ) : (
-                      <span className="flex h-full w-full items-center justify-center bg-muted/40"><Shirt className="h-5 w-5 text-muted-foreground/50" /></span>
-                    )}
-                  </button>
-                );
-              })}
+          {/* Your outfit — drop zone (drag items in, reorder, ×-to-remove) */}
+          <div className="space-y-1.5">
+            <Label className="flex items-center gap-1 text-xs uppercase tracking-wide text-muted-foreground">
+              <GripVertical className="h-3.5 w-3.5" /> Your outfit ({selected.length})
+            </Label>
+            <div
+              onDragOver={(e) => { if (dragId) e.preventDefault(); }}
+              onDrop={(e) => { e.preventDefault(); if (dragId) { insertAt(dragId, selected.length); setDragId(null); } }}
+              className={cn(
+                "flex min-h-[84px] flex-wrap items-center gap-2 rounded-xl border-2 border-dashed p-2 transition",
+                dragId ? "border-primary bg-primary/5" : "border-muted-foreground/20 bg-muted/20"
+              )}
+            >
+              {selected.length === 0 ? (
+                <span className="mx-auto text-xs text-muted-foreground">Drag clothes here, or tap them below.</span>
+              ) : (
+                selected.map((id, index) => {
+                  const it = byId.get(id);
+                  if (!it) return null;
+                  return (
+                    <div
+                      key={id}
+                      draggable
+                      onDragStart={() => setDragId(id)}
+                      onDragEnd={() => setDragId(null)}
+                      onDragOver={(e) => { if (dragId) e.preventDefault(); }}
+                      onDrop={(e) => { e.preventDefault(); e.stopPropagation(); if (dragId) { insertAt(dragId, index); setDragId(null); } }}
+                      title={it.name}
+                      className={cn("group relative h-14 w-14 shrink-0 cursor-grab overflow-hidden rounded-lg border active:cursor-grabbing", dragId === id && "opacity-40")}
+                    >
+                      {it.imageData ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={it.imageData} alt={it.name} className="h-full w-full object-cover" />
+                      ) : (
+                        <span className="flex h-full w-full items-center justify-center bg-muted/40"><Shirt className="h-5 w-5 text-muted-foreground/50" /></span>
+                      )}
+                      <button
+                        type="button"
+                        aria-label={`Remove ${it.name}`}
+                        onClick={() => remove(id)}
+                        className="absolute right-0 top-0 flex h-4 w-4 items-center justify-center rounded-bl bg-black/60 text-white opacity-0 transition group-hover:opacity-100"
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </div>
+                  );
+                })
+              )}
             </div>
-          )}
+          </div>
 
           {/* Item picker */}
           <div className="space-y-2 rounded-xl border p-3">
@@ -174,7 +218,15 @@ export function OutfitBuilderDialog({ open, onOpenChange, userId, items, outfit,
                 {pickable.map((item) => {
                   const on = selected.includes(item.id);
                   return (
-                    <button key={item.id} type="button" onClick={() => toggle(item.id)} className={cn("relative overflow-hidden rounded-lg border text-left transition", on ? "ring-2 ring-primary" : "hover:border-primary/40")}>
+                    <button
+                      key={item.id}
+                      type="button"
+                      draggable
+                      onDragStart={() => setDragId(item.id)}
+                      onDragEnd={() => setDragId(null)}
+                      onClick={() => toggle(item.id)}
+                      className={cn("relative cursor-grab overflow-hidden rounded-lg border text-left transition active:cursor-grabbing", on ? "ring-2 ring-primary" : "hover:border-primary/40")}
+                    >
                       <div className="aspect-square w-full bg-muted/40">
                         {item.imageData ? (
                           // eslint-disable-next-line @next/next/no-img-element

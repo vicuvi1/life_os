@@ -1636,3 +1636,26 @@ outfit dashboard, not a list.
 **Deferred (larger, follow-up work):** a slide-over quick-view panel on item
 click (instead of a full page), a drag-and-drop outfit builder, and a
 "worn once / worn twice" wear-since-wash sub-status.
+
+---
+
+## Wardrobe — Quick-view panel, drag-and-drop builder & freshness
+
+**What it is.** The three follow-ups from the Overview redesign, now shipped.
+
+- **Slide-over quick view.** Tapping a clothing card on the Overview opens a
+  right-hand **panel** instead of navigating away — photo (with extra shots),
+  one-tap status control, favorite/retire, key facts (times worn, last worn,
+  colour, size, season, style, price, **cost-per-wear**), the outfits it appears
+  in, and notes/care. **Edit** opens the form inline; **Full details** still
+  links to the dedicated page. Much faster to skim your wardrobe.
+- **Drag-and-drop outfit builder.** The builder now has a dashed **"Your outfit"**
+  drop zone: drag clothes in from the picker, **drag to reorder**, and remove
+  with the ×. Tapping still works everywhere (so it's fine on touch), and the
+  order you arrange is the order the outfit saves in.
+- **Freshness ("worn once / twice").** Every item tracks **wears since its last
+  wash**. A worn item now shows a colour-coded badge — 🟡 Worn once, 🟠 Worn
+  twice, 🔴 Worn 3×+ — on its card and in the quick view, and once it passes the
+  threshold the app **nudges you to wash it** (with a one-tap "Mark dirty"). The
+  counter resets automatically whenever you move the item to washing / clean /
+  ready, so it always reflects reality.

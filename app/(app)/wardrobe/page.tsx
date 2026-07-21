@@ -18,10 +18,12 @@ import {
 import { useAuth } from "@/components/auth-provider";
 import {
   getWardrobe,
+  getBudget,
   updateClothing,
   setWearForDay,
   type WardrobeData,
 } from "@/lib/firebase/db";
+import { resolveCurrency, type Currency } from "@/lib/currency";
 import {
   STATUS_META,
   WARDROBE_STATUSES,
@@ -57,6 +59,7 @@ import {
 } from "@/components/ui/select";
 import { ItemCard } from "@/components/wardrobe/item-card";
 import { ItemFormDialog } from "@/components/wardrobe/item-form-dialog";
+import { ItemQuickView } from "@/components/wardrobe/item-quick-view";
 import { WearPickerDialog } from "@/components/wardrobe/wear-picker-dialog";
 import { cn } from "@/lib/utils";
 import type { ClothingItem, WardrobeStatus } from "@/lib/types";
@@ -103,10 +106,13 @@ function weatherFitMatches(fit: string | null, temp: number | null): boolean | n
 export default function WardrobeOverviewPage() {
   const { user } = useAuth();
   const [data, setData] = useState<WardrobeData>({ items: [], outfits: [], wears: [] });
+  const [currency, setCurrency] = useState<Currency | null>(null);
   const [loading, setLoading] = useState(true);
   const [weather, setWeather] = useState<{ temp: number; code: number } | null>(null);
 
   const [formOpen, setFormOpen] = useState(false);
+  const [formItem, setFormItem] = useState<ClothingItem | null>(null);
+  const [quickViewId, setQuickViewId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerDate, setPickerDate] = useState<string | null>(null);
   const [surpriseOpen, setSurpriseOpen] = useState(false);
@@ -123,7 +129,9 @@ export default function WardrobeOverviewPage() {
     if (!user) return;
     if (!opts?.quiet) setLoading(true);
     try {
-      setData(await getWardrobe(user.uid));
+      const [w, b] = await Promise.all([getWardrobe(user.uid), getBudget(user.uid)]);
+      setData(w);
+      setCurrency(resolveCurrency(b));
     } finally {
       if (!opts?.quiet) setLoading(false);
     }
@@ -211,6 +219,7 @@ export default function WardrobeOverviewPage() {
 
   const activePickerDate = pickerDate ?? today;
   const activePickerWear = useMemo(() => wearForDate(wears, activePickerDate), [wears, activePickerDate]);
+  const quickViewItem = useMemo(() => items.find((i) => i.id === quickViewId) ?? null, [items, quickViewId]);
 
   async function confirmPlannedToday() {
     if (!user || !todayWear || todayItems.length === 0) return;
@@ -245,7 +254,7 @@ export default function WardrobeOverviewPage() {
                 <Sparkles className="h-4 w-4" /> Surprise me
               </Button>
             )}
-            <Button onClick={() => setFormOpen(true)}>
+            <Button onClick={() => { setFormItem(null); setFormOpen(true); }}>
               <Plus className="h-4 w-4" /> Add item
             </Button>
           </div>
@@ -265,7 +274,7 @@ export default function WardrobeOverviewPage() {
           <p className="max-w-sm text-sm text-muted-foreground">
             Photograph your clothes once — then picking an outfit, tracking laundry, and knowing your cost-per-wear all take seconds.
           </p>
-          <Button onClick={() => setFormOpen(true)}>
+          <Button onClick={() => { setFormItem(null); setFormOpen(true); }}>
             <Plus className="h-4 w-4" /> Add your first item
           </Button>
         </Card>
@@ -477,6 +486,7 @@ export default function WardrobeOverviewPage() {
                       <ItemCard
                         key={item.id}
                         item={item}
+                        onQuickView={(it) => setQuickViewId(it.id)}
                         onStatusChange={(it, patch) => patchItem(it, patch)}
                         onToggleFavorite={(it) => patchItem(it, { favorite: !it.favorite })}
                       />
@@ -614,7 +624,16 @@ export default function WardrobeOverviewPage() {
 
       {user && (
         <>
-          <ItemFormDialog open={formOpen} onOpenChange={setFormOpen} userId={user.uid} onSaved={load} />
+          <ItemFormDialog open={formOpen} onOpenChange={setFormOpen} userId={user.uid} item={formItem} onSaved={() => load({ quiet: true })} />
+          <ItemQuickView
+            open={quickViewId !== null}
+            onOpenChange={(o) => !o && setQuickViewId(null)}
+            item={quickViewItem}
+            outfits={outfits}
+            currency={currency}
+            onPatch={(it, patch) => patchItem(it, patch)}
+            onEdit={(it) => { setQuickViewId(null); setFormItem(it); setFormOpen(true); }}
+          />
           <WearPickerDialog
             open={pickerOpen}
             onOpenChange={setPickerOpen}

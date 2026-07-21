@@ -29,6 +29,25 @@ export function isWearable(item: Pick<ClothingItem, "status" | "retired">): bool
   return !item.retired && (item.status === "clean" || item.status === "ready" || item.status === "worn");
 }
 
+/** Wears before an item is nudged toward the wash. */
+export const WASH_SUGGESTION_THRESHOLD = 3;
+
+/**
+ * Freshness sub-state for a currently-worn item: "Worn once/twice/N×", with a
+ * colour and whether it's time to suggest a wash. Null unless status is "worn"
+ * with at least one wear logged since the last wash.
+ */
+export function wearHealth(
+  item: Pick<ClothingItem, "status" | "wearsSinceWash">
+): { label: string; color: string; suggestWash: boolean } | null {
+  if (item.status !== "worn") return null;
+  const n = item.wearsSinceWash;
+  if (n <= 0) return null;
+  if (n === 1) return { label: "Worn once", color: "#eab308", suggestWash: false };
+  if (n === 2) return { label: "Worn twice", color: "#f97316", suggestWash: false };
+  return { label: `Worn ${n}×`, color: "#f43f5e", suggestWash: n >= WASH_SUGGESTION_THRESHOLD };
+}
+
 // ---------------------------------------------------------------------------
 // Default (user-extensible) tag suggestions — never a locked enum.
 // ---------------------------------------------------------------------------

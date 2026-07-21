@@ -396,6 +396,8 @@ export interface ClothingItem {
   /** Retired items keep their history but leave active views/builders. */
   retired: boolean;
   timesWorn: number;
+  /** Wears since the last wash — drives the Worn-once/twice freshness hint; reset to 0 when laundered. */
+  wearsSinceWash: number;
   lastWorn: string | null; // YYYY-MM-DD
   createdAt: number;
 }

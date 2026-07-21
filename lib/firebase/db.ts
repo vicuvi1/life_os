@@ -1293,6 +1293,7 @@ function mapClothing(snap: QueryDocumentSnapshot<DocumentData>): ClothingItem {
     care: d.care ?? null,
     retired: d.retired === true,
     timesWorn: d.timesWorn ?? 0,
+    wearsSinceWash: d.wearsSinceWash ?? 0,
     lastWorn: d.lastWorn ?? null,
     createdAt: toMillis(d.createdAt),
   };
@@ -1414,17 +1415,23 @@ export async function createClothing(
     retired: false,
     lastWorn: null,
     timesWorn: 0,
+    wearsSinceWash: 0,
     ...input,
     createdAt: serverTimestamp(),
   });
   return ref.id;
 }
 
+/** Fresh-from-laundry statuses that reset the wears-since-wash counter. */
+const FRESH_STATUSES = new Set<WardrobeStatus>(["clean", "ready", "washing", "drying"]);
+
 export async function updateClothing(
   id: string,
   input: Partial<ClothingInput>
 ): Promise<void> {
-  await updateDoc(doc(db, COLLECTIONS.clothing, id), { ...input });
+  // Laundering an item resets its freshness counter.
+  const reset = input.status && FRESH_STATUSES.has(input.status) ? { wearsSinceWash: 0 } : {};
+  await updateDoc(doc(db, COLLECTIONS.clothing, id), { ...input, ...reset });
 }
 
 export async function deleteClothing(id: string): Promise<void> {
@@ -1439,6 +1446,7 @@ export async function deleteClothing(id: string): Promise<void> {
 export async function bumpItemWear(itemId: string, date: string): Promise<void> {
   await updateDoc(doc(db, COLLECTIONS.clothing, itemId), {
     timesWorn: increment(1),
+    wearsSinceWash: increment(1),
     lastWorn: date,
     status: "worn",
   });
@@ -1449,10 +1457,11 @@ export async function bulkUpdateClothingStatus(
   ids: string[],
   patch: { status?: WardrobeStatus; needsIroning?: boolean }
 ): Promise<void> {
+  const reset = patch.status && FRESH_STATUSES.has(patch.status) ? { wearsSinceWash: 0 } : {};
   for (let i = 0; i < ids.length; i += 450) {
     const batch = writeBatch(db);
     for (const id of ids.slice(i, i + 450)) {
-      batch.update(doc(db, COLLECTIONS.clothing, id), { ...patch });
+      batch.update(doc(db, COLLECTIONS.clothing, id), { ...patch, ...reset });
     }
     await batch.commit();
   }
@@ -1565,7 +1574,11 @@ export async function setWearForDay(input: {
         continue;
       }
       const patch: Record<string, unknown> = { timesWorn: increment(1), lastWorn: laterDate(it.lastWorn, date) };
-      if (markWorn) patch.status = "worn";
+      // "confirm" (today) advances freshness + marks worn; a retro "log" only counts the wear.
+      if (markWorn) {
+        patch.status = "worn";
+        patch.wearsSinceWash = increment(1);
+      }
       batch.update(doc(db, COLLECTIONS.clothing, it.id), patch);
     }
   }
