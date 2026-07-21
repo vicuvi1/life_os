@@ -415,6 +415,8 @@ export interface Outfit {
   itemIds: string[];
   /** User-extensible occasion tags (University, Gym, Rainy Day, …). */
   occasions: string[];
+  /** Seasons this outfit suits (drives weather-based suggestions). */
+  seasons: string[];
   /** 1-5 stars, set after wearing. */
   rating: number | null;
   /** Manually-set fit like "18-28°C, sunny" (displayed, never inferred). */

@@ -60,6 +60,20 @@ export default function WardrobeStatsPage() {
   const never = useMemo(() => neverWorn(items), [items]);
   const value = useMemo(() => wardrobeValue(items), [items]);
   const totalWears = useMemo(() => active.reduce((s, i) => s + i.timesWorn, 0), [active]);
+  const pricedCount = useMemo(() => active.filter((i) => i.cost != null && i.cost > 0).length, [active]);
+  const avgCostPerItem = pricedCount > 0 ? value / pricedCount : null;
+  const avgCostPerWear = totalWears > 0 && value > 0 ? value / totalWears : null;
+  // The single most actionable nudge, in priority order.
+  const recommendation = useMemo(() => {
+    if (never.length > 0) {
+      return `${never.length} item${never.length === 1 ? " has" : "s have"} never been worn — style ${never.length === 1 ? "it" : "them"} or let ${never.length === 1 ? "it" : "them"} go.`;
+    }
+    const worst = cpw.length > 0 ? cpw[cpw.length - 1] : null;
+    if (worst && worst.cpw >= 20 && currency) {
+      return `"${worst.item.name}" costs ${formatAmount(worst.cpw, currency)}/wear — your priciest per wear. Wear it more, or consider letting it go.`;
+    }
+    return null;
+  }, [never, cpw, currency]);
   const breakdown = useMemo(() => categoryBreakdown(items), [items]);
   const catGaps = useMemo(() => categoryGaps(items), [items]);
   const occGaps = useMemo(() => occasionGaps(outfits), [outfits]);
@@ -98,23 +112,30 @@ export default function WardrobeStatsPage() {
         </Card>
       ) : (
         <>
+          {recommendation && (
+            <Card className="flex items-start gap-2 border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+              <span>💡</span>
+              <p>{recommendation}</p>
+            </Card>
+          )}
+
           {/* KPI row */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Kpi label="Items" value={String(active.length)} hint={`${outfits.length} saved outfits`} />
             <Kpi
-              label="Wardrobe value"
+              label="Total invested"
               value={value > 0 && currency ? formatAmount(value, currency) : "—"}
-              hint={value > 0 ? "Sum of item prices" : "Add prices to items"}
+              hint={avgCostPerItem && currency ? `${formatAmount(avgCostPerItem, currency)} avg / item` : value > 0 ? "Sum of item prices" : "Add prices to items"}
             />
-            <Kpi label="Total wears" value={String(totalWears)} hint="Across all items" />
+            <Kpi
+              label="Total wears"
+              value={String(totalWears)}
+              hint={avgCostPerWear && currency ? `${formatAmount(avgCostPerWear, currency)} avg / wear` : "Across all items"}
+            />
             <Kpi
               label="Worn this month"
               value={`${trend.thisCount} ${trend.thisCount === 1 ? "day" : "days"}`}
-              hint={
-                trend.hasHistory
-                  ? undefined
-                  : "Log outfits to see a trend"
-              }
+              hint={trend.hasHistory ? undefined : "Log outfits to see a trend"}
               trend={trend.hasHistory ? trend.thisCount - trend.lastCount : null}
             />
           </div>

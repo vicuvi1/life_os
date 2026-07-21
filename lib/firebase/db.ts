@@ -1308,6 +1308,7 @@ function mapOutfit(snap: QueryDocumentSnapshot<DocumentData>): Outfit {
     type: d.type === "template" ? "template" : "custom",
     itemIds: Array.isArray(d.itemIds) ? d.itemIds : [],
     occasions: Array.isArray(d.occasions) ? d.occasions : [],
+    seasons: Array.isArray(d.seasons) ? d.seasons : [],
     rating: typeof d.rating === "number" ? d.rating : null,
     weatherFit: d.weatherFit ?? null,
     notes: d.notes ?? null,
@@ -1471,7 +1472,8 @@ export async function bulkUpdateClothingStatus(
 export type OutfitInput = Pick<
   Outfit,
   "name" | "type" | "itemIds" | "occasions" | "rating" | "weatherFit" | "notes" | "favorite"
->;
+> &
+  Partial<Pick<Outfit, "seasons">>;
 
 export async function createOutfit(userId: string, input: OutfitInput): Promise<string> {
   const ref = await addDoc(collection(db, COLLECTIONS.clothing), {
@@ -1479,6 +1481,7 @@ export async function createOutfit(userId: string, input: OutfitInput): Promise<
     docType: "outfit",
     timesWorn: 0,
     lastWorn: null,
+    seasons: [],
     ...input,
     createdAt: serverTimestamp(),
   });

@@ -1681,3 +1681,27 @@ A cleanup pass from a design review of the Overview:
 - **Favorite brand** only appears once you own 2+ pieces of a brand (no more
   single placeholder entry).
 - Fixed the clipped search placeholder.
+
+---
+
+## Wardrobe — Weather planning & richer analytics
+
+Deltas from the "advanced wardrobe" spec (most of which the system already met —
+full item/outfit CRUD, image capture, drag-and-drop builder, laundry, wear
+counts, cost-per-wear, today's suggestion, quick-view; this pass closes the
+remaining gaps):
+- **Outfit seasons.** Outfits can now be tagged with **seasons** (in the builder,
+  shown on the detail view) in addition to occasions and weather-fit.
+- **Outfits for today's weather.** The Overview now shows up to **three saved
+  outfits that suit today's weather** (matched by season or a weather-fit range),
+  each with one-tap **Wear today**.
+- **7-day planner with forecast.** The upcoming panel now spans **7 days**, each
+  showing that day's **weather forecast** (icon + high) pulled from Open-Meteo —
+  tap any day to plan it.
+- **Richer analytics.** Statistics now reports **total invested**, **average cost
+  per item**, **average cost-per-wear**, and a plain-language **recommendation**
+  (e.g. "3 items have never been worn — style them or let them go", or your
+  priciest-per-wear piece) so the numbers turn into a next action.
+
+Everything remains fully editable from the UI — items, outfits, seasons,
+occasions, statuses, prices and plans are all data in Firestore, no code needed.

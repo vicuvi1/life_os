@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { createOutfit, updateOutfit, type OutfitInput } from "@/lib/firebase/db";
-import { DEFAULT_OCCASIONS, categoriesInUse, filterItems } from "@/lib/wardrobe";
+import { DEFAULT_OCCASIONS, DEFAULT_SEASONS, categoriesInUse, filterItems } from "@/lib/wardrobe";
 import { TagChips } from "@/components/wardrobe/tag-chips";
 import { cn } from "@/lib/utils";
 import type { ClothingItem, Outfit } from "@/lib/types";
@@ -35,6 +35,7 @@ export function OutfitBuilderDialog({ open, onOpenChange, userId, items, outfit,
   const [type, setType] = useState<"template" | "custom">("custom");
   const [selected, setSelected] = useState<string[]>([]);
   const [occasions, setOccasions] = useState<string[]>([]);
+  const [seasons, setSeasons] = useState<string[]>([]);
   const [weatherFit, setWeatherFit] = useState("");
   const [notes, setNotes] = useState("");
   const [query, setQuery] = useState("");
@@ -49,6 +50,7 @@ export function OutfitBuilderDialog({ open, onOpenChange, userId, items, outfit,
     setType(outfit?.type ?? "custom");
     setSelected(outfit?.itemIds ?? []);
     setOccasions(outfit?.occasions ?? []);
+    setSeasons(outfit?.seasons ?? []);
     setWeatherFit(outfit?.weatherFit ?? "");
     setNotes(outfit?.notes ?? "");
     setQuery("");
@@ -95,6 +97,7 @@ export function OutfitBuilderDialog({ open, onOpenChange, userId, items, outfit,
       type,
       itemIds: selected,
       occasions,
+      seasons,
       rating: outfit?.rating ?? null,
       weatherFit: weatherFit.trim() || null,
       notes: notes.trim() || null,
@@ -247,6 +250,11 @@ export function OutfitBuilderDialog({ open, onOpenChange, userId, items, outfit,
           <div className="space-y-1.5">
             <Label>Occasions</Label>
             <TagChips value={occasions} onChange={setOccasions} suggestions={DEFAULT_OCCASIONS} addLabel="Add an occasion…" />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Seasons</Label>
+            <TagChips value={seasons} onChange={setSeasons} suggestions={DEFAULT_SEASONS} addLabel="Add a season…" />
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

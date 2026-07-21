@@ -390,9 +390,10 @@ function OutfitsInner() {
                   </div>
                 </div>
 
-                {detail.occasions.length > 0 && (
+                {(detail.occasions.length > 0 || detail.seasons.length > 0) && (
                   <div className="flex flex-wrap gap-1.5">
-                    {detail.occasions.map((t) => <span key={t} className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">{t}</span>)}
+                    {detail.occasions.map((t) => <span key={`o-${t}`} className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">{t}</span>)}
+                    {detail.seasons.map((s) => <span key={`s-${s}`} className="rounded-full border border-dashed px-2 py-0.5 text-xs text-muted-foreground">{s}</span>)}
                   </div>
                 )}
 

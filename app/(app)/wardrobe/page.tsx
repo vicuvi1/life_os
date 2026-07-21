@@ -38,6 +38,7 @@ import {
   weatherSuggestions,
   weatherSeason,
   surpriseOutfit,
+  outfitItems,
   relativeDay,
   weekdayName,
   favoriteBrand,
@@ -63,7 +64,7 @@ import { ItemFormDialog } from "@/components/wardrobe/item-form-dialog";
 import { ItemQuickView } from "@/components/wardrobe/item-quick-view";
 import { WearPickerDialog } from "@/components/wardrobe/wear-picker-dialog";
 import { cn } from "@/lib/utils";
-import type { ClothingItem, WardrobeStatus } from "@/lib/types";
+import type { ClothingItem, Outfit, WardrobeStatus } from "@/lib/types";
 
 // --- Weather (display only — Chișinău by default; no recommendation logic) ---
 const WEATHER_LAT = 47.01;
@@ -110,6 +111,7 @@ export default function WardrobeOverviewPage() {
   const [currency, setCurrency] = useState<Currency | null>(null);
   const [loading, setLoading] = useState(true);
   const [weather, setWeather] = useState<{ temp: number; code: number } | null>(null);
+  const [forecast, setForecast] = useState<Record<string, { temp: number; code: number }>>({});
 
   const [formOpen, setFormOpen] = useState(false);
   const [formItem, setFormItem] = useState<ClothingItem | null>(null);
@@ -143,13 +145,25 @@ export default function WardrobeOverviewPage() {
   }, [load]);
 
   useEffect(() => {
-    // Best-effort current weather; the page works fine without it.
-    fetch(`https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LAT}&longitude=${WEATHER_LON}&current=temperature_2m,weather_code`)
+    // Best-effort current weather + 7-day forecast; the page works fine without it.
+    fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LAT}&longitude=${WEATHER_LON}&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max&forecast_days=8&timezone=auto`
+    )
       .then((r) => r.json())
       .then((j) => {
         const t = j?.current?.temperature_2m;
         const c = j?.current?.weather_code;
         if (typeof t === "number" && typeof c === "number") setWeather({ temp: Math.round(t), code: c });
+        const days: string[] = j?.daily?.time ?? [];
+        const codes: number[] = j?.daily?.weather_code ?? [];
+        const highs: number[] = j?.daily?.temperature_2m_max ?? [];
+        const map: Record<string, { temp: number; code: number }> = {};
+        days.forEach((d, i) => {
+          if (typeof highs[i] === "number" && typeof codes[i] === "number") {
+            map[d] = { temp: Math.round(highs[i]), code: codes[i] };
+          }
+        });
+        if (Object.keys(map).length) setForecast(map);
       })
       .catch(() => {});
   }, []);
@@ -221,9 +235,18 @@ export default function WardrobeOverviewPage() {
 
   const recent = useMemo(() => recentlyWorn(items, 10), [items]);
   const upcoming = useMemo(() => {
-    const days = [1, 2, 3].map((d) => addDays(today, d));
+    const days = [1, 2, 3, 4, 5, 6, 7].map((d) => addDays(today, d));
     return days.map((d) => ({ date: d, wear: wearForDate(wears, d) }));
   }, [wears, today]);
+
+  // Saved outfits that suit today's weather (by season or a matching weather-fit range).
+  const weatherOutfits = useMemo(() => {
+    if (!weather) return [];
+    const season = weatherSeason(weather.temp);
+    return outfits
+      .filter((o) => weatherFitMatches(o.weatherFit, weather.temp) === true || o.seasons.includes(season))
+      .slice(0, 3);
+  }, [outfits, weather]);
 
   function patchItem(item: ClothingItem, patch: Partial<ClothingItem>) {
     setData((prev) => ({ ...prev, items: prev.items.map((i) => (i.id === item.id ? { ...i, ...patch } : i)) }));
@@ -250,6 +273,33 @@ export default function WardrobeOverviewPage() {
         outfit: null,
         prevItems: [],
         prevOutfit: null,
+      });
+    } finally {
+      await load({ quiet: true });
+    }
+  }
+
+  async function wearOutfitToday(o: Outfit) {
+    if (!user) return;
+    const wearItems = outfitItems(o, items).filter((i) => !i.retired);
+    if (wearItems.length === 0) return;
+    const prevConfirmed = todayWear && !todayWear.planned ? todayWear : null;
+    const byId = new Map(items.map((i) => [i.id, i]));
+    const prevItems = prevConfirmed
+      ? prevConfirmed.itemIds.map((id) => byId.get(id)).filter((i): i is ClothingItem => Boolean(i)).map((i) => ({ id: i.id, timesWorn: i.timesWorn }))
+      : [];
+    const prevOutfit = prevConfirmed?.outfitId
+      ? (() => { const p = outfits.find((x) => x.id === prevConfirmed.outfitId); return p ? { id: p.id, timesWorn: p.timesWorn } : null; })()
+      : null;
+    try {
+      await setWearForDay({
+        userId: user.uid,
+        date: today,
+        kind: "confirm",
+        chosen: wearItems.map((i) => ({ id: i.id, timesWorn: i.timesWorn, lastWorn: i.lastWorn })),
+        outfit: { id: o.id, timesWorn: o.timesWorn, lastWorn: o.lastWorn },
+        prevItems,
+        prevOutfit,
       });
     } finally {
       await load({ quiet: true });
@@ -452,6 +502,42 @@ export default function WardrobeOverviewPage() {
               </div>
             </Card>
 
+            {/* Saved outfits that suit today's weather */}
+            {weatherOutfits.length > 0 && (
+              <Card className="overflow-hidden">
+                <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-2.5">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Outfits for today&apos;s weather</span>
+                  {weather && <span className="text-xs text-muted-foreground">{weather.temp}°C · {weatherSeason(weather.temp).toLowerCase()}</span>}
+                </div>
+                <div className="flex gap-3 overflow-x-auto p-4">
+                  {weatherOutfits.map((o) => {
+                    const its = outfitItems(o, items).filter((i) => !i.retired);
+                    return (
+                      <div key={o.id} className="w-44 shrink-0 rounded-xl border p-2.5">
+                        <div className="flex items-center gap-1">
+                          {its.slice(0, 4).map((i) => (
+                            <span key={i.id} className="h-9 w-9 overflow-hidden rounded-md border bg-muted/40">
+                              {i.imageData ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={i.imageData} alt={i.name} className="h-full w-full object-cover" />
+                              ) : (
+                                <span className="flex h-full w-full items-center justify-center"><Shirt className="h-4 w-4 text-muted-foreground/40" /></span>
+                              )}
+                            </span>
+                          ))}
+                        </div>
+                        <p className="mt-2 truncate text-sm font-medium">{o.name}</p>
+                        <p className="mb-2 truncate text-[11px] text-muted-foreground">{o.occasions.join(" · ") || `${its.length} items`}</p>
+                        <Button size="sm" variant="outline" className="w-full" disabled={its.length === 0} onClick={() => wearOutfitToday(o)}>
+                          <Check className="h-3.5 w-3.5" /> Wear today
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            )}
+
             {/* Quick templates — occasion shortcuts into Outfits */}
             {outfits.length > 0 && (
               <div className="flex gap-2 overflow-x-auto pb-1">
@@ -632,13 +718,14 @@ export default function WardrobeOverviewPage() {
             <Card className="overflow-hidden">
               <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-2.5">
                 <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  <CalendarDays className="h-3.5 w-3.5" /> Upcoming outfits
+                  <CalendarDays className="h-3.5 w-3.5" /> 7-day planner
                 </span>
               </div>
               <div className="space-y-1 p-2">
                 {upcoming.map(({ date, wear }) => {
                   const outfit = wear?.outfitId ? outfits.find((o) => o.id === wear.outfitId) ?? null : null;
                   const label = relativeDay(date, today) ?? weekdayName(date);
+                  const fc = forecast[date];
                   return (
                     <button
                       key={date}
@@ -648,7 +735,10 @@ export default function WardrobeOverviewPage() {
                     >
                       <div className="w-[78px] shrink-0">
                         <p className="text-xs font-medium">{label}</p>
-                        <p className="text-[10px] tabular-nums text-muted-foreground">{date.slice(5)}</p>
+                        <p className="flex items-center gap-1 text-[10px] tabular-nums text-muted-foreground">
+                          {date.slice(5)}
+                          {fc && <span>· {wmoMeta(fc.code).icon} {fc.temp}°</span>}
+                        </p>
                       </div>
                       {wear ? (
                         <div className="min-w-0 flex-1 space-y-1">
