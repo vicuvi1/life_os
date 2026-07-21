@@ -27,8 +27,13 @@ import {
 } from "@/lib/storage";
 import {
   COLLECTIONS,
+  type AIProviders,
   type Budget,
+  type ChatMessage,
   type ClothingItem,
+  type HubAgent,
+  type HubAutomation,
+  type HubNotification,
   type DecisionConfig,
   type Expense,
   type Goal,
@@ -1747,6 +1752,180 @@ export async function deletePackingList(id: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Agent Hub (agents, automations, notifications, conversations)
+//
+// Stored in the existing `decisions` collection, discriminated by `docType` —
+// that collection is only ever read by direct doc id (the DecisionConfig doc),
+// so hub docs are invisible to existing code and reuse its deployed rules.
+// ---------------------------------------------------------------------------
+function mapHubAgent(snap: QueryDocumentSnapshot<DocumentData>): HubAgent {
+  const d = snap.data();
+  return {
+    id: snap.id,
+    userId: d.userId,
+    name: d.name ?? "Agent",
+    icon: d.icon ?? "🤖",
+    module: d.module ?? "general",
+    provider: d.provider === "gemini" ? "gemini" : "anthropic",
+    model: d.model ?? "",
+    systemPrompt: d.systemPrompt ?? "",
+    createdAt: toMillis(d.createdAt),
+  };
+}
+
+function mapAutomation(snap: QueryDocumentSnapshot<DocumentData>): HubAutomation {
+  const d = snap.data();
+  return {
+    id: snap.id,
+    userId: d.userId,
+    name: d.name ?? "Rule",
+    metric: d.metric ?? "dirtyCount",
+    operator: [">=", "<=", ">", "<", "=="].includes(d.operator) ? d.operator : ">=",
+    value: typeof d.value === "number" ? d.value : 0,
+    action: d.action === "attention" ? "attention" : "notify",
+    telegram: d.telegram === true,
+    message: d.message ?? "",
+    enabled: d.enabled !== false,
+    lastFired: d.lastFired ?? null,
+    createdAt: toMillis(d.createdAt),
+  };
+}
+
+function mapHubNotification(snap: QueryDocumentSnapshot<DocumentData>): HubNotification {
+  const d = snap.data();
+  return {
+    id: snap.id,
+    userId: d.userId,
+    source: d.source === "system" ? "system" : "automation",
+    title: d.title ?? "",
+    body: d.body ?? "",
+    href: d.href ?? null,
+    read: d.read === true,
+    createdAt: toMillis(d.createdAt),
+  };
+}
+
+export interface HubDocs {
+  agents: HubAgent[];
+  automations: HubAutomation[];
+  notifications: HubNotification[];
+}
+
+/** One query for all hub docs, split by docType client-side. */
+export async function getHubDocs(userId: string): Promise<HubDocs> {
+  const q = query(collection(db, COLLECTIONS.decisions), where("userId", "==", userId));
+  const snap = await getDocs(q);
+  const agents: HubAgent[] = [];
+  const automations: HubAutomation[] = [];
+  const notifications: HubNotification[] = [];
+  for (const ds of snap.docs) {
+    const t = ds.data().docType;
+    if (t === "agent") agents.push(mapHubAgent(ds));
+    else if (t === "automation") automations.push(mapAutomation(ds));
+    else if (t === "notification") notifications.push(mapHubNotification(ds));
+    // anything else (the DecisionConfig doc, conversations) is ignored here
+  }
+  agents.sort((a, b) => a.createdAt - b.createdAt);
+  automations.sort((a, b) => a.createdAt - b.createdAt);
+  notifications.sort((a, b) => b.createdAt - a.createdAt);
+  return { agents, automations, notifications };
+}
+
+export type HubAgentInput = Pick<HubAgent, "name" | "icon" | "module" | "provider" | "model" | "systemPrompt">;
+
+export async function createHubAgent(userId: string, input: HubAgentInput): Promise<string> {
+  const ref = await addDoc(collection(db, COLLECTIONS.decisions), {
+    userId,
+    docType: "agent",
+    ...input,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export async function updateHubAgent(id: string, input: Partial<HubAgentInput>): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.decisions, id), { ...input });
+}
+
+export async function deleteHubAgent(userId: string, id: string): Promise<void> {
+  const batch = writeBatch(db);
+  batch.delete(doc(db, COLLECTIONS.decisions, id));
+  batch.delete(doc(db, COLLECTIONS.decisions, `hub_conv_${userId}_${id}`));
+  await batch.commit();
+}
+
+export type AutomationInput = Pick<HubAutomation, "name" | "metric" | "operator" | "value" | "action" | "telegram" | "message" | "enabled">;
+
+export async function createAutomation(userId: string, input: AutomationInput): Promise<string> {
+  const ref = await addDoc(collection(db, COLLECTIONS.decisions), {
+    userId,
+    docType: "automation",
+    lastFired: null,
+    ...input,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export async function updateAutomation(id: string, input: Partial<AutomationInput & Pick<HubAutomation, "lastFired">>): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.decisions, id), { ...input });
+}
+
+export async function deleteAutomation(id: string): Promise<void> {
+  await deleteDoc(doc(db, COLLECTIONS.decisions, id));
+}
+
+export async function addHubNotification(
+  userId: string,
+  input: Pick<HubNotification, "source" | "title" | "body" | "href">
+): Promise<void> {
+  await addDoc(collection(db, COLLECTIONS.decisions), {
+    userId,
+    docType: "notification",
+    read: false,
+    ...input,
+    createdAt: serverTimestamp(),
+  });
+}
+
+export async function setNotificationRead(id: string, read: boolean): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.decisions, id), { read });
+}
+
+export async function markAllNotificationsRead(ids: string[]): Promise<void> {
+  for (let i = 0; i < ids.length; i += 450) {
+    const batch = writeBatch(db);
+    for (const id of ids.slice(i, i + 450)) batch.update(doc(db, COLLECTIONS.decisions, id), { read: true });
+    await batch.commit();
+  }
+}
+
+export async function clearNotifications(ids: string[]): Promise<void> {
+  for (let i = 0; i < ids.length; i += 450) {
+    const batch = writeBatch(db);
+    for (const id of ids.slice(i, i + 450)) batch.delete(doc(db, COLLECTIONS.decisions, id));
+    await batch.commit();
+  }
+}
+
+/** Chat history for one agent (deterministic doc id; capped by the caller). */
+export async function getConversation(userId: string, agentId: string): Promise<ChatMessage[]> {
+  const snap = await getDoc(doc(db, COLLECTIONS.decisions, `hub_conv_${userId}_${agentId}`));
+  if (!snap.exists()) return [];
+  const d = snap.data();
+  return Array.isArray(d.messages) ? (d.messages as ChatMessage[]) : [];
+}
+
+export async function saveConversation(userId: string, agentId: string, messages: ChatMessage[]): Promise<void> {
+  await setDoc(doc(db, COLLECTIONS.decisions, `hub_conv_${userId}_${agentId}`), {
+    userId,
+    docType: "conversation",
+    agentId,
+    messages: messages.slice(-60), // keep the doc well under Firestore's 1MB
+  });
+}
+
+// ---------------------------------------------------------------------------
 // User preferences (one doc per user)
 // ---------------------------------------------------------------------------
 export async function getPrefs(userId: string): Promise<UserPrefs> {
@@ -1762,6 +1941,7 @@ export async function getPrefs(userId: string): Promise<UserPrefs> {
     wakeTarget: d.wakeTarget ?? null,
     sleepRoutine: d.sleepRoutine && typeof d.sleepRoutine === "object" ? (d.sleepRoutine as SleepRoutine) : null,
     telegram: d.telegram && typeof d.telegram === "object" ? (d.telegram as TelegramConfig) : null,
+    aiProviders: d.aiProviders && typeof d.aiProviders === "object" ? (d.aiProviders as AIProviders) : null,
     reviewScale: d.reviewScale === 10 ? 10 : 100,
     storage: d.storage && typeof d.storage === "object" ? (d.storage as StorageConfig) : null,
   };
@@ -1828,7 +2008,7 @@ export async function deleteDocsByIds(collectionName: string, ids: string[]): Pr
 export async function upsertPrefs(
   userId: string,
   input: Partial<
-    Pick<UserPrefs, "waterUnit" | "hiddenTrackers" | "sleepTarget" | "bedtimeTarget" | "wakeTarget" | "sleepRoutine" | "telegram" | "reviewScale">
+    Pick<UserPrefs, "waterUnit" | "hiddenTrackers" | "sleepTarget" | "bedtimeTarget" | "wakeTarget" | "sleepRoutine" | "telegram" | "aiProviders" | "reviewScale">
   >
 ): Promise<void> {
   const ref = doc(db, COLLECTIONS.prefs, userId);

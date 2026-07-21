@@ -1809,3 +1809,60 @@ your phone — no app-store install, no backend.
 Send buttons). Truly *scheduled* reminders while the app is closed still need a
 small server component (a Vercel cron + Firebase Admin, Hobby-plan-friendly at
 once-a-day) — a clean next step, not faked today.
+
+---
+
+## 🧠 Agent Hub — dashboard, AI agents & automations
+
+**What it is.** The central nervous system of Life OS: one surface that reads
+across every module. Three parts — a **dashboard** (one glance = the state of
+your day), **AI agents** (chats pre-loaded with your real data), and an
+**automations engine** (rules that watch your data and notify you).
+
+**Dashboard (`/hub`).**
+- **Needs Attention** — auto-generated from every enabled automation whose
+  condition is *currently true*; each row links into its module.
+- Today's weather (+ rain-tomorrow flag), **today's outfit** (picked or a live
+  suggestion reusing the wardrobe logic), **recent automations** log, agent
+  tiles, and an inbox link with unread count.
+
+**Agents (`/hub/agents`).**
+- Four built-in agents work immediately — Wardrobe 🧥, Finance 💰, Sleep 🌙,
+  Tasks ✅ — plus **Create custom agent** (name, icon, module, provider, model,
+  editable system prompt; `{{context}}` marks where live data is injected).
+- **Context injection:** every message first assembles a compact live summary
+  from Firestore (e.g. wardrobe: wearable items + statuses + today's outfit +
+  weather; finance: month spend by category vs budget; sleep: last night, debt,
+  streak; tasks: open/overdue) and renders it into the system prompt — agents
+  answer from *your* data, never canned assumptions.
+- Chat history persists per agent; clear-chat and delete-agent supported.
+- **Multi-provider:** every call goes through one `callAgentModel()` abstraction
+  — Anthropic (Claude) and Google Gemini today; adding a provider later is one
+  new branch. Each agent picks its provider/model independently.
+- **Settings → AI providers:** paste your own Anthropic and/or Gemini key
+  (stored in your private prefs, sent browser→provider directly, shown as a
+  password field). *Honesty note:* this app is a normal website, not a
+  claude.ai artifact, so Anthropic is **not** pre-authenticated — both providers
+  need a key; Gemini's free tier makes it a good default.
+
+**Automations (`/hub/automations`).**
+- Rule = **metric → operator → value → action**, all dropdowns. Metrics span
+  modules: dirty items, wash-cycle count, ironing, no-outfit-today, budget %,
+  sleep debt, last night's hours, sleep-not-logged, overdue/due-today tasks,
+  rain tomorrow.
+- Actions: **notify** (inbox + optional Telegram) or **Needs-Attention only**.
+  Notify rules fire at most once per day; every fire updates `lastFired`.
+- **Starter pack** (one tap): laundry ≥5, budget ≥85%, sleep debt ≥3h, rain
+  tomorrow, overdue tasks.
+- *Honest scope:* rules evaluate when the app is open (hub/automations pages) —
+  client-side apps can't watch data while closed; Telegram delivers the result
+  to your phone.
+
+**Notifications (`/hub/notifications`).** Unified inbox: unread highlighting,
+mark read/unread, mark-all, clear-all, tap-through to the module.
+
+**Storage.** All hub docs (agents, automations, notifications, conversations)
+live in the existing `decisions` collection discriminated by `docType` — that
+collection is only ever read by direct doc id, so hub docs are invisible to
+existing code and no new security rules were needed. Provider keys live on the
+prefs doc alongside the Telegram token.

@@ -525,6 +525,86 @@ export interface SleepMeta {
   checkinNotes: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Agent Hub — agents, AI providers, automations, notifications.
+// Hub docs live in the `decisions` collection (docType-discriminated) because
+// that collection is only ever read by direct doc id, so extra docs are inert
+// to existing code and reuse its deployed owner-scoped rules.
+// ---------------------------------------------------------------------------
+
+/** Which AI backend an agent talks to. */
+export type AIProviderType = "anthropic" | "gemini";
+
+/** Per-provider connection settings (stored on the user's prefs doc). */
+export interface AIProviderConfig {
+  apiKey: string;
+  /** Default model for agents on this provider. */
+  model: string;
+}
+
+/** All configured providers, keyed by type. */
+export type AIProviders = Partial<Record<AIProviderType, AIProviderConfig>>;
+
+/** Which Life OS module an agent has context on. */
+export type HubModule = "wardrobe" | "finance" | "sleep" | "tasks" | "general";
+
+/** A configurable AI agent: one chat, deep context on one module. */
+export interface HubAgent {
+  id: string;
+  userId: string;
+  name: string;
+  icon: string; // emoji
+  module: HubModule;
+  provider: AIProviderType;
+  /** Model override; empty = provider default. */
+  model: string;
+  /** Editable system-prompt template; {{context}} is replaced with live data. */
+  systemPrompt: string;
+  createdAt: number;
+}
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+  at: number; // ms
+}
+
+/** Stored chat history for one agent (doc id hub_conv_{userId}_{agentId}). */
+export interface HubConversation {
+  agentId: string;
+  messages: ChatMessage[];
+}
+
+/** Automation rule: metric COMPARE value → action (evaluated on live data). */
+export interface HubAutomation {
+  id: string;
+  userId: string;
+  name: string;
+  metric: string; // key into HUB_METRICS
+  operator: ">=" | "<=" | ">" | "<" | "==";
+  value: number;
+  /** "notify" writes a notification (once/day) + optional Telegram; "attention" only surfaces on the dashboard. */
+  action: "notify" | "attention";
+  /** Also push to Telegram when it fires (if connected). */
+  telegram: boolean;
+  message: string;
+  enabled: boolean;
+  lastFired: string | null; // YYYY-MM-DD
+  createdAt: number;
+}
+
+/** An inbox notification produced by automations (or the system). */
+export interface HubNotification {
+  id: string;
+  userId: string;
+  source: "automation" | "system";
+  title: string;
+  body: string;
+  href: string | null;
+  read: boolean;
+  createdAt: number;
+}
+
 /** Telegram bot connection + which events push to the phone. */
 export interface TelegramConfig {
   botToken: string;
@@ -550,6 +630,8 @@ export interface UserPrefs {
   sleepRoutine?: SleepRoutine | null;
   /** Telegram notification connection. */
   telegram?: TelegramConfig | null;
+  /** AI provider keys/models for the Agent Hub. */
+  aiProviders?: AIProviders | null;
   /** Week-score scale for the Weekly Review: rate out of 10 or out of 100. */
   reviewScale: 10 | 100;
   /** Storage monitoring & data-retention config. */

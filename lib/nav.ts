@@ -1,4 +1,8 @@
 import {
+  Bot,
+  MessageSquare,
+  Zap,
+  Bell,
   LayoutDashboard,
   Target,
   FolderKanban,
@@ -35,6 +39,15 @@ export interface NavSection {
 }
 
 export const NAV_SECTIONS: NavSection[] = [
+  {
+    label: "Hub",
+    items: [
+      { href: "/hub", label: "Agent Hub", icon: Bot },
+      { href: "/hub/agents", label: "Agents", icon: MessageSquare },
+      { href: "/hub/automations", label: "Automations", icon: Zap },
+      { href: "/hub/notifications", label: "Notifications", icon: Bell },
+    ],
+  },
   {
     label: "Plan",
     items: [
