@@ -134,3 +134,92 @@ export function outfitItems(outfit: Pick<Outfit, "itemIds">, items: ClothingItem
   const byId = new Map(items.map((i) => [i.id, i]));
   return outfit.itemIds.map((id) => byId.get(id)).filter((i): i is ClothingItem => Boolean(i));
 }
+
+// ---------------------------------------------------------------------------
+// Statistics
+// ---------------------------------------------------------------------------
+/** Active items sorted by wear count (descending); ties keep name order. */
+export function byWearCount(items: ClothingItem[], dir: "most" | "least"): ClothingItem[] {
+  const active = items.filter((i) => !i.retired);
+  const sign = dir === "most" ? -1 : 1;
+  return [...active].sort((a, b) => sign * (a.timesWorn - b.timesWorn) || a.name.localeCompare(b.name));
+}
+
+/** Active items ranked by cost-per-wear (only those with a price AND ≥1 wear). */
+export function costPerWearRanking(items: ClothingItem[]): { item: ClothingItem; cpw: number }[] {
+  const out: { item: ClothingItem; cpw: number }[] = [];
+  for (const i of items) {
+    if (i.retired) continue;
+    const cpw = costPerWear(i);
+    if (cpw != null) out.push({ item: i, cpw });
+  }
+  return out.sort((a, b) => a.cpw - b.cpw);
+}
+
+/** Active items never worn (candidates to wear or let go). */
+export function neverWorn(items: ClothingItem[]): ClothingItem[] {
+  return items.filter((i) => !i.retired && i.timesWorn <= 0);
+}
+
+/** Total known value of the active wardrobe (sum of item prices). */
+export function wardrobeValue(items: ClothingItem[]): number {
+  return items.reduce((sum, i) => (!i.retired && i.cost ? sum + i.cost : sum), 0);
+}
+
+/** Item count per category among active items (highest first). */
+export function categoryBreakdown(items: ClothingItem[]): { category: string; count: number }[] {
+  const map = new Map<string, number>();
+  for (const i of items) {
+    if (i.retired) continue;
+    const key = i.category || "Uncategorized";
+    map.set(key, (map.get(key) ?? 0) + 1);
+  }
+  return Array.from(map, ([category, count]) => ({ category, count })).sort(
+    (a, b) => b.count - a.count || a.category.localeCompare(b.category)
+  );
+}
+
+/** Default categories with no active item — honest gaps, never invented. */
+export function categoryGaps(items: ClothingItem[]): string[] {
+  const present = new Set(items.filter((i) => !i.retired && i.category).map((i) => i.category as string));
+  return DEFAULT_CATEGORIES.filter((c) => !present.has(c));
+}
+
+/** Default occasions with no saved outfit. */
+export function occasionGaps(outfits: Outfit[]): string[] {
+  const covered = new Set(outfits.flatMap((o) => o.occasions));
+  return DEFAULT_OCCASIONS.filter((o) => !covered.has(o));
+}
+
+/** Count of confirmed (not merely planned) wear days within a YYYY-MM prefix. */
+export function wearDaysInMonth(wears: WearLog[], ym: string): number {
+  return wears.filter((w) => !w.planned && w.date.startsWith(ym)).length;
+}
+
+// ---------------------------------------------------------------------------
+// Calendar (Monday-first month grid, matching the rest of the app)
+// ---------------------------------------------------------------------------
+export interface CalendarCell {
+  /** YYYY-MM-DD */
+  date: string;
+  day: number;
+  /** false when the cell belongs to the leading/trailing month padding. */
+  inMonth: boolean;
+}
+
+/** Build a 6-row × 7-col Monday-first grid covering `year`/`month` (0-based month). */
+export function monthGrid(year: number, month: number): CalendarCell[] {
+  const first = new Date(year, month, 1);
+  // JS: 0=Sun … 6=Sat → shift so Monday is column 0.
+  const lead = (first.getDay() + 6) % 7;
+  const start = new Date(year, month, 1 - lead);
+  const cells: CalendarCell[] = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    cells.push({ date: key, day: d.getDate(), inMonth: d.getMonth() === month });
+  }
+  return cells;
+}
+
+export const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];

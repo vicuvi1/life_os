@@ -14,12 +14,13 @@ import {
   WashingMachine,
   ChevronRight,
   Layers,
+  BarChart3,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
   getWardrobe,
   updateClothing,
-  confirmWear,
+  setWearForDay,
   type WardrobeData,
 } from "@/lib/firebase/db";
 import {
@@ -158,7 +159,16 @@ export default function WardrobeOverviewPage() {
 
   async function confirmPlannedToday() {
     if (!user || !todayWear || todayItems.length === 0) return;
-    await confirmWear(user.uid, today, todayItems, todayOutfit ? { id: todayOutfit.id, timesWorn: todayOutfit.timesWorn } : null);
+    // The day was planned (no counters applied yet) → nothing to reconcile.
+    await setWearForDay({
+      userId: user.uid,
+      date: today,
+      kind: "confirm",
+      chosen: todayItems.map((i) => ({ id: i.id, timesWorn: i.timesWorn, lastWorn: i.lastWorn })),
+      outfit: todayOutfit ? { id: todayOutfit.id, timesWorn: todayOutfit.timesWorn, lastWorn: todayOutfit.lastWorn } : null,
+      prevItems: [],
+      prevOutfit: null,
+    });
     await load({ quiet: true });
   }
 
@@ -175,7 +185,13 @@ export default function WardrobeOverviewPage() {
             <Link href="/wardrobe/outfits"><Layers className="h-4 w-4" /> Outfits</Link>
           </Button>
           <Button variant="outline" asChild>
+            <Link href="/wardrobe/calendar"><CalendarDays className="h-4 w-4" /> Calendar</Link>
+          </Button>
+          <Button variant="outline" asChild>
             <Link href="/wardrobe/laundry"><WashingMachine className="h-4 w-4" /> Laundry</Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href="/wardrobe/stats"><BarChart3 className="h-4 w-4" /> Stats</Link>
           </Button>
           <Button onClick={() => setFormOpen(true)}>
             <Plus className="h-4 w-4" /> Add item
@@ -386,8 +402,11 @@ export default function WardrobeOverviewPage() {
             </Card>
 
             <Card className="overflow-hidden">
-              <div className="border-b bg-muted/30 px-4 py-2.5">
+              <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-2.5">
                 <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Statistics</span>
+                <Link href="/wardrobe/stats" className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground">
+                  Details <ChevronRight className="h-3 w-3" />
+                </Link>
               </div>
               <div className="space-y-2 p-4 text-sm">
                 <StatRow label="Items" value={String(activeItems.length)} />
@@ -447,6 +466,7 @@ export default function WardrobeOverviewPage() {
             outfits={outfits}
             date={today}
             initialIds={todayWear?.itemIds}
+            existing={todayWear}
             onSaved={() => load({ quiet: true })}
           />
         </>

@@ -1497,3 +1497,46 @@ saved outfits — with templates as reusable go-tos.
 - **Start from an outfit** in the day picker: picking today's clothes now offers
   your saved outfits as one-tap starting points; tweaking the selection turns it
   back into an ad-hoc combination.
+
+---
+
+## Wardrobe — Statistics & Outfit Calendar
+
+**What it is.** The third wardrobe increment: an honest statistics page that
+tells you what you actually wear, and a month calendar for planning future
+outfits and logging past ones.
+
+**Why it exists.** Photos and outfits are only worth the effort if they pay you
+back in insight and less daily decision-making. Stats surface your best-value
+clothes and dead weight; the calendar turns "what do I wear tomorrow" into a
+30-second plan and keeps an effortless history of what you wore.
+
+**How it works.**
+- **Statistics page** (sidebar → Wardrobe → Statistics):
+  - **KPI row** — item count, total **wardrobe value** (sum of item prices in
+    your currency), total wears, and **worn this month** with a trend arrow
+    (shown only once there's a previous month to compare against — never a fake
+    trend from a single data point).
+  - **Most worn** and **Best value** (lowest **cost-per-wear**) rankings, plus
+    **Costly & underused** (highest cost-per-wear) and **Never worn** — the last
+    two flagged so you know what to wear more or let go. Cost-per-wear only
+    appears for items that have both a price *and* at least one wear.
+  - **By category** breakdown bars and an honest **wardrobe gaps** panel: default
+    categories with zero items, and occasions with no saved outfit (each links
+    straight to building one).
+- **Outfit Calendar** (sidebar → Wardrobe → Outfit Calendar): a Monday-first
+  month grid. Each day shows its logged outfit's item thumbnails and a **Worn**
+  (green) or **Planned** (blue) marker; today is highlighted; a month summary
+  counts worn vs planned days. Tap any day to open the picker:
+  - **Today** → confirm what you're wearing (counts + Worn status).
+  - **A future day** → plan it (nothing is marked worn until it happens).
+  - **A past day** → **log what you wore** (wear counts update; current laundry
+    status is left untouched, and `last worn` only advances — never rewinds).
+  - **Clear day** removes a day's entry and rolls its wear counts back.
+- **One reconciling write path.** All wear writes now go through a single
+  function that **diffs the new selection against whatever was already logged for
+  that day**, so re-confirming or editing a day never double-counts `times worn`,
+  and clearing a confirmed day correctly decrements it.
+
+**Next increments.** "Surprise me" outfit randomizer, packing-list mode for
+travel, and seasonal storage filters.

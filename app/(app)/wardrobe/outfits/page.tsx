@@ -25,7 +25,7 @@ import {
   updateOutfit,
   deleteOutfit,
   createOutfit,
-  confirmWear,
+  setWearForDay,
   type WardrobeData,
 } from "@/lib/firebase/db";
 import { outfitItems } from "@/lib/wardrobe";
@@ -138,7 +138,32 @@ function OutfitsInner() {
     if (!user) return;
     const wearItems = outfitItems(o, data.items).filter((i) => !i.retired);
     if (wearItems.length === 0) return;
-    await confirmWear(user.uid, today, wearItems, { id: o.id, timesWorn: o.timesWorn });
+    // Reconcile against whatever was already confirmed for today (no double-count).
+    const existing = data.wears.find((w) => w.date === today);
+    const prevConfirmed = existing && !existing.planned ? existing : null;
+    const byId = new Map(data.items.map((i) => [i.id, i]));
+    const prevItems = prevConfirmed
+      ? prevConfirmed.itemIds
+          .map((id) => byId.get(id))
+          .filter((i): i is ClothingItem => Boolean(i))
+          .map((i) => ({ id: i.id, timesWorn: i.timesWorn }))
+      : [];
+    const prevOutfit =
+      prevConfirmed?.outfitId != null
+        ? (() => {
+            const p = data.outfits.find((x) => x.id === prevConfirmed.outfitId);
+            return p ? { id: p.id, timesWorn: p.timesWorn } : null;
+          })()
+        : null;
+    await setWearForDay({
+      userId: user.uid,
+      date: today,
+      kind: "confirm",
+      chosen: wearItems.map((i) => ({ id: i.id, timesWorn: i.timesWorn, lastWorn: i.lastWorn })),
+      outfit: { id: o.id, timesWorn: o.timesWorn, lastWorn: o.lastWorn },
+      prevItems,
+      prevOutfit,
+    });
     await load({ quiet: true });
   }
 

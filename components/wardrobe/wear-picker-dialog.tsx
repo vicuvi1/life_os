@@ -13,11 +13,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { confirmWear, upsertWearLog, createOutfit } from "@/lib/firebase/db";
+import { setWearForDay, createOutfit } from "@/lib/firebase/db";
 import { categoriesInUse, filterItems, isWearable } from "@/lib/wardrobe";
 import { toDateKey } from "@/lib/greeting";
 import { cn } from "@/lib/utils";
-import type { ClothingItem, Outfit } from "@/lib/types";
+import type { ClothingItem, Outfit, WearLog } from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -26,17 +26,21 @@ interface Props {
   items: ClothingItem[];
   /** Saved outfits offered as one-tap starting points. */
   outfits?: Outfit[];
-  /** Date to assign (YYYY-MM-DD). Today = confirm wear; future = plan. */
+  /** Date to assign (YYYY-MM-DD). Today = confirm; future = plan; past = log worn. */
   date: string;
   /** Pre-selected item ids (e.g. re-planning an existing day). */
   initialIds?: string[];
+  /** The day's existing log, if any — used to reconcile wear counters (no double-count). */
+  existing?: WearLog;
+  /** When provided and a log already exists, shows a "Clear day" action. */
+  onClear?: () => void;
   onSaved: () => void;
 }
 
-/** Pick items for a day — wear it now (today) or plan it (future date). */
-export function WearPickerDialog({ open, onOpenChange, userId, items, outfits, date, initialIds, onSaved }: Props) {
+/** Pick items for a day — wear it now (today), plan it (future), or log it (past). */
+export function WearPickerDialog({ open, onOpenChange, userId, items, outfits, date, initialIds, existing, onClear, onSaved }: Props) {
   const today = toDateKey(new Date());
-  const isToday = date === today;
+  const kind: "confirm" | "plan" | "log" = date === today ? "confirm" : date > today ? "plan" : "log";
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pickedOutfitId, setPickedOutfitId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -87,9 +91,11 @@ export function WearPickerDialog({ open, onOpenChange, userId, items, outfits, d
     try {
       const chosen = items.filter((i) => selected.has(i.id));
       const picked = pickedOutfitId ? outfits?.find((o) => o.id === pickedOutfitId) ?? null : null;
-      let outfitId: string | null = picked?.id ?? null;
+      let outfit: Pick<Outfit, "id" | "timesWorn" | "lastWorn"> | null = picked
+        ? { id: picked.id, timesWorn: picked.timesWorn, lastWorn: picked.lastWorn }
+        : null;
       if (!picked && saveAsOutfit && outfitName.trim()) {
-        outfitId = await createOutfit(userId, {
+        const newId = await createOutfit(userId, {
           name: outfitName.trim(),
           type: asTemplate ? "template" : "custom",
           itemIds: chosen.map((i) => i.id),
@@ -99,17 +105,35 @@ export function WearPickerDialog({ open, onOpenChange, userId, items, outfits, d
           notes: null,
           favorite: false,
         });
+        outfit = { id: newId, timesWorn: 0, lastWorn: null };
       }
-      if (isToday) {
-        await confirmWear(
-          userId,
-          date,
-          chosen,
-          outfitId ? { id: outfitId, timesWorn: picked?.timesWorn ?? 0 } : null
-        );
-      } else {
-        await upsertWearLog(userId, date, chosen.map((i) => i.id), outfitId, true);
-      }
+
+      // Only a previously CONFIRMED log has counters to reconcile against.
+      const prevConfirmed = existing && !existing.planned ? existing : null;
+      const byId = new Map(items.map((i) => [i.id, i]));
+      const prevItems = prevConfirmed
+        ? prevConfirmed.itemIds
+            .map((id) => byId.get(id))
+            .filter((i): i is ClothingItem => Boolean(i))
+            .map((i) => ({ id: i.id, timesWorn: i.timesWorn }))
+        : [];
+      const prevOutfit =
+        prevConfirmed?.outfitId != null
+          ? (() => {
+              const o = outfits?.find((x) => x.id === prevConfirmed.outfitId);
+              return o ? { id: o.id, timesWorn: o.timesWorn } : null;
+            })()
+          : null;
+
+      await setWearForDay({
+        userId,
+        date,
+        kind,
+        chosen: chosen.map((i) => ({ id: i.id, timesWorn: i.timesWorn, lastWorn: i.lastWorn })),
+        outfit,
+        prevItems,
+        prevOutfit,
+      });
       onOpenChange(false);
       onSaved();
     } finally {
@@ -121,11 +145,15 @@ export function WearPickerDialog({ open, onOpenChange, userId, items, outfits, d
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[88vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{isToday ? "Pick today's outfit" : `Plan outfit for ${date}`}</DialogTitle>
+          <DialogTitle>
+            {kind === "confirm" ? "Pick today's outfit" : kind === "plan" ? `Plan outfit for ${date}` : `Log what you wore on ${date}`}
+          </DialogTitle>
           <DialogDescription>
-            {isToday
+            {kind === "confirm"
               ? "Select the items you're wearing — they'll be logged and marked as worn."
-              : "Select items to plan for that day. Nothing is marked worn until you confirm."}
+              : kind === "plan"
+                ? "Select items to plan for that day. Nothing is marked worn until you confirm."
+                : "Record the outfit you wore that day. Wear counts update; current laundry status stays as-is."}
           </DialogDescription>
         </DialogHeader>
 
@@ -213,11 +241,34 @@ export function WearPickerDialog({ open, onOpenChange, userId, items, outfits, d
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="sm:justify-between">
+          {onClear && existing ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-rose-600 hover:text-rose-600 dark:text-rose-400"
+              onClick={() => {
+                onClear();
+                onOpenChange(false);
+              }}
+            >
+              Clear day
+            </Button>
+          ) : (
+            <span className="hidden sm:block" />
+          )}
+          <div className="flex items-center gap-2">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button type="button" onClick={save} disabled={saving || selected.size === 0 || (saveAsOutfit && !outfitName.trim())}>
-            {saving ? "Saving…" : isToday ? `Wear today (${selected.size})` : `Plan for ${date} (${selected.size})`}
+            {saving
+              ? "Saving…"
+              : kind === "confirm"
+                ? `Wear today (${selected.size})`
+                : kind === "plan"
+                  ? `Plan for ${date} (${selected.size})`
+                  : `Log for ${date} (${selected.size})`}
           </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

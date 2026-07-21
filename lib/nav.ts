@@ -62,7 +62,9 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: "/wardrobe", label: "Wardrobe", icon: Shirt },
       { href: "/wardrobe/outfits", label: "Outfits", icon: Layers },
+      { href: "/wardrobe/calendar", label: "Outfit Calendar", icon: CalendarDays },
       { href: "/wardrobe/laundry", label: "Laundry", icon: WashingMachine },
+      { href: "/wardrobe/stats", label: "Statistics", icon: BarChart3 },
     ],
   },
   {

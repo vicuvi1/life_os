@@ -1466,64 +1466,103 @@ export async function deleteOutfit(id: string): Promise<void> {
 
 // --- Wear log ----------------------------------------------------------------
 /**
- * Assign an outfit (or ad-hoc item list) to a date. One log per day —
- * deterministic doc id makes this idempotent. `planned: true` for future days.
+ * Remove a day's wear log. If it was a confirmed wear, its counters are rolled
+ * back (pass the items/outfit it recorded); planned days just delete. One batch.
  */
-export async function upsertWearLog(
-  userId: string,
-  date: string,
-  itemIds: string[],
-  outfitId: string | null,
-  planned: boolean
-): Promise<void> {
-  await setDoc(doc(db, COLLECTIONS.clothing, `wear_${userId}_${date}`), {
-    userId,
-    docType: "wear",
-    date,
-    itemIds,
-    outfitId,
-    planned,
-    createdAt: serverTimestamp(),
-  });
+export async function removeWearDay(input: {
+  userId: string;
+  date: string;
+  prevItems: Pick<ClothingItem, "id" | "timesWorn">[];
+  prevOutfit: Pick<Outfit, "id" | "timesWorn"> | null;
+}): Promise<void> {
+  const { userId, date, prevItems, prevOutfit } = input;
+  const batch = writeBatch(db);
+  batch.delete(doc(db, COLLECTIONS.clothing, `wear_${userId}_${date}`));
+  for (const it of prevItems) {
+    batch.update(doc(db, COLLECTIONS.clothing, it.id), { timesWorn: Math.max(0, it.timesWorn - 1) });
+  }
+  if (prevOutfit) {
+    batch.update(doc(db, COLLECTIONS.clothing, prevOutfit.id), { timesWorn: Math.max(0, prevOutfit.timesWorn - 1) });
+  }
+  await batch.commit();
 }
 
-export async function deleteWearLog(userId: string, date: string): Promise<void> {
-  await deleteDoc(doc(db, COLLECTIONS.clothing, `wear_${userId}_${date}`));
+/** Keep lastWorn as the most recent date (so retro-logging an old day never moves it backward). */
+function laterDate(a: string | null, b: string): string {
+  return a && a > b ? a : b;
 }
+
+/** What kind of wear a date represents relative to today. */
+export type WearKind = "confirm" | "plan" | "log";
 
 /**
- * Confirm a wear: log the date, set every included item to "worn" with
- * incremented counters, and bump the outfit's counters too. One batch.
+ * Single reconciling write path for a day's outfit. Diffs the new selection
+ * against whatever was previously logged for that date, so re-saving or editing
+ * a day never double-counts `timesWorn`. One batch.
+ *
+ * - "confirm" (today): planned=false, +1 wear on added items, status → "worn".
+ * - "log" (a past day): planned=false, +1 wear on added items, status untouched,
+ *   lastWorn only advances (never rewinds to the older date).
+ * - "plan" (a future day): planned=true, no counter changes; if the day was
+ *   previously a confirmed wear, its counters are rolled back.
  */
-export async function confirmWear(
-  userId: string,
-  date: string,
-  items: Pick<ClothingItem, "id" | "timesWorn">[],
-  outfit: Pick<Outfit, "id" | "timesWorn"> | null
-): Promise<void> {
+export async function setWearForDay(input: {
+  userId: string;
+  date: string;
+  kind: WearKind;
+  /** Items selected now (full objects — need current timesWorn/lastWorn). */
+  chosen: Pick<ClothingItem, "id" | "timesWorn" | "lastWorn">[];
+  outfit: Pick<Outfit, "id" | "timesWorn" | "lastWorn"> | null;
+  /** Items/outfit from the day's PRIOR CONFIRMED log ([]/null if none or it was only planned). */
+  prevItems: Pick<ClothingItem, "id" | "timesWorn">[];
+  prevOutfit: Pick<Outfit, "id" | "timesWorn"> | null;
+}): Promise<void> {
+  const { userId, date, kind, chosen, outfit, prevItems, prevOutfit } = input;
+  const planned = kind === "plan";
+  const markWorn = kind === "confirm";
   const batch = writeBatch(db);
+
   batch.set(doc(db, COLLECTIONS.clothing, `wear_${userId}_${date}`), {
     userId,
     docType: "wear",
     date,
-    itemIds: items.map((i) => i.id),
+    itemIds: chosen.map((i) => i.id),
     outfitId: outfit?.id ?? null,
-    planned: false,
+    planned,
     createdAt: serverTimestamp(),
   });
-  for (const item of items) {
-    batch.update(doc(db, COLLECTIONS.clothing, item.id), {
-      timesWorn: item.timesWorn + 1,
-      lastWorn: date,
-      status: "worn",
-    });
+
+  const prevIds = new Set(prevItems.map((i) => i.id));
+  const newIds = new Set(chosen.map((i) => i.id));
+
+  if (!planned) {
+    // Added items: +1 wear (and status/lastWorn where appropriate).
+    for (const it of chosen) {
+      if (prevIds.has(it.id)) {
+        if (markWorn) batch.update(doc(db, COLLECTIONS.clothing, it.id), { status: "worn", lastWorn: date });
+        continue;
+      }
+      const patch: Record<string, unknown> = { timesWorn: it.timesWorn + 1, lastWorn: laterDate(it.lastWorn, date) };
+      if (markWorn) patch.status = "worn";
+      batch.update(doc(db, COLLECTIONS.clothing, it.id), patch);
+    }
   }
-  if (outfit) {
-    batch.update(doc(db, COLLECTIONS.clothing, outfit.id), {
-      timesWorn: outfit.timesWorn + 1,
-      lastWorn: date,
-    });
+  // Removed items (present in the prior confirmed log, gone now): −1 wear.
+  for (const it of prevItems) {
+    if (newIds.has(it.id) && !planned) continue;
+    batch.update(doc(db, COLLECTIONS.clothing, it.id), { timesWorn: Math.max(0, it.timesWorn - 1) });
   }
+
+  // Outfit counters — only move when the linked outfit actually changed.
+  const prevOid = prevOutfit?.id ?? null;
+  const newOid = planned ? null : outfit?.id ?? null;
+  if (prevOid && prevOid !== newOid) {
+    batch.update(doc(db, COLLECTIONS.clothing, prevOutfit!.id), { timesWorn: Math.max(0, prevOutfit!.timesWorn - 1) });
+  }
+  if (newOid && newOid !== prevOid && outfit) {
+    batch.update(doc(db, COLLECTIONS.clothing, outfit.id), { timesWorn: outfit.timesWorn + 1, lastWorn: laterDate(outfit.lastWorn, date) });
+  }
+
   await batch.commit();
 }
 
