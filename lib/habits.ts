@@ -136,3 +136,57 @@ export function habitStateFromDates(
     last7: lastNDays(today, 7).map((d) => set.has(d)),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Per-day status (for the tracker grid, heatmap, and summary)
+// ---------------------------------------------------------------------------
+/**
+ * completed = target met · partial = logged but below target · missed = a past
+ * daily-habit day with no log · none = no log on today/future, a weekly habit,
+ * or a day before the habit existed.
+ */
+export type DayStatus = "completed" | "partial" | "missed" | "none";
+
+export function dayStatus(
+  habit: Pick<Habit, "targetType" | "targetValue" | "frequency">,
+  log: Pick<HabitLog, "value"> | undefined,
+  dateKey: string,
+  today: string,
+  createdKey?: string
+): DayStatus {
+  if (log) return isLogDone(habit, log) ? "completed" : "partial";
+  if (createdKey && dateKey < createdKey) return "none";
+  if (dateKey < today && (habit.frequency ?? "daily") === "daily") return "missed";
+  return "none";
+}
+
+/** A day counts toward the completion rate only if it was expected (not "none"). */
+export function isScheduled(status: DayStatus): boolean {
+  return status !== "none";
+}
+
+export interface StatusTally {
+  completed: number;
+  partial: number;
+  missed: number;
+  none: number;
+  scheduled: number; // completed + partial + missed
+  /** completed / scheduled, 0-100 (0 when nothing was scheduled). */
+  rate: number;
+}
+
+/** Tally a flat list of day statuses into counts + a completion rate. */
+export function tallyStatuses(statuses: DayStatus[]): StatusTally {
+  let completed = 0;
+  let partial = 0;
+  let missed = 0;
+  let none = 0;
+  for (const s of statuses) {
+    if (s === "completed") completed++;
+    else if (s === "partial") partial++;
+    else if (s === "missed") missed++;
+    else none++;
+  }
+  const scheduled = completed + partial + missed;
+  return { completed, partial, missed, none, scheduled, rate: scheduled > 0 ? (completed / scheduled) * 100 : 0 };
+}

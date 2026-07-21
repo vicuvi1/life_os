@@ -121,6 +121,10 @@ export interface Habit {
   userId: string;
   title: string;
   description: string | null;
+  /** Optional custom emoji shown as the habit's icon (e.g. "💧"). */
+  emoji: string | null;
+  /** Free-form tags for grouping/filtering (e.g. ["health", "morning"]). */
+  tags: string[];
   frequency: HabitFrequency;
   category: HabitCategory | null;
   color: string | null;

@@ -1233,3 +1233,42 @@ one-click **JSON export** you save yourself.
 2. Enable the retention policies you want, set the keep-windows, and either **Run
    now** or turn on **Auto-clean on open**.
 3. Hit **Export** anytime to save a full JSON backup.
+
+---
+
+## Habits — full tracker overhaul (grid, KPIs, emoji & tags)
+
+**What it is.** The Habits page went from a single check-off list to a proper
+**habit tracker**: a habit × date grid you tap to fill in, headline stats, and a
+row of analytics — plus custom **emoji**, **tags**, and descriptions on every
+habit so you can add and organize as many as you like.
+
+**How it works.**
+- **KPI row.** Total habits · completion rate (this 4-week period) · current
+  streak (with your best) · total completions · success trend vs the previous 4
+  weeks.
+- **Tracker grid.** Rows are habits, columns are days (a scrollable 4-week window
+  with ◀▶ navigation). Each cell shows its status — **completed** (habit color +
+  check), **partial** (logged below target), **missed** (a past daily-habit day
+  with no log), or **not done** — and you **tap any cell to toggle** that day.
+  Today is highlighted. Each row has a **completion-% bar** and a ⋯ menu to
+  **edit or delete**.
+- **Statuses are derived, not nagged.** Partial comes from count/duration habits
+  logged under target; a day only counts as "missed" if it's a past day for a
+  daily habit created by then — weekly habits and pre-creation days never show as
+  missed, so the numbers stay fair.
+- **Show numbers.** A toggle swaps the dots for the logged value on count/duration
+  habits (e.g. glasses of water, minutes).
+- **Filter & search.** Filter by category and search by name or tag.
+- **Analytics.** Weekly-completion bars (Mon–Sun), your top **best streaks**, a
+  **completion heatmap** for the window, and a **summary** counting completed /
+  partial / missed / not-done.
+- **Custom emoji & tags.** The add/edit form now has an **emoji field** (type one
+  or pick a preset) and a **tags** input (type, Enter/comma to add, backspace to
+  remove) alongside the existing description, color, category, frequency, and
+  target type.
+
+**How to use it.**
+1. **Add habit** → give it a name, an emoji, some tags, and how it's measured.
+2. Tap cells in the grid to mark each day done; use ◀▶ to review earlier weeks.
+3. Watch the KPI row, streaks, heatmap, and summary update as you check in.

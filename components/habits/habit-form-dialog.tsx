@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check } from "lucide-react";
+import { Check, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -43,6 +43,8 @@ const TARGET_TYPES: { key: HabitTargetType; label: string; hint: string }[] = [
   { key: "duration", label: "Duration (minutes)", hint: "e.g. 30 min meditation" },
 ];
 
+const EMOJI_PRESETS = ["💧", "🏃", "🧘", "📚", "💪", "🥗", "😴", "☀️", "🌙", "🚭", "💊", "🧠", "✍️", "🎯", "🙏", "🚿", "🦷", "💻"];
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -61,6 +63,9 @@ export function HabitFormDialog({
   const isEdit = Boolean(habit);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [emoji, setEmoji] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
   const [frequency, setFrequency] = useState<HabitFrequency>("daily");
   const [category, setCategory] = useState<HabitCategory>("morning");
   const [color, setColor] = useState(DEFAULT_HABIT_COLOR);
@@ -73,6 +78,9 @@ export function HabitFormDialog({
     if (!open) return;
     setTitle(habit?.title ?? "");
     setDescription(habit?.description ?? "");
+    setEmoji(habit?.emoji ?? "");
+    setTags(habit?.tags ?? []);
+    setTagInput("");
     setFrequency(habit?.frequency ?? "daily");
     setCategory(habit?.category ?? "morning");
     setColor(habit?.color ?? DEFAULT_HABIT_COLOR);
@@ -80,6 +88,17 @@ export function HabitFormDialog({
     setTargetValue(habit?.targetValue ?? null);
     setError(null);
   }, [open, habit]);
+
+  function addTag(raw: string) {
+    const parts = raw.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+    if (parts.length === 0) return;
+    setTags((prev) => {
+      const next = [...prev];
+      for (const p of parts) if (!next.includes(p)) next.push(p);
+      return next;
+    });
+    setTagInput("");
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -96,6 +115,8 @@ export function HabitFormDialog({
     const payload: HabitInput = {
       title: title.trim(),
       description: description.trim() || null,
+      emoji: emoji.trim() || null,
+      tags,
       frequency,
       category,
       color,
@@ -119,7 +140,7 @@ export function HabitFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-[88vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit habit" : "New habit"}</DialogTitle>
           <DialogDescription>
@@ -129,13 +150,38 @@ export function HabitFormDialog({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="h-title">Name</Label>
-            <Input
-              id="h-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Spanish lesson"
-              autoFocus
-            />
+            <div className="flex gap-2">
+              <Input
+                aria-label="Emoji"
+                value={emoji}
+                onChange={(e) => setEmoji([...e.target.value].slice(-2).join(""))}
+                placeholder="🙂"
+                className="w-14 shrink-0 text-center text-lg"
+              />
+              <Input
+                id="h-title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g. Spanish lesson"
+                autoFocus
+                className="flex-1"
+              />
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {EMOJI_PRESETS.map((e) => (
+                <button
+                  key={e}
+                  type="button"
+                  onClick={() => setEmoji(e)}
+                  className={cn(
+                    "flex h-7 w-7 items-center justify-center rounded text-base transition hover:bg-accent",
+                    emoji === e && "bg-accent ring-1 ring-ring"
+                  )}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="h-description">Description</Label>
@@ -143,8 +189,37 @@ export function HabitFormDialog({
               id="h-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional note"
+              placeholder="Optional note — why this habit matters"
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="h-tags">Tags</Label>
+            <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-input bg-background p-2">
+              {tags.map((t) => (
+                <span key={t} className="flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium">
+                  {t}
+                  <button type="button" onClick={() => setTags(tags.filter((x) => x !== t))} aria-label={`Remove ${t}`} className="text-muted-foreground hover:text-foreground">
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+              <input
+                id="h-tags"
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.key === "Enter" || e.key === ",") && tagInput.trim()) {
+                    e.preventDefault();
+                    addTag(tagInput);
+                  } else if (e.key === "Backspace" && !tagInput && tags.length > 0) {
+                    setTags(tags.slice(0, -1));
+                  }
+                }}
+                onBlur={() => { if (tagInput.trim()) addTag(tagInput); }}
+                placeholder={tags.length === 0 ? "health, morning… (Enter to add)" : ""}
+                className="min-w-[100px] flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">

@@ -124,6 +124,8 @@ function mapHabit(snap: QueryDocumentSnapshot<DocumentData>): Habit {
     userId: d.userId,
     title: d.title,
     description: d.description ?? null,
+    emoji: d.emoji ?? null,
+    tags: Array.isArray(d.tags) ? d.tags : [],
     frequency: d.frequency ?? "daily",
     category: d.category ?? null,
     color: d.color ?? null,
@@ -437,6 +439,8 @@ export type HabitInput = Pick<
   Habit,
   | "title"
   | "description"
+  | "emoji"
+  | "tags"
   | "frequency"
   | "category"
   | "color"
@@ -451,6 +455,7 @@ export async function createHabit(
   const ref = await addDoc(collection(db, COLLECTIONS.habits), {
     userId,
     ...input,
+    tags: input.tags ?? [],
     streak: 0,
     bestStreak: 0,
     lastCompleted: null,
