@@ -1598,3 +1598,41 @@ review of the whole wardrobe area):
   referenced was deleted on another device, the app resyncs instead of silently
   losing the change, and the pickers show a clear inline message rather than
   failing quietly.
+
+---
+
+## Wardrobe — Overview redesign
+
+**What it is.** A visual overhaul of the wardrobe home so it works like a real
+outfit dashboard, not a list.
+
+**What changed.**
+- **Bigger "Today's Outfit" hero.** Before an outfit is picked it shows four
+  labelled placeholder slots (Top · Bottom · Shoes · Accessory) with **Pick
+  today's outfit** and **Surprise me**; once picked, larger item tiles with
+  status dots and quick actions.
+- **Smarter weather.** The weather panel now gives an at-a-glance **what to wear
+  today** — e.g. ✓ T-shirt ✓ Shorts ✗ Hoodie — derived from the current
+  temperature, alongside the conditions and location.
+- **Richer clothing cards.** Each card now shows brand · category, a
+  season • style line, a prominent **usage counter** ("42× worn" / "never worn")
+  and **last-worn** ("3 days ago") as photo overlays, plus the favorite and
+  needs-ironing markers — and the grid is **denser** (up to 6 across) so you see
+  far more at once.
+- **Quick filters.** One-tap **Favorites** and **Recently worn** chips next to
+  the type chips, plus a **colour palette** row (tap a swatch to filter by
+  colour). Search now spans name, brand, colour, style, season and tags.
+- **Wardrobe-health sidebar.** The status card is now titled Wardrobe health
+  with a total-items badge and a **Never worn** count; every status row still
+  links straight to its filtered laundry view.
+- **Richer statistics.** Most-worn and least-worn now show their wear counts,
+  plus **Never worn** count and **Favorite brand** (the label you own most).
+- **Visual upcoming outfits.** The next few days show a weekday label (Tomorrow,
+  Wednesday…), the planned outfit's name, and item thumbnails — tap any day to
+  plan it.
+- **Smarter Surprise Me.** The randomizer now de-prioritises pieces worn in the
+  last few days and leans toward favorites, so re-rolling feels fresh.
+
+**Deferred (larger, follow-up work):** a slide-over quick-view panel on item
+click (instead of a full page), a drag-and-drop outfit builder, and a
+"worn once / worn twice" wear-since-wash sub-status.

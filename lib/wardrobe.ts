@@ -231,6 +231,72 @@ export const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 // ---------------------------------------------------------------------------
 // Seasons
 // ---------------------------------------------------------------------------
+/** "Today" / "Yesterday" / "3 days ago" / "in 2 days" / "MM-DD" for a date key. */
+export function relativeDay(dateKey: string | null, today: string): string | null {
+  if (!dateKey) return null;
+  const diff = Math.round(
+    (new Date(`${today}T00:00:00`).getTime() - new Date(`${dateKey}T00:00:00`).getTime()) / 86_400_000
+  );
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  if (diff === -1) return "Tomorrow";
+  if (diff > 1 && diff < 7) return `${diff} days ago`;
+  if (diff < -1 && diff > -7) return `in ${-diff} days`;
+  return dateKey.slice(5);
+}
+
+/** Weekday name for a date key (e.g. "Wednesday"). */
+export function weekdayName(dateKey: string): string {
+  return ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][
+    new Date(`${dateKey}T00:00:00`).getDay()
+  ];
+}
+
+/** Rough what-to-wear hint from the current temperature (°C). Display only. */
+export function weatherSuggestions(temp: number): { wear: string[]; avoid: string[] } {
+  if (temp >= 24) return { wear: ["T-shirt", "Shorts", "Sandals"], avoid: ["Hoodie", "Coat"] };
+  if (temp >= 16) return { wear: ["T-shirt", "Jeans", "Light jacket"], avoid: ["Heavy coat"] };
+  if (temp >= 8) return { wear: ["Sweater", "Jacket", "Jeans"], avoid: ["Shorts"] };
+  return { wear: ["Coat", "Sweater", "Boots"], avoid: ["Shorts", "T-shirt"] };
+}
+
+/** The brand you own the most active pieces from. */
+export function favoriteBrand(items: ClothingItem[]): { brand: string; count: number } | null {
+  const map = new Map<string, number>();
+  for (const i of items) {
+    if (i.retired || !i.brand) continue;
+    map.set(i.brand, (map.get(i.brand) ?? 0) + 1);
+  }
+  let best: { brand: string; count: number } | null = null;
+  for (const [brand, count] of map) if (!best || count > best.count) best = { brand, count };
+  return best;
+}
+
+// ---------------------------------------------------------------------------
+// Colours (for the palette filter) — best-effort name → swatch mapping.
+// ---------------------------------------------------------------------------
+const COLOR_HEX: Record<string, string> = {
+  black: "#111827", white: "#f9fafb", gray: "#9ca3af", grey: "#9ca3af",
+  red: "#ef4444", orange: "#f97316", yellow: "#eab308", green: "#22c55e",
+  blue: "#3b82f6", navy: "#1e3a8a", teal: "#14b8a6", purple: "#a855f7",
+  pink: "#ec4899", brown: "#92400e", beige: "#d6c7a1", cream: "#f5f0e1",
+  tan: "#d2b48c", khaki: "#c3b091", gold: "#d4af37", silver: "#c0c0c0",
+  maroon: "#7f1d1d", olive: "#556b2f",
+};
+
+/** A hex swatch for a colour name, or null when it isn't a colour we know. */
+export function colorSwatch(name: string | null): string | null {
+  if (!name) return null;
+  return COLOR_HEX[name.trim().toLowerCase()] ?? null;
+}
+
+/** Distinct colours in use among active items that map to a known swatch. */
+export function colorsInUse(items: ClothingItem[]): string[] {
+  const set = new Set<string>();
+  for (const i of items) if (!i.retired && i.color && colorSwatch(i.color)) set.add(i.color.trim());
+  return Array.from(set).sort();
+}
+
 /** Northern-hemisphere season for a date (defaults to now). */
 export function currentSeason(date: Date = new Date()): string {
   const m = date.getMonth(); // 0-11
@@ -257,25 +323,34 @@ export const CORE_CATEGORIES = ["Tops", "Bottoms", "Footwear", "Outerwear"];
 
 /**
  * Assemble a random wearable outfit: one item per core category that has any
- * wearable option, optionally constrained to a season. Falls back gracefully
- * when categories are missing. Pure given the RNG, so callers control shuffling.
+ * wearable option, optionally constrained to a season. Prefers pieces you
+ * haven't worn recently (`avoidIds`) and leans toward favourites, so re-rolling
+ * feels fresh rather than repetitive. Pure given the RNG.
  */
 export function surpriseOutfit(
   items: ClothingItem[],
-  opts?: { season?: string | null; rng?: () => number }
+  opts?: { season?: string | null; rng?: () => number; avoidIds?: Set<string>; preferFavorites?: boolean }
 ): ClothingItem[] {
   const rng = opts?.rng ?? Math.random;
+  const avoid = opts?.avoidIds ?? new Set<string>();
   const pool = items.filter((i) => {
     if (!isWearable(i)) return false;
     if (opts?.season && i.seasons.length > 0 && !i.seasons.includes(opts.season)) return false;
     return true;
   });
-  const pick = (list: ClothingItem[]) => (list.length ? list[Math.floor(rng() * list.length)] : null);
+  const pick = (list: ClothingItem[]): ClothingItem | null => {
+    if (!list.length) return null;
+    // Prefer not-recently-worn; only fall back to recent when nothing else fits.
+    const fresh = list.filter((i) => !avoid.has(i.id));
+    const base = fresh.length ? fresh : list;
+    const favs = base.filter((i) => i.favorite);
+    const from = opts?.preferFavorites && favs.length && rng() < 0.6 ? favs : base;
+    return from[Math.floor(rng() * from.length)];
+  };
   const chosen: ClothingItem[] = [];
   const used = new Set<string>();
   for (const cat of CORE_CATEGORIES) {
-    const inCat = pool.filter((i) => i.category === cat && !used.has(i.id));
-    const picked = pick(inCat);
+    const picked = pick(pool.filter((i) => i.category === cat && !used.has(i.id)));
     if (picked) {
       chosen.push(picked);
       used.add(picked.id);
@@ -283,8 +358,10 @@ export function surpriseOutfit(
   }
   // If nothing matched core categories (all uncategorized), pick a few at random.
   if (chosen.length === 0) {
-    const shuffled = [...pool].sort(() => rng() - 0.5).slice(0, 3);
-    return shuffled;
+    const scored = pool
+      .map((i) => ({ i, k: (avoid.has(i.id) ? 1 : 0) + rng() }))
+      .sort((a, b) => a.k - b.k);
+    return scored.slice(0, 3).map((s) => s.i);
   }
   return chosen;
 }

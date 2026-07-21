@@ -12,6 +12,8 @@ import {
   MapPin,
   CalendarDays,
   ChevronRight,
+  Heart,
+  History,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -30,6 +32,14 @@ import {
   wearForDate,
   seasonsInUse,
   currentSeason,
+  weatherSuggestions,
+  relativeDay,
+  weekdayName,
+  favoriteBrand,
+  neverWorn,
+  byWearCount,
+  colorsInUse,
+  colorSwatch,
 } from "@/lib/wardrobe";
 import { SurpriseDialog } from "@/components/wardrobe/surprise-dialog";
 import { WardrobeNav } from "@/components/wardrobe/wardrobe-nav";
@@ -70,6 +80,14 @@ function wmoMeta(code: number): { label: string; icon: string } {
   return WMO.find((w) => w.codes.includes(code)) ?? { label: "—", icon: "🌡️" };
 }
 
+/** Placeholder slots shown in the hero before an outfit is picked. */
+const OUTFIT_SLOTS = [
+  { label: "Top", emoji: "👕" },
+  { label: "Bottom", emoji: "👖" },
+  { label: "Shoes", emoji: "👟" },
+  { label: "Accessory", emoji: "⌚" },
+];
+
 /** "18-28°C" → does temp fall inside? Null if no genuine temperature range. */
 function weatherFitMatches(fit: string | null, temp: number | null): boolean | null {
   if (!fit || temp == null) return null;
@@ -96,6 +114,8 @@ export default function WardrobeOverviewPage() {
   const [category, setCategory] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [seasonFilter, setSeasonFilter] = useState<string>("all");
+  const [quickFilter, setQuickFilter] = useState<"all" | "favorites" | "recent">("all");
+  const [colorFilter, setColorFilter] = useState<string | null>(null);
 
   const today = toDateKey(new Date());
 
@@ -130,19 +150,35 @@ export default function WardrobeOverviewPage() {
   const counts = useMemo(() => statusCounts(items), [items]);
   const categories = useMemo(() => categoriesInUse(activeItems), [activeItems]);
   const seasons = useMemo(() => seasonsInUse(activeItems), [activeItems]);
+  const colors = useMemo(() => colorsInUse(activeItems), [activeItems]);
 
   const resolvedSeason = seasonFilter === "all" ? null : seasonFilter === "in" ? currentSeason() : seasonFilter;
   const gridItems = useMemo(() => {
-    if (statusFilter === "retired") {
-      return filterItems(items, { query, category, season: resolvedSeason, includeRetired: true }).filter((i) => i.retired);
+    let list =
+      statusFilter === "retired"
+        ? filterItems(items, { query, category, season: resolvedSeason, includeRetired: true }).filter((i) => i.retired)
+        : filterItems(items, {
+            query,
+            category,
+            status: statusFilter === "all" ? null : (statusFilter as WardrobeStatus | "needsIroning"),
+            season: resolvedSeason,
+          });
+    if (quickFilter === "favorites") list = list.filter((i) => i.favorite);
+    else if (quickFilter === "recent") {
+      const cutoff = addDays(today, -7);
+      list = list
+        .filter((i) => i.lastWorn && i.lastWorn >= cutoff)
+        .sort((a, b) => (a.lastWorn! < b.lastWorn! ? 1 : -1));
     }
-    return filterItems(items, {
-      query,
-      category,
-      status: statusFilter === "all" ? null : (statusFilter as WardrobeStatus | "needsIroning"),
-      season: resolvedSeason,
-    });
-  }, [items, query, category, statusFilter, resolvedSeason]);
+    if (colorFilter) list = list.filter((i) => (i.color ?? "").trim().toLowerCase() === colorFilter.toLowerCase());
+    return list;
+  }, [items, query, category, statusFilter, resolvedSeason, quickFilter, colorFilter, today]);
+
+  // Richer statistics for the sidebar.
+  const mostWorn = useMemo(() => byWearCount(items, "most").find((i) => i.timesWorn > 0) ?? null, [items]);
+  const leastWorn = useMemo(() => byWearCount(items, "least").find((i) => i.timesWorn > 0) ?? null, [items]);
+  const unusedCount = useMemo(() => neverWorn(items).length, [items]);
+  const topBrand = useMemo(() => favoriteBrand(items), [items]);
 
   const todayWear = useMemo(() => wearForDate(wears, today), [wears, today]);
   const todayItems = useMemo(() => {
@@ -155,6 +191,7 @@ export default function WardrobeOverviewPage() {
     [todayWear, outfits]
   );
   const fitMatch = weatherFitMatches(todayOutfit?.weatherFit ?? null, weather?.temp ?? null);
+  const suggest = weather ? weatherSuggestions(weather.temp) : null;
 
   const recent = useMemo(() => recentlyWorn(items, 10), [items]);
   const upcoming = useMemo(() => {
@@ -238,26 +275,35 @@ export default function WardrobeOverviewPage() {
           <div className="space-y-4">
             {/* Today's outfit hero */}
             <Card className="overflow-hidden">
-              <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-2.5">
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Today&apos;s outfit</span>
-                {todayOutfit && <span className="text-xs text-muted-foreground">{todayOutfit.name}</span>}
+              <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
+                <span className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Today&apos;s outfit</span>
+                {todayOutfit && <span className="text-sm font-medium text-muted-foreground">{todayOutfit.name}</span>}
               </div>
-              <div className="grid gap-4 p-4 sm:grid-cols-[1fr_auto]">
-                <div>
+              <div className="grid gap-5 p-5 lg:grid-cols-[1fr_230px]">
+                <div className="space-y-4">
                   {!todayWear ? (
-                    <div className="flex flex-col items-start gap-2 py-2">
-                      <p className="text-sm text-muted-foreground">No outfit picked for today yet.</p>
+                    <>
+                      <div className="grid grid-cols-4 gap-3">
+                        {OUTFIT_SLOTS.map((slot) => (
+                          <div key={slot.label} className="flex flex-col items-center gap-1.5">
+                            <div className="flex aspect-square w-full items-center justify-center rounded-2xl border-2 border-dashed border-muted-foreground/20 text-4xl">
+                              <span className="opacity-30">{slot.emoji}</span>
+                            </div>
+                            <span className="text-[11px] text-muted-foreground">{slot.label}</span>
+                          </div>
+                        ))}
+                      </div>
                       <div className="flex flex-wrap gap-2">
-                        <Button size="sm" onClick={() => openPicker(today)}>
+                        <Button onClick={() => openPicker(today)}>
                           <Shirt className="h-4 w-4" /> Pick today&apos;s outfit
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => setSurpriseOpen(true)}>
+                        <Button variant="outline" onClick={() => setSurpriseOpen(true)}>
                           <Sparkles className="h-4 w-4" /> Surprise me
                         </Button>
                       </div>
-                    </div>
+                    </>
                   ) : todayItems.length === 0 ? (
-                    <div className="flex flex-col items-start gap-2 py-2">
+                    <div className="flex flex-col items-start gap-3 py-2">
                       <p className="text-sm text-muted-foreground">
                         {todayWear.planned ? "Planned for today" : "Logged as worn today"} — but those items are no longer in your wardrobe.
                       </p>
@@ -274,16 +320,16 @@ export default function WardrobeOverviewPage() {
                     <>
                       <div className="flex flex-wrap gap-3">
                         {todayItems.map((i) => (
-                          <Link key={i.id} href={`/wardrobe/item/${i.id}`} className="w-20 shrink-0">
-                            <div className="aspect-square w-full overflow-hidden rounded-xl border bg-muted/40">
+                          <Link key={i.id} href={`/wardrobe/item/${i.id}`} className="group w-24 shrink-0">
+                            <div className="aspect-square w-full overflow-hidden rounded-2xl border bg-muted/40 transition group-hover:border-primary/40">
                               {i.imageData ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img src={i.imageData} alt={i.name} className="h-full w-full object-cover" />
                               ) : (
-                                <div className="flex h-full w-full items-center justify-center"><Shirt className="h-6 w-6 text-muted-foreground/40" /></div>
+                                <div className="flex h-full w-full items-center justify-center"><Shirt className="h-7 w-7 text-muted-foreground/40" /></div>
                               )}
                             </div>
-                            <p className="mt-1 truncate text-[11px] font-medium">{i.name}</p>
+                            <p className="mt-1.5 truncate text-xs font-medium">{i.name}</p>
                             <p className="flex items-center gap-1 text-[10px] text-muted-foreground">
                               <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: STATUS_META[i.status].color }} />
                               {STATUS_META[i.status].label}
@@ -291,7 +337,7 @@ export default function WardrobeOverviewPage() {
                           </Link>
                         ))}
                       </div>
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         {todayWear?.planned ? (
                           <Button size="sm" onClick={confirmPlannedToday}>
                             <Check className="h-4 w-4" /> Wear today
@@ -302,23 +348,39 @@ export default function WardrobeOverviewPage() {
                           </span>
                         )}
                         <Button size="sm" variant="outline" onClick={() => openPicker(today)}>Change</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setSurpriseOpen(true)}>
+                          <Sparkles className="h-4 w-4" /> Surprise me
+                        </Button>
                       </div>
                     </>
                   )}
                 </div>
-                {/* Weather block */}
-                <div className="flex min-w-[150px] flex-col items-center justify-center gap-1 rounded-xl border bg-muted/20 p-3 text-center">
-                  {weather ? (
+                {/* Weather + what-to-wear */}
+                <div className="flex flex-col gap-2 rounded-2xl border bg-muted/20 p-4">
+                  {weather && suggest ? (
                     <>
-                      <span className="text-3xl">{wmoMeta(weather.code).icon}</span>
-                      <span className="text-xl font-bold tabular-nums">{weather.temp}°C</span>
-                      <span className="text-xs text-muted-foreground">{wmoMeta(weather.code).label}</span>
-                      <span className="flex items-center gap-1 text-[10px] text-muted-foreground"><MapPin className="h-3 w-3" /> {WEATHER_PLACE}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-4xl">{wmoMeta(weather.code).icon}</span>
+                        <div>
+                          <p className="text-2xl font-bold leading-none tabular-nums">{weather.temp}°C</p>
+                          <p className="text-xs text-muted-foreground">{wmoMeta(weather.code).label}</p>
+                          <p className="flex items-center gap-1 text-[10px] text-muted-foreground"><MapPin className="h-3 w-3" /> {WEATHER_PLACE}</p>
+                        </div>
+                      </div>
                       {fitMatch === true && (
-                        <span className="mt-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                        <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-center text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
                           Perfect weather for this outfit
                         </span>
                       )}
+                      <div className="mt-1 space-y-1 border-t pt-2 text-xs">
+                        <p className="font-medium text-muted-foreground">Good for today</p>
+                        {suggest.wear.map((w) => (
+                          <p key={w} className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400"><Check className="h-3 w-3" /> {w}</p>
+                        ))}
+                        {suggest.avoid.map((w) => (
+                          <p key={w} className="flex items-center gap-1.5 text-muted-foreground"><span className="font-semibold text-rose-500">✗</span> {w}</p>
+                        ))}
+                      </div>
                     </>
                   ) : (
                     <span className="text-xs text-muted-foreground">Weather unavailable</span>
@@ -351,7 +413,7 @@ export default function WardrobeOverviewPage() {
                   <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">My wardrobe</span>
                   <span className="text-xs text-muted-foreground">· {gridItems.length} of {activeItems.length}</span>
                   <div className="ml-auto flex flex-wrap items-center gap-2">
-                    <Input placeholder="Search name, brand, tag…" value={query} onChange={(e) => setQuery(e.target.value)} className="h-8 w-[200px]" />
+                    <Input placeholder="Search name, brand, colour, style, tag…" value={query} onChange={(e) => setQuery(e.target.value)} className="h-8 w-[220px]" />
                     <Select value={statusFilter} onValueChange={setStatusFilter}>
                       <SelectTrigger className="h-8 w-[130px]"><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -373,18 +435,44 @@ export default function WardrobeOverviewPage() {
                     )}
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  <button type="button" onClick={() => setCategory(null)} className={cn("rounded-full border px-2.5 py-0.5 text-xs font-medium", category == null ? "border-primary bg-primary text-primary-foreground" : "border-input text-muted-foreground hover:bg-accent")}>All</button>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button type="button" onClick={() => setQuickFilter("all")} className={cn("flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium", quickFilter === "all" ? "border-primary bg-primary text-primary-foreground" : "border-input text-muted-foreground hover:bg-accent")}>All</button>
+                  <button type="button" onClick={() => setQuickFilter((q) => (q === "favorites" ? "all" : "favorites"))} className={cn("flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium", quickFilter === "favorites" ? "border-primary bg-primary text-primary-foreground" : "border-input text-muted-foreground hover:bg-accent")}><Heart className="h-3 w-3" /> Favorites</button>
+                  <button type="button" onClick={() => setQuickFilter((q) => (q === "recent" ? "all" : "recent"))} className={cn("flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium", quickFilter === "recent" ? "border-primary bg-primary text-primary-foreground" : "border-input text-muted-foreground hover:bg-accent")}><History className="h-3 w-3" /> Recently worn</button>
+                  {categories.length > 0 && <span className="mx-0.5 h-4 w-px bg-border" />}
+                  <button type="button" onClick={() => setCategory(null)} className={cn("rounded-full border px-2.5 py-0.5 text-xs font-medium", category == null ? "border-primary bg-primary text-primary-foreground" : "border-input text-muted-foreground hover:bg-accent")}>All types</button>
                   {categories.map((c) => (
                     <button key={c} type="button" onClick={() => setCategory(category === c ? null : c)} className={cn("rounded-full border px-2.5 py-0.5 text-xs font-medium", category === c ? "border-primary bg-primary text-primary-foreground" : "border-input text-muted-foreground hover:bg-accent")}>{c}</button>
                   ))}
                 </div>
+                {colors.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] text-muted-foreground">Colour</span>
+                    {colors.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        title={c}
+                        aria-label={`Filter by ${c}`}
+                        onClick={() => setColorFilter(colorFilter === c ? null : c)}
+                        className={cn(
+                          "h-5 w-5 rounded-full border border-black/10 transition dark:border-white/20",
+                          colorFilter === c ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : "hover:scale-110"
+                        )}
+                        style={{ backgroundColor: colorSwatch(c) ?? "#999" }}
+                      />
+                    ))}
+                    {colorFilter && (
+                      <button type="button" onClick={() => setColorFilter(null)} className="text-[11px] text-muted-foreground underline hover:text-foreground">clear</button>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="p-4">
                 {gridItems.length === 0 ? (
                   <p className="py-10 text-center text-sm text-muted-foreground">Nothing matches this filter.</p>
                 ) : (
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
                     {gridItems.map((item) => (
                       <ItemCard
                         key={item.id}
@@ -427,8 +515,9 @@ export default function WardrobeOverviewPage() {
           {/* Right sidebar */}
           <aside className="space-y-4">
             <Card className="overflow-hidden">
-              <div className="border-b bg-muted/30 px-4 py-2.5">
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Clothing status</span>
+              <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-2.5">
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Wardrobe health</span>
+                <span className="rounded-full bg-secondary px-2 text-xs font-medium tabular-nums text-muted-foreground">{activeItems.length} items</span>
               </div>
               <div className="p-2">
                 {WARDROBE_STATUSES.map((s) => (
@@ -445,6 +534,12 @@ export default function WardrobeOverviewPage() {
                   <span className="tabular-nums text-muted-foreground">{counts.needsIroning}</span>
                   <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50" />
                 </Link>
+                <Link href="/wardrobe/stats" className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition hover:bg-accent">
+                  <span>🕳️</span>
+                  <span className="flex-1">Never worn</span>
+                  <span className="tabular-nums text-muted-foreground">{unusedCount}</span>
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50" />
+                </Link>
               </div>
             </Card>
 
@@ -455,17 +550,12 @@ export default function WardrobeOverviewPage() {
                   Details <ChevronRight className="h-3 w-3" />
                 </Link>
               </div>
-              <div className="space-y-2 p-4 text-sm">
-                <StatRow label="Items" value={String(activeItems.length)} />
-                <StatRow label="Outfits" value={String(outfits.length)} />
-                <StatRow
-                  label="Most worn"
-                  value={activeItems.length > 0 ? [...activeItems].sort((a, b) => b.timesWorn - a.timesWorn)[0]?.name ?? "—" : "—"}
-                />
-                <StatRow
-                  label="Least worn"
-                  value={activeItems.length > 0 ? [...activeItems].sort((a, b) => a.timesWorn - b.timesWorn)[0]?.name ?? "—" : "—"}
-                />
+              <div className="divide-y">
+                <StatRow label="Most worn" name={mostWorn?.name ?? "—"} sub={mostWorn ? `${mostWorn.timesWorn} wears` : undefined} />
+                <StatRow label="Least worn" name={leastWorn?.name ?? "—"} sub={leastWorn ? `${leastWorn.timesWorn} wears` : undefined} />
+                <StatRow label="Never worn" name={`${unusedCount} ${unusedCount === 1 ? "item" : "items"}`} />
+                <StatRow label="Favorite brand" name={topBrand?.brand ?? "—"} sub={topBrand ? `${topBrand.count} ${topBrand.count === 1 ? "piece" : "pieces"}` : undefined} />
+                <StatRow label="Outfits saved" name={String(outfits.length)} />
               </div>
             </Card>
 
@@ -476,32 +566,46 @@ export default function WardrobeOverviewPage() {
                 </span>
               </div>
               <div className="space-y-1 p-2">
-                {upcoming.map(({ date, wear }) => (
-                  <button
-                    key={date}
-                    type="button"
-                    onClick={() => openPicker(date)}
-                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition hover:bg-accent"
-                  >
-                    <span className="w-[74px] shrink-0 text-xs tabular-nums text-muted-foreground">{date.slice(5)}</span>
-                    {wear ? (
-                      <div className="flex flex-1 items-center gap-1.5 overflow-hidden">
-                        {wear.itemIds.slice(0, 4).map((id) => {
-                          const it = items.find((x) => x.id === id);
-                          return it?.imageData ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img key={id} src={it.imageData} alt={it.name} className="h-7 w-7 rounded-md border object-cover" />
-                          ) : (
-                            <span key={id} className="flex h-7 w-7 items-center justify-center rounded-md border bg-muted/40"><Shirt className="h-3.5 w-3.5 text-muted-foreground/50" /></span>
-                          );
-                        })}
+                {upcoming.map(({ date, wear }) => {
+                  const outfit = wear?.outfitId ? outfits.find((o) => o.id === wear.outfitId) ?? null : null;
+                  const label = relativeDay(date, today) ?? weekdayName(date);
+                  return (
+                    <button
+                      key={date}
+                      type="button"
+                      onClick={() => openPicker(date)}
+                      className="flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition hover:bg-accent"
+                    >
+                      <div className="w-[78px] shrink-0">
+                        <p className="text-xs font-medium">{label}</p>
+                        <p className="text-[10px] tabular-nums text-muted-foreground">{date.slice(5)}</p>
                       </div>
-                    ) : (
-                      <span className="flex-1 text-xs text-muted-foreground/60">Tap to plan an outfit</span>
-                    )}
-                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />
-                  </button>
-                ))}
+                      {wear ? (
+                        <div className="min-w-0 flex-1 space-y-1">
+                          {(outfit || wear.itemIds.length > 0) && (
+                            <p className="truncate text-xs font-medium">
+                              {outfit?.name ?? `${wear.itemIds.length} item${wear.itemIds.length === 1 ? "" : "s"}`}
+                            </p>
+                          )}
+                          <div className="flex items-center gap-1.5 overflow-hidden">
+                            {wear.itemIds.slice(0, 4).map((id) => {
+                              const it = items.find((x) => x.id === id);
+                              return it?.imageData ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img key={id} src={it.imageData} alt={it.name} className="h-8 w-8 rounded-md border object-cover" />
+                              ) : (
+                                <span key={id} className="flex h-8 w-8 items-center justify-center rounded-md border bg-muted/40"><Shirt className="h-3.5 w-3.5 text-muted-foreground/50" /></span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="flex-1 self-center text-xs text-muted-foreground/60">Tap to plan an outfit</span>
+                      )}
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0 self-center text-muted-foreground/40" />
+                    </button>
+                  );
+                })}
               </div>
             </Card>
           </aside>
@@ -547,11 +651,14 @@ function QuickShortcut({ href, icon, label, count }: { href: string; icon: strin
   );
 }
 
-function StatRow({ label, value }: { label: string; value: string }) {
+function StatRow({ label, name, sub }: { label: string; name: string; sub?: string }) {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="min-w-0 truncate text-right font-medium">{value}</span>
+    <div className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      <span className="flex min-w-0 flex-col items-end text-right">
+        <span className="min-w-0 max-w-full truncate font-medium">{name}</span>
+        {sub && <span className="text-[11px] tabular-nums text-muted-foreground">{sub}</span>}
+      </span>
     </div>
   );
 }

@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { setWearForDay } from "@/lib/firebase/db";
 import { surpriseOutfit, isWearable, seasonsInUse, currentSeason, STATUS_META } from "@/lib/wardrobe";
 import { toDateKey } from "@/lib/greeting";
+import { addDays } from "@/lib/habits";
 import { cn } from "@/lib/utils";
 import type { ClothingItem, Outfit, WearLog } from "@/lib/types";
 
@@ -39,12 +40,17 @@ export function SurpriseDialog({ open, onOpenChange, userId, items, outfits, exi
   const [error, setError] = useState<string | null>(null);
 
   const wearableCount = useMemo(() => items.filter(isWearable).length, [items]);
+  // Items worn within the last 3 days — de-prioritised so re-rolls feel fresh.
+  const recentIds = useMemo(() => {
+    const cutoff = addDays(today, -3);
+    return new Set(items.filter((i) => i.lastWorn && i.lastWorn >= cutoff).map((i) => i.id));
+  }, [items, today]);
 
   // Re-roll whenever the dialog opens, the season changes, or Shuffle is hit.
   useEffect(() => {
     if (!open) return;
-    setCombo(surpriseOutfit(items, { season }));
-  }, [open, season, seed, items]);
+    setCombo(surpriseOutfit(items, { season, avoidIds: recentIds, preferFavorites: true }));
+  }, [open, season, seed, items, recentIds]);
 
   useEffect(() => {
     if (open) {
