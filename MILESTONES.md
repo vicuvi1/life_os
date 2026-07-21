@@ -1121,3 +1121,13 @@ them one row at a time.
 2. Or open the **Clear** menu and choose **Clear all of {Month}** to wipe the
    whole month in one click.
 3. Confirm in the dialog — that's the only step that actually deletes.
+
+---
+
+## Finance — full-width transactions table
+
+**What it is.** A layout cleanup. The **Financial Score** sidebar card was removed,
+and the **transactions table now spans the full page width** on large screens
+instead of being squeezed into the left column. It drops to its own full-width row
+beneath the charts and the sidebar, using the space that used to sit empty on the
+right — so the grid is roomier and easier to read.
