@@ -1901,3 +1901,52 @@ prefs doc alongside the Telegram token.
 **timeline** and **Apple Health / smartwatch import** require a wearable; a
 full **sleep↔habits/mood/productivity correlations** view is a larger analytics
 pass — all flagged in-app rather than mocked.
+
+---
+
+## 🔔 Notification builder (Telegram)
+
+**Settings → Notification builder.** Replaces the fixed on/off summary toggle
+with a full editor: every notification type is customisable in wording, timing,
+and buttons.
+
+**Phase 1 (shipped).**
+- **Five event types** to start — Bedtime reminder, Morning summary, Sleep
+  logged, Weekly review, Habit nudge — each with **Preview / Template /
+  Conditions** tabs. New event types can be added without a schema change.
+- **Variables.** A grouped, click-to-insert picker (Sleep, Habits, Calendar,
+  Weather, Time, General) drops `{{tokens}}` at the cursor; a resolver
+  substitutes them from **live data the app already tracks**, with a sensible
+  **fallback** when a value is missing (never a raw `{{next_event}}` leak).
+- **Style presets** (Friendly / Minimal / Coach / Motivational / Funny) as
+  one-click starting text you can then freely edit.
+- **Conditions.** Relative to a reference time (`N min before/after target
+  bedtime/wake`), absolute time, day-of-week scope, and simple state gates
+  ("only if sleep isn't logged today", "only if habits remain") — no scripting.
+- **Live preview** in a Telegram-style bubble using realistic sample data, plus
+  **Send now** which resolves with your real data and delivers via Telegram.
+- **Editable buttons** — labels are free text; actions stay in a safe set
+  (open app, start routine, log sleep, snooze, dismiss).
+- **Delivery history** — reverse-chronological log (event, resolved text,
+  delivered/failed, timestamp) filterable by event type.
+- **Live wiring:** the **Sleep logged** template now drives the real auto-send
+  when you log a night (and writes to history) — it's the one event a
+  client-only app can fire on its own.
+
+**Phase 3 bits (shipped now, cheap + reuse existing infra).**
+- **✨ AI rewrite** — rewrite any template in a chosen tone (Professional,
+  Friendly, Funny, Minimal, Formal, Military, Stoic, Gen Z), **preserving every
+  `{{variable}}`**, shown as a preview you accept or discard. Routes through the
+  existing **Settings → AI providers** keys — no second credential flow.
+- **Export / Import** a template as JSON (share with a friend on Life OS).
+
+**Deferred.**
+- **Phase 2** — visual **IF/ELSE conditional text blocks** and a **drag-and-drop
+  block builder** (Text / Sleep Score / Progress Bar / Streak / … widgets) as an
+  alternative authoring mode over the same template data. Phase 1's text editor
+  is complete on its own; blocks are the next layer.
+- **Public template marketplace** — out of scope for a single-user app (needs
+  multi-user identity + moderation); Export/Import is the realistic "sharing".
+- Hands-free **scheduled** delivery for time-based events while the app is
+  closed still needs the background sender (Vercel cron) noted earlier; "Send
+  now" and the sleep-logged auto-send work today.

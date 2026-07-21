@@ -34,6 +34,8 @@ import {
   type HubAgent,
   type HubAutomation,
   type HubNotification,
+  type NotificationTemplate,
+  type NotifLogEntry,
   type DecisionConfig,
   type Expense,
   type Goal,
@@ -1938,6 +1940,65 @@ export async function saveConversation(userId: string, agentId: string, messages
     agentId,
     messages: messages.slice(-60), // keep the doc well under Firestore's 1MB
   });
+}
+
+// ---------------------------------------------------------------------------
+// Notification builder templates + delivery log (also in `decisions`)
+// ---------------------------------------------------------------------------
+function mapNotifTemplate(snap: QueryDocumentSnapshot<DocumentData>): NotificationTemplate {
+  const d = snap.data();
+  return {
+    id: snap.id,
+    userId: d.userId,
+    eventType: d.eventType,
+    enabled: d.enabled === true,
+    body: d.body ?? "",
+    buttons: Array.isArray(d.buttons) ? d.buttons : [],
+    condition: d.condition ?? { timeMode: "absolute", reference: "wake_time", offsetMin: 0, time: "", days: "all", states: [] },
+    stylePreset: d.stylePreset ?? "Custom",
+    createdAt: toMillis(d.createdAt),
+  };
+}
+
+function mapNotifLog(snap: QueryDocumentSnapshot<DocumentData>): NotifLogEntry {
+  const d = snap.data();
+  return {
+    id: snap.id,
+    userId: d.userId,
+    eventType: d.eventType ?? "",
+    body: d.body ?? "",
+    status: d.status === "failed" ? "failed" : "delivered",
+    createdAt: toMillis(d.createdAt),
+  };
+}
+
+export async function getNotifTemplates(userId: string): Promise<NotificationTemplate[]> {
+  const q = query(collection(db, COLLECTIONS.decisions), where("userId", "==", userId));
+  const snap = await getDocs(q);
+  return snap.docs.filter((d) => d.data().docType === "notiftemplate").map(mapNotifTemplate);
+}
+
+export type NotifTemplateInput = Pick<NotificationTemplate, "eventType" | "enabled" | "body" | "buttons" | "condition" | "stylePreset">;
+
+/** Upsert the template for an event type (deterministic id — one per event). */
+export async function upsertNotifTemplate(userId: string, input: NotifTemplateInput): Promise<void> {
+  const ref = doc(db, COLLECTIONS.decisions, `notif_${userId}_${input.eventType}`);
+  const created = (await docExists(ref)) ? {} : { createdAt: serverTimestamp() };
+  await setDoc(ref, { userId, docType: "notiftemplate", ...input, ...created }, { merge: true });
+}
+
+export async function getNotifLog(userId: string, limit = 100): Promise<NotifLogEntry[]> {
+  const q = query(collection(db, COLLECTIONS.decisions), where("userId", "==", userId));
+  const snap = await getDocs(q);
+  return snap.docs
+    .filter((d) => d.data().docType === "notiflog")
+    .map(mapNotifLog)
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, limit);
+}
+
+export async function addNotifLog(userId: string, entry: Pick<NotifLogEntry, "eventType" | "body" | "status">): Promise<void> {
+  await addDoc(collection(db, COLLECTIONS.decisions), { userId, docType: "notiflog", ...entry, createdAt: serverTimestamp() });
 }
 
 // ---------------------------------------------------------------------------

@@ -20,8 +20,11 @@ import {
   addNap,
   updateSleepEntry,
   deleteSleepEntry,
+  addNotifLog,
 } from "@/lib/firebase/db";
 import { formatHours, qualityRating, parseHM } from "@/lib/sleep";
+import { resolveBody } from "@/lib/notifications";
+import { sleepLogValues } from "@/lib/notif-values";
 import { tgSend } from "@/lib/telegram";
 import { formatLongDate } from "@/lib/dates";
 import { addDays } from "@/lib/habits";
@@ -45,8 +48,8 @@ interface Props {
   defaultQuality?: number;
   /** Prefill bedtime/wake for a NEW night's sleep (from targets or averages). */
   defaultTimes?: { bedtime?: string | null; wakeTime?: string | null };
-  /** When set, a summary is pushed to Telegram after logging a night's sleep. */
-  notify?: { token: string; chatId: string; target: number } | null;
+  /** When set, the editable "sleep logged" template is pushed to Telegram after logging a night. */
+  notify?: { token: string; chatId: string; target: number; name: string; body: string } | null;
   onSaved: () => void;
 }
 
@@ -133,12 +136,13 @@ export function SleepLogDialog({ open, onOpenChange, userId, date, kind, entry, 
       else await upsertSleepLog(userId, date, input);
       // Best-effort phone notification for a logged night (never blocks the save).
       if (!isNap && notify) {
-        const diff = hours - notify.target;
-        const text =
-          `😴 <b>Sleep logged</b> — ${formatLongDate(date)}\n` +
-          `${formatHours(hours)} slept${hasTimes ? ` (${bedtime}–${wakeTime})` : ""} · quality ${Math.round(quality)}/10\n` +
-          `${diff >= 0 ? "✅ +" : "⚠️ −"}${formatHours(Math.abs(Math.round(diff * 100) / 100))} vs your ${notify.target}h goal`;
-        void tgSend(notify.token, notify.chatId, text);
+        const values = sleepLogValues({
+          hours, quality: Math.round(quality), bedtime: hasTimes ? bedtime : null,
+          wakeTime: hasTimes ? wakeTime : null, awakeMinutes: hasTimes ? awakeMin : 0,
+          target: notify.target, name: notify.name,
+        });
+        const text = resolveBody(notify.body, values);
+        void tgSend(notify.token, notify.chatId, text).then((r) => addNotifLog(userId, { eventType: "sleep_logged_summary", body: text, status: r.ok ? "delivered" : "failed" }));
       }
       onOpenChange(false);
       onSaved();

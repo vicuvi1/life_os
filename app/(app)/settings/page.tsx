@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BookText, ChevronRight, Database } from "lucide-react";
+import { BookText, ChevronRight, Database, Bell } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -69,6 +69,29 @@ export default function SettingsPage() {
       <TelegramCard />
 
       <AIProvidersCard />
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Notifications</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Link
+            href="/settings/notifications"
+            className="flex items-center justify-between px-6 py-4 transition-colors hover:bg-accent"
+          >
+            <div className="flex items-center gap-3">
+              <Bell className="h-5 w-5 text-primary" />
+              <div>
+                <p className="text-sm font-medium">Notification builder</p>
+                <p className="text-sm text-muted-foreground">
+                  Customise the wording, timing, and buttons of every Telegram notification.
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </Link>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

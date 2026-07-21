@@ -607,6 +607,63 @@ export interface HubNotification {
   createdAt: number;
 }
 
+// ---------------------------------------------------------------------------
+// Notification builder (customizable Telegram notification templates)
+// ---------------------------------------------------------------------------
+/** System events that can fire a notification (extensible — add keys freely). */
+export type NotifEventType =
+  | "bedtime_reminder"
+  | "morning_summary"
+  | "sleep_logged_summary"
+  | "weekly_review"
+  | "habit_nudge";
+
+/** Safe, fixed set of button actions (labels are user-editable, actions are not). */
+export type NotifAction = "open_app" | "start_routine" | "log_sleep" | "snooze" | "dismiss";
+
+export interface NotifButton {
+  label: string;
+  action: NotifAction;
+}
+
+/** Timing/condition rule for when a template should fire. */
+export interface NotifCondition {
+  timeMode: "relative" | "absolute";
+  /** For relative mode: the reference variable, e.g. "bedtime" | "wake_time". */
+  reference: string;
+  /** Minutes offset for relative mode (negative = before the reference). */
+  offsetMin: number;
+  /** Absolute "HH:mm" for absolute mode. */
+  time: string;
+  days: "all" | "weekdays" | "weekends";
+  /** Simple state gates checkable against existing data, e.g. "not_logged_today". */
+  states: string[];
+}
+
+/** A fully customizable notification: wording, buttons, timing. */
+export interface NotificationTemplate {
+  id: string;
+  userId: string;
+  eventType: NotifEventType;
+  enabled: boolean;
+  body: string; // contains {{variable}} placeholders
+  buttons: NotifButton[];
+  condition: NotifCondition;
+  /** Which preset it started from (informational only). */
+  stylePreset: string;
+  createdAt: number;
+}
+
+/** Append-only delivery-log entry for the notification history page. */
+export interface NotifLogEntry {
+  id: string;
+  userId: string;
+  eventType: string;
+  body: string; // resolved text that was sent
+  status: "delivered" | "failed";
+  createdAt: number;
+}
+
 /** Telegram bot connection + which events push to the phone. */
 export interface TelegramConfig {
   botToken: string;

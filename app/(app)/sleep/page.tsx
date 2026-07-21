@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Moon, Sun, Plus, ChevronLeft, ChevronRight, Send, Bot, StickyNote } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
-import { getSleepData, getPrefs, upsertPrefs, upsertSleepMeta, type SleepData } from "@/lib/firebase/db";
+import { getSleepData, getPrefs, upsertPrefs, upsertSleepMeta, getNotifTemplates, type SleepData } from "@/lib/firebase/db";
+import { defaultTemplate } from "@/lib/notifications";
+import { resolveFirstName } from "@/lib/greeting";
 import { NumberField } from "@/components/ui/number-field";
 import { toDateKey } from "@/lib/greeting";
 import { addDays } from "@/lib/habits";
@@ -51,6 +53,7 @@ export default function SleepPage() {
   const [wakeTarget, setWakeTarget] = useState("");
   const [routine, setRoutine] = useState<SleepRoutine>({ evening: DEFAULT_EVENING_ROUTINE, morning: DEFAULT_MORNING_ROUTINE });
   const [telegram, setTelegram] = useState<TelegramConfig | null>(null);
+  const [sleepTplBody, setSleepTplBody] = useState<string | null>(null);
   const [tgSent, setTgSent] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -66,13 +69,16 @@ export default function SleepPage() {
     if (!user) return;
     if (!opts?.quiet) setLoading(true);
     try {
-      const [d, prefs] = await Promise.all([getSleepData(user.uid), getPrefs(user.uid)]);
+      const [d, prefs, tpls] = await Promise.all([getSleepData(user.uid), getPrefs(user.uid), getNotifTemplates(user.uid)]);
       setData(d);
       setTarget(prefs.sleepTarget);
       setBedtimeTarget(prefs.bedtimeTarget ?? "");
       setWakeTarget(prefs.wakeTarget ?? "");
       setRoutine(prefs.sleepRoutine ?? { evening: DEFAULT_EVENING_ROUTINE, morning: DEFAULT_MORNING_ROUTINE });
       setTelegram(prefs.telegram ?? null);
+      // The editable "sleep logged" template drives the auto-send (default when unset).
+      const slt = tpls.find((t) => t.eventType === "sleep_logged_summary") ?? defaultTemplate(user.uid, "sleep_logged_summary");
+      setSleepTplBody(slt.enabled ? slt.body : null);
     } finally {
       if (!opts?.quiet) setLoading(false);
     }
@@ -448,7 +454,7 @@ export default function SleepPage() {
 
       {user && (
         <>
-          <SleepLogDialog open={dialog.open} onOpenChange={(o) => setDialog((s) => ({ ...s, open: o }))} userId={user.uid} date={dialog.date} kind={dialog.kind} entry={dialog.entry} defaultTimes={{ bedtime: bedtimeTarget || avgBed, wakeTime: wakeTarget || avgWk }} notify={tgConnected && telegram!.onSleepLog ? { token: telegram!.botToken, chatId: telegram!.chatId, target } : null} onSaved={() => load({ quiet: true })} />
+          <SleepLogDialog open={dialog.open} onOpenChange={(o) => setDialog((s) => ({ ...s, open: o }))} userId={user.uid} date={dialog.date} kind={dialog.kind} entry={dialog.entry} defaultTimes={{ bedtime: bedtimeTarget || avgBed, wakeTime: wakeTarget || avgWk }} notify={tgConnected && telegram!.onSleepLog && sleepTplBody ? { token: telegram!.botToken, chatId: telegram!.chatId, target, name: resolveFirstName(user.displayName, user.email), body: sleepTplBody } : null} onSaved={() => load({ quiet: true })} />
           <RoutineEditDialog open={routineEdit === "evening"} onOpenChange={(o) => !o && setRoutineEdit(null)} title="Evening routine" steps={routine.evening} onSave={(s) => saveRoutine("evening", s)} />
           <RoutineEditDialog open={routineEdit === "morning"} onOpenChange={(o) => !o && setRoutineEdit(null)} title="Morning routine" steps={routine.morning} onSave={(s) => saveRoutine("morning", s)} />
           <SleepDaySheet open={sheetDate !== null} onOpenChange={(o) => !o && setSheetDate(null)} date={sheetDate} log={sheetLog} meta={sheetDate ? data.metas[sheetDate] : undefined} naps={sheetNaps} allSleep={primary} target={target} onEdit={(d) => { setSheetDate(null); openLog("sleep", d, byDate.get(d) ?? null); }} />
