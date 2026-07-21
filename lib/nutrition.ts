@@ -13,6 +13,17 @@ export const MEAL_ICONS = ["🍳", "🥗", "🍽️", "🍎", "🥪", "🍜", "�
 
 export const MEAL_COLORS = ["#f59e0b", "#10b981", "#6366f1", "#ec4899", "#ef4444", "#14b8a6", "#a855f7", "#0ea5e9", "#84cc16", "#f97316"];
 
+/** Sensible name + icon for a new meal based on the time of day — so the common
+ * path needs zero typing. Fully overridable. */
+export function mealDefaultsByTime(date = new Date()): { name: string; icon: string } {
+  const h = date.getHours();
+  if (h < 11) return { name: "Breakfast", icon: "🍳" };
+  if (h < 15) return { name: "Lunch", icon: "🥗" };
+  if (h < 18) return { name: "Snack", icon: "🍎" };
+  if (h < 22) return { name: "Dinner", icon: "🍽️" };
+  return { name: "Late night", icon: "🌙" };
+}
+
 export interface MealTemplate { name: string; icon: string; color: string; time: string }
 export const MEAL_TEMPLATES: MealTemplate[] = [
   { name: "Breakfast", icon: "🍳", color: "#f59e0b", time: "08:00" },

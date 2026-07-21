@@ -2226,3 +2226,38 @@ Trend, Food Spending, and Meal Frequency — clean mini-bars, no clutter.
 **Filters.** Scope everything by date range, meal, food, category, or tag. All
 numbers read live from meals (which reference foods), so the dashboard always
 reflects the latest logging automatically.
+
+---
+
+## 🍽️ Nutrition redesign — food-first & never-empty
+
+**Purpose.** Opening Nutrition should answer one question — *"What am I eating
+today?"* — not demand a pile of decisions first. This pass makes **food the
+hero**, removes metadata friction, and makes the page useful before the first
+meal is logged.
+
+**What changed.**
+- **Food-first logging.** The "Add meal" modal now opens straight to food
+  **search + recent foods**, then your **selected foods** with live totals. Name,
+  time, icon and notes are tucked into an optional **"Details"** section — the
+  meal name is optional and defaults to the time of day (Breakfast/Lunch/Dinner…)
+  so the common path needs zero typing. Macros are always derived from the foods;
+  manual entry is hidden behind *"Can't find a food? Enter it manually."*
+- **Colors removed.** Meals no longer carry a colour — the icon alone is enough.
+- **Compact meal cards.** Each card reads like a glance: icon · name · time, the
+  foods with amounts, then **kcal · protein · cost**. Scrolling the day feels
+  natural.
+- **A dashboard that tells a story.** Five tiny metric tiles are replaced by
+  **three cards** — **Nutrition** (calories, protein vs goal, meals), **Water**
+  (progress bar + quick +/-), and **Budget** (today's food cost + weekly
+  budget). All goals are editable inline.
+- **Never empty.** Even with nothing logged, the page shows your goals, a
+  personality line, **Quick meals** (one-tap logging of saved templates /
+  favourite recipes), and a **Shopping reminder** (what to buy, or what's running
+  low in the pantry).
+- **Personality.** A single helpful sentence up top instead of an unexplained
+  score, e.g. *"🥚 You still need about 35g of protein today. You have eggs and
+  chicken in your pantry."*
+- **Task-oriented navigation.** Tabs are now **🍽️ Today · 🥫 Foods · 📦 Pantry ·
+  🛒 Shopping · 📖 Recipes · 📊 Insights** — places you go to do something, not
+  database sections.

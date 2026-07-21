@@ -2,16 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Utensils, Library, Package, ShoppingCart, BookOpen, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// Task-oriented — places you go to do something, not database sections.
 const TABS = [
-  { href: "/nutrition", label: "Workspace", icon: Utensils },
-  { href: "/nutrition/foods", label: "Food Library", icon: Library },
-  { href: "/nutrition/pantry", label: "Pantry", icon: Package },
-  { href: "/nutrition/shopping", label: "Shopping", icon: ShoppingCart },
-  { href: "/nutrition/recipes", label: "Recipes", icon: BookOpen },
-  { href: "/nutrition/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/nutrition", label: "Today", emoji: "🍽️" },
+  { href: "/nutrition/foods", label: "Foods", emoji: "🥫" },
+  { href: "/nutrition/pantry", label: "Pantry", emoji: "📦" },
+  { href: "/nutrition/shopping", label: "Shopping", emoji: "🛒" },
+  { href: "/nutrition/recipes", label: "Recipes", emoji: "📖" },
+  { href: "/nutrition/analytics", label: "Insights", emoji: "📊" },
 ];
 
 export function NutritionNav() {
@@ -29,7 +29,7 @@ export function NutritionNav() {
               active ? "border-primary/40 bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground"
             )}
           >
-            <t.icon className="h-4 w-4" />
+            <span className="text-base leading-none">{t.emoji}</span>
             {t.label}
           </Link>
         );
