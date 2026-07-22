@@ -399,15 +399,23 @@ export function goalPace(
 
 /** An active goal with no progress in `staleDays` (default 14) needs attention. */
 export function goalStale(
-  goal: Pick<Goal, "status" | "progressLog" | "staleDays">,
+  goal: Pick<Goal, "status" | "progressLog" | "staleDays" | "createdAt">,
   today: string,
   defaultDays = 14
 ): boolean {
   if (goal.status !== "active") return false;
   const days = goal.staleDays ?? defaultDays;
   const log = [...goal.progressLog].sort(byDate);
-  if (log.length === 0) return true; // active but never logged → attention
-  return daysBetween(log[log.length - 1].date, today) >= days;
+  // Reference = last progress entry, else the goal's creation date. This keeps a
+  // brand-new goal (or one predating the progress log) from being flagged stale
+  // the moment it exists — it only goes stale after `days` of real inactivity.
+  const ref =
+    log.length > 0
+      ? log[log.length - 1].date
+      : goal.createdAt
+        ? keyOf(new Date(goal.createdAt))
+        : today;
+  return daysBetween(ref, today) >= days;
 }
 
 /** Compact "Jul 14"-style label for a date key (for the trend chart axis). */
