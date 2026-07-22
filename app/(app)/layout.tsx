@@ -7,6 +7,7 @@ import { useAuth } from "@/components/auth-provider";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { FloatingCalculator } from "@/components/calculator/floating-calculator";
+import { CommandProvider } from "@/components/command/command-center";
 
 export default function AppLayout({
   children,
@@ -29,13 +30,15 @@ export default function AppLayout({
   }
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <Topbar email={user.email} />
-        <main className="flex-1 overflow-y-auto p-4 md:p-8">{children}</main>
+    <CommandProvider>
+      <div className="flex h-screen overflow-hidden">
+        <Sidebar />
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <Topbar email={user.email} />
+          <main className="flex-1 overflow-y-auto p-4 md:p-8">{children}</main>
+        </div>
+        <FloatingCalculator />
       </div>
-      <FloatingCalculator />
-    </div>
+    </CommandProvider>
   );
 }

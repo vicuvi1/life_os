@@ -3027,6 +3027,27 @@ bespoke caches.
 
 ---
 
+## ⌘ Command palette + global quick-add
+
+**What it is.** Press **⌘K** (Ctrl-K) anywhere to open a command palette — the
+"this is a real app" moment.
+
+**How it works.**
+- **Jump anywhere.** Every page in the app is a command; type a few letters and
+  hit enter to navigate.
+- **Search your stuff.** Start typing and it searches your **goals and tasks**
+  live — pick one to jump straight to it.
+- **Create from anywhere.** "New task / New goal / New habit" open the real
+  create dialogs without leaving the page you're on — also available from a new
+  **＋ quick-add** button in the top bar (and a **Search ⌘K** button beside it).
+- Full keyboard control (↑/↓ to move, enter to run, esc to close); mounted once
+  at the app shell so it's global. After a create it invalidates the shared cache
+  so pages pick up the new item.
+
+**How to use it.** Hit **⌘K**, type — a page name, a goal, a task, or "new goal".
+
+---
+
 ## 💬 Top-bar motivational quote ticker
 
 **What it is.** A rotating motivational quote lives in the center of the top bar,
