@@ -2756,3 +2756,32 @@ blue = 2000, …) instead of bill-by-bill.
   ideal right after counting a cash wallet.
 - **Reset counts** zeroes the counts for a fresh count while leaving the legend
   definitions intact.
+
+---
+
+## 💳 Finance — Accounts polish (logos, flexibility, currency-safe net worth)
+
+Refinements that make the Accounts system feel finished.
+
+- **Custom logos per account.** Upload a bank/card logo (Maib, Revolut, …),
+  compressed client-side the same way as Wardrobe photos and shown as the
+  account's avatar on the cards, the manager, and the transaction picker. No
+  upload → clean fallback to the (now much larger) preset icon + colour palette.
+- **Everything is editable, any time.** Name, **type** (free text — add your own
+  like "Crypto wallet"), starting balance, currency, description, colour, and
+  icon/logo are all editable inline in the manager, not just at creation. Added
+  the missing description field too.
+- **Cash counter is fully decoupled.** The colour legend + counter never sync to
+  a balance. "Save as balance" is a one-time manual copy, with an explicit note
+  saying so — no ongoing link is created or shown.
+- **One Savings Goal.** Removed the duplicate; the single widget lives on the
+  main Finance overview.
+- **Currency-safe Net Worth.** Balances in different currencies are **subtotaled
+  per currency** ("MDL accounts", "USD accounts") instead of being blended into
+  one misleading number; the headline shows the budget-currency total with the
+  others listed alongside.
+- **More polish:** drag to **reorder** account cards; **click a card to filter
+  the transaction list** to it (a real entry point); mark one account **primary**
+  (star) so Quick Add pre-selects it; standard **empty state** when there are no
+  accounts; and the mystery lock icon is now a real, explained
+  **"hide balance until tapped"** privacy toggle.

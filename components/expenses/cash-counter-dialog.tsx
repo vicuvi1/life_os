@@ -313,6 +313,10 @@ export function CashCounterDialog({
                     Save as balance
                   </Button>
                 </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Copies the total to the account once — the counter and legend
+                  stay separate and never sync to any balance afterward.
+                </p>
                 <Button
                   variant="ghost"
                   size="sm"

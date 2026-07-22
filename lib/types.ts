@@ -439,12 +439,18 @@ export interface Account {
   description: string | null;
   color: string | null;
   icon: string | null;
+  /** Optional custom logo (compressed data URL). Wins over icon/color when set. */
+  image: string | null;
   /** User-extensible tag: Cash, Debit, Credit, Savings, Other, … */
   type: string;
   /** Manual starting balance; live balance = startingBalance + linked net. */
   startingBalance: number;
   /** Per-account currency override (null = use the budget currency). */
   currency: string | null;
+  /** Pre-selected in Quick Add when set (only one account should be primary). */
+  isPrimary: boolean;
+  /** Hide the balance behind a tap-to-reveal (privacy). */
+  hideBalance: boolean;
   archived: boolean;
   order: number;
   createdAt: number;

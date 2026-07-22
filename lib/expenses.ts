@@ -208,20 +208,44 @@ export function accountBalance(
 // ---------------------------------------------------------------------------
 // Accounts (user-defined cards / wallets) + cash counter legend.
 // ---------------------------------------------------------------------------
-export const ACCOUNT_TYPE_SUGGESTIONS = ["Cash", "Debit", "Credit", "Savings", "Other"];
+export const ACCOUNT_TYPE_SUGGESTIONS = [
+  "Cash",
+  "Debit",
+  "Credit",
+  "Savings",
+  "Checking",
+  "Crypto wallet",
+  "Investment",
+  "Business",
+  "Other",
+];
 export const ACCOUNT_COLORS = [
   "#8b5cf6",
-  "#10b981",
+  "#7c3aed",
+  "#6366f1",
   "#3b82f6",
+  "#0ea5e9",
+  "#06b6d4",
+  "#14b8a6",
+  "#10b981",
+  "#22c55e",
+  "#84cc16",
+  "#eab308",
   "#f59e0b",
+  "#f97316",
   "#ef4444",
   "#ec4899",
-  "#14b8a6",
-  "#eab308",
-  "#22c55e",
+  "#d946ef",
+  "#a855f7",
   "#64748b",
+  "#475569",
+  "#0f172a",
 ];
-export const ACCOUNT_ICONS = ["💵", "🔒", "💳", "🏦", "👛", "📈", "🪙", "💰"];
+export const ACCOUNT_ICONS = [
+  "💵", "💳", "🏦", "👛", "🪙", "💰", "📈", "📊",
+  "🔒", "🐷", "🏆", "🎯", "💎", "🧾", "🏠", "🚗",
+  "✈️", "🎓", "🛒", "₿", "💼", "🎁",
+];
 
 function uid(prefix: string): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -233,8 +257,8 @@ function uid(prefix: string): string {
 export function seedAccounts(budget: Pick<Budget, "openingBalances"> | null): Account[] {
   const ob = budget?.openingBalances ?? {};
   return [
-    { id: "wallet", name: "Wallet", description: null, color: "#8b5cf6", icon: "💵", type: "Cash", startingBalance: ob.wallet ?? 0, currency: null, archived: false, order: 0, createdAt: 0 },
-    { id: "safe", name: "Safe", description: null, color: "#10b981", icon: "🔒", type: "Savings", startingBalance: ob.safe ?? 0, currency: null, archived: false, order: 1, createdAt: 0 },
+    { id: "wallet", name: "Wallet", description: null, color: "#8b5cf6", icon: "💵", image: null, type: "Cash", startingBalance: ob.wallet ?? 0, currency: null, isPrimary: true, hideBalance: false, archived: false, order: 0, createdAt: 0 },
+    { id: "safe", name: "Safe", description: null, color: "#10b981", icon: "🐷", image: null, type: "Savings", startingBalance: ob.safe ?? 0, currency: null, isPrimary: false, hideBalance: false, archived: false, order: 1, createdAt: 0 },
   ];
 }
 
@@ -245,12 +269,35 @@ export function makeAccount(order: number): Account {
     description: null,
     color: ACCOUNT_COLORS[order % ACCOUNT_COLORS.length],
     icon: null,
+    image: null,
     type: "Cash",
     startingBalance: 0,
     currency: null,
+    isPrimary: false,
+    hideBalance: false,
     archived: false,
     order,
     createdAt: Date.now(),
+  };
+}
+
+/** Fill in any missing fields on an account read from storage. */
+export function normalizeAccount(raw: Partial<Account> & { id: string }): Account {
+  return {
+    id: raw.id,
+    name: raw.name ?? "Account",
+    description: raw.description ?? null,
+    color: raw.color ?? null,
+    icon: raw.icon ?? null,
+    image: raw.image ?? null,
+    type: raw.type ?? "Other",
+    startingBalance: typeof raw.startingBalance === "number" ? raw.startingBalance : 0,
+    currency: raw.currency ?? null,
+    isPrimary: raw.isPrimary === true,
+    hideBalance: raw.hideBalance === true,
+    archived: raw.archived === true,
+    order: typeof raw.order === "number" ? raw.order : 0,
+    createdAt: typeof raw.createdAt === "number" ? raw.createdAt : 0,
   };
 }
 

@@ -213,7 +213,18 @@ export function ExpenseFormDialog({
                 <SelectContent>
                   {accounts.map((a) => (
                     <SelectItem key={a.id} value={a.id}>
-                      {a.name}
+                      <span className="flex items-center gap-2">
+                        {a.image ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={a.image} alt="" className="h-4 w-4 rounded object-cover" />
+                        ) : (
+                          <span
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ backgroundColor: a.color ?? "#64748b" }}
+                          />
+                        )}
+                        {a.name}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>

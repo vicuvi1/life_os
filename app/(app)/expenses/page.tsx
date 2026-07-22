@@ -45,6 +45,9 @@ import {
   Zap,
   Newspaper,
   CreditCard,
+  Pencil,
+  Star,
+  Eye,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -75,6 +78,7 @@ import {
   INCOME_CATEGORY_LABEL,
   isTransfer,
   seedAccounts,
+  normalizeAccount,
   sortAccounts,
   activeAccounts,
   accountById,
@@ -92,7 +96,7 @@ import {
   RECURRING_FREQUENCY_ABBREV,
 } from "@/lib/recurring";
 import { entriesToCsv, downloadCsv } from "@/lib/export";
-import { resolveCurrency, formatAmount, formatAmountCompact } from "@/lib/currency";
+import { resolveCurrency, formatAmount, formatAmountCompact, type Currency } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -202,6 +206,8 @@ export default function FinancePage() {
   const [transferOpen, setTransferOpen] = useState(false);
   const [accountsOpen, setAccountsOpen] = useState(false);
   const [cashOpen, setCashOpen] = useState(false);
+  const [revealedAccts, setRevealedAccts] = useState<Set<string>>(new Set());
+  const [dragAcct, setDragAcct] = useState<string | null>(null);
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -250,9 +256,31 @@ export default function FinancePage() {
   // User-defined accounts (embedded on the budget). Seed wallet/safe for legacy
   // data so existing transactions keep their account reference.
   const accounts = useMemo(() => {
-    const a = budget?.accounts ?? [];
-    return a.length ? sortAccounts(a) : seedAccounts(budget);
+    const raw = budget?.accounts ?? [];
+    const list = raw.length ? raw.map(normalizeAccount) : seedAccounts(budget);
+    return sortAccounts(list);
   }, [budget]);
+  const primaryAccount = useMemo(
+    () => accounts.find((a) => a.isPrimary && !a.archived) ?? null,
+    [accounts]
+  );
+
+  async function reorderAccounts(fromId: string, toId: string) {
+    if (!user || fromId === toId) return;
+    const ordered = sortAccounts(accounts);
+    const from = ordered.findIndex((a) => a.id === fromId);
+    const to = ordered.findIndex((a) => a.id === toId);
+    if (from < 0 || to < 0) return;
+    const [moved] = ordered.splice(from, 1);
+    ordered.splice(to, 0, moved);
+    const next = ordered.map((a, i) => ({ ...a, order: i }));
+    setBudget((b) => (b ? { ...b, accounts: next } : b)); // optimistic
+    try {
+      await setBudgetAccounts(user.uid, next);
+    } catch {
+      load({ quiet: true });
+    }
+  }
   const activeAccts = useMemo(() => activeAccounts(accounts), [accounts]);
   const acctMap = useMemo(() => accountById(accounts), [accounts]);
   const accountName = useCallback(
@@ -362,15 +390,21 @@ export default function FinancePage() {
     }
   }, [user, budget, load]);
 
-  // Keep the selected quick-add / add-line account valid as accounts change.
+  // Pre-select the primary account in Quick Add (once accounts load), and keep
+  // the selected account valid as accounts change.
+  const primaryApplied = useRef(false);
   useEffect(() => {
     if (activeAccts.length === 0) return;
     const ids = new Set(activeAccts.map((a) => a.id));
-    if (!ids.has(quickEntry.account))
-      setQuickEntry((prev) => ({ ...prev, account: activeAccts[0].id }));
-    if (!ids.has(newAccount)) setNewAccount(activeAccts[0].id);
+    const fallback = primaryAccount?.id ?? activeAccts[0].id;
+    if (!primaryApplied.current) {
+      primaryApplied.current = true;
+      if (primaryAccount) setQuickEntry((prev) => ({ ...prev, account: primaryAccount.id }));
+    }
+    if (!ids.has(quickEntry.account)) setQuickEntry((prev) => ({ ...prev, account: fallback }));
+    if (!ids.has(newAccount)) setNewAccount(fallback);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAccts]);
+  }, [activeAccts, primaryAccount]);
 
   const quickInit = useRef(true);
   useEffect(() => {
@@ -468,14 +502,32 @@ export default function FinancePage() {
     () => activeAccts.reduce((s, a) => s + a.startingBalance, 0),
     [activeAccts]
   );
-  const netWorth = useMemo(
-    () => activeAccts.reduce((s, a) => s + computeAccountBalance(a, expenses), 0),
-    [activeAccts, expenses]
-  );
   const accountBalances = useMemo(
     () => activeAccts.map((a) => ({ account: a, balance: computeAccountBalance(a, expenses) })),
     [activeAccts, expenses]
   );
+  // Net worth is grouped per currency — summing across currencies without a rate
+  // is meaningless, so each currency keeps its own subtotal.
+  const netWorthByCurrency = useMemo(() => {
+    const groups = new Map<string, { currency: Currency; total: number }>();
+    for (const { account, balance } of accountBalances) {
+      const cur = account.currency ? resolveCurrency({ currency: account.currency }) : currency;
+      const g = groups.get(cur.code) ?? { currency: cur, total: 0 };
+      g.total += balance;
+      groups.set(cur.code, g);
+    }
+    return Array.from(groups.values()).sort((a, b) =>
+      a.currency.code === currency.code
+        ? -1
+        : b.currency.code === currency.code
+          ? 1
+          : a.currency.code.localeCompare(b.currency.code)
+    );
+  }, [accountBalances, currency]);
+  // The headline "net worth" is the budget-currency subtotal; other currencies
+  // are shown alongside, never blended into it.
+  const netWorth = netWorthByCurrency.find((g) => g.currency.code === currency.code)?.total ?? 0;
+  const otherCurrencyTotals = netWorthByCurrency.filter((g) => g.currency.code !== currency.code);
 
   const dim = daysInMonth(year, month);
   const days = useMemo(() => Array.from({ length: dim }, (_, i) => i + 1), [dim]);
@@ -1048,7 +1100,15 @@ export default function FinancePage() {
               iconClass="bg-primary/15 text-primary"
               label="Current money"
               value={formatDisplayAmount(netWorth)}
-              sub={<span className="text-xs text-muted-foreground">Across all accounts</span>}
+              sub={
+                otherCurrencyTotals.length > 0 ? (
+                  <span className="text-xs text-muted-foreground">
+                    + {otherCurrencyTotals.map((g) => formatAmount(g.total, g.currency)).join(" · ")}
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Across all accounts</span>
+                )
+              }
               spark={sparkData}
             />
             <StatCard
@@ -1102,60 +1162,111 @@ export default function FinancePage() {
                 </Button>
               </div>
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {accountBalances.map(({ account, balance }) => {
-                const color = account.color ?? "#64748b";
-                const isActive = filter === account.id;
-                return (
-                  <button
-                    key={account.id}
-                    type="button"
-                    onClick={() => setAccountsOpen(true)}
-                    title={`Edit ${account.name}`}
-                    className={cn(
-                      "group relative flex min-h-[132px] flex-col justify-between overflow-hidden rounded-2xl border p-4 text-left transition-all duration-150 ease-smooth hover:-translate-y-0.5 hover:shadow-md",
-                      isActive && "ring-2 ring-primary"
-                    )}
-                    style={{
-                      borderColor: `${color}55`,
-                      background: `linear-gradient(135deg, ${color}26, ${color}0d)`,
-                    }}
-                  >
-                    <div className="flex items-start justify-between">
-                      <span
-                        className="flex h-10 w-10 items-center justify-center rounded-xl text-lg"
-                        style={{ backgroundColor: `${color}2e`, color }}
-                      >
-                        {account.icon ?? account.name.charAt(0).toUpperCase()}
-                      </span>
-                      <span className="rounded-md px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
-                        Edit
-                      </span>
-                    </div>
-                    <div>
-                      <p className="truncate text-sm font-semibold">{account.name}</p>
-                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                        {account.type}
-                      </p>
-                      <p className="mt-1.5 text-xl font-bold tabular-nums">
-                        {formatAmount(
-                          balance,
-                          account.currency ? resolveCurrency({ currency: account.currency }) : currency
+            {accountBalances.length === 0 ? (
+              <Card>
+                <div className="flex flex-col items-center gap-2 p-10 text-center">
+                  <CreditCard className="h-8 w-8 text-muted-foreground" />
+                  <p className="font-medium">No accounts yet</p>
+                  <p className="max-w-sm text-sm text-muted-foreground">
+                    Add a card or wallet to track each balance separately and tag
+                    every transaction to it.
+                  </p>
+                  <Button size="sm" onClick={() => setAccountsOpen(true)}>
+                    <Plus className="h-4 w-4" /> Add your first card
+                  </Button>
+                </div>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {accountBalances.map(({ account, balance }) => {
+                  const color = account.color ?? "#64748b";
+                  const isActive = filter === account.id;
+                  const revealed = !account.hideBalance || revealedAccts.has(account.id);
+                  const acctCur = account.currency ? resolveCurrency({ currency: account.currency }) : currency;
+                  return (
+                    <div
+                      key={account.id}
+                      role="button"
+                      tabIndex={0}
+                      draggable
+                      onDragStart={() => setDragAcct(account.id)}
+                      onDragEnd={() => setDragAcct(null)}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => {
+                        if (dragAcct) reorderAccounts(dragAcct, account.id);
+                        setDragAcct(null);
+                      }}
+                      onClick={() => setFilter(isActive ? "all" : account.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") setFilter(isActive ? "all" : account.id);
+                      }}
+                      title="Show this account's transactions"
+                      className={cn(
+                        "group relative flex min-h-[132px] cursor-pointer flex-col justify-between overflow-hidden rounded-2xl border p-4 text-left transition-all duration-150 ease-smooth hover:-translate-y-0.5 hover:shadow-md active:cursor-grabbing",
+                        isActive && "ring-2 ring-primary",
+                        dragAcct === account.id && "opacity-50"
+                      )}
+                      style={{ borderColor: `${color}55`, background: `linear-gradient(135deg, ${color}26, ${color}0d)` }}
+                    >
+                      <div className="flex items-start justify-between">
+                        {account.image ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={account.image} alt="" className="h-10 w-10 rounded-xl object-cover" />
+                        ) : (
+                          <span className="flex h-10 w-10 items-center justify-center rounded-xl text-lg" style={{ backgroundColor: `${color}2e`, color }}>
+                            {account.icon ?? account.name.charAt(0).toUpperCase()}
+                          </span>
                         )}
-                      </p>
+                        <div className="flex items-center gap-1">
+                          {account.isPrimary && (
+                            <Star className="h-4 w-4 fill-amber-400 text-amber-400" aria-label="Primary account" />
+                          )}
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            aria-label={`Edit ${account.name}`}
+                            onClick={(e) => { e.stopPropagation(); setAccountsOpen(true); }}
+                            onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); setAccountsOpen(true); } }}
+                            className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-background/60 hover:text-foreground group-hover:opacity-100"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </span>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="truncate text-sm font-semibold">{account.name}</p>
+                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{account.type}</p>
+                        <div className="mt-1.5 flex items-center gap-2">
+                          {revealed ? (
+                            <p className="text-xl font-bold tabular-nums">{formatAmount(balance, acctCur)}</p>
+                          ) : (
+                            <>
+                              <p className="text-xl font-bold tracking-widest">••••</p>
+                              <button
+                                type="button"
+                                aria-label="Reveal balance"
+                                onClick={(e) => { e.stopPropagation(); setRevealedAccts((prev) => new Set(prev).add(account.id)); }}
+                                className="text-muted-foreground hover:text-foreground"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </button>
-                );
-              })}
-              <button
-                type="button"
-                onClick={() => setAccountsOpen(true)}
-                className="flex min-h-[132px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed text-muted-foreground transition-colors hover:border-primary/50 hover:bg-primary/5 hover:text-foreground"
-              >
-                <Plus className="h-6 w-6" />
-                <span className="text-sm font-medium">Add card</span>
-              </button>
-            </div>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => setAccountsOpen(true)}
+                  className="flex min-h-[132px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed text-muted-foreground transition-colors hover:border-primary/50 hover:bg-primary/5 hover:text-foreground"
+                >
+                  <Plus className="h-6 w-6" />
+                  <span className="text-sm font-medium">Add card</span>
+                </button>
+              </div>
+            )}
           </section>
 
           {/* Insights */}
@@ -1550,20 +1661,32 @@ export default function FinancePage() {
               <Card className="overflow-hidden">
                 <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
                   <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Net worth</span>
-                  <span className="text-sm font-semibold tabular-nums">{formatDisplayAmount(netWorth)}</span>
                 </div>
-                <div className="space-y-2 p-4">
-                  {accountBalances.map(({ account, balance }) => (
-                    <div key={account.id} className="flex items-center justify-between gap-3 text-sm">
-                      <span className="inline-flex min-w-0 items-center gap-2">
-                        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: account.color ?? "#64748b" }} />
-                        <span className="truncate">{account.name}</span>
-                      </span>
-                      <span className="shrink-0 tabular-nums text-muted-foreground">
-                        {formatAmount(balance, account.currency ? resolveCurrency({ currency: account.currency }) : currency)}
-                      </span>
+                <div className="space-y-3 p-4">
+                  {netWorthByCurrency.map((g) => (
+                    <div key={g.currency.code} className="flex items-center justify-between gap-3 text-sm font-semibold">
+                      <span>{netWorthByCurrency.length > 1 ? `${g.currency.code} accounts` : "Total"}</span>
+                      <span className="tabular-nums">{formatAmount(g.total, g.currency)}</span>
                     </div>
                   ))}
+                  {netWorthByCurrency.length > 1 && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Kept separate — no conversion between currencies.
+                    </p>
+                  )}
+                  <div className="space-y-1.5 border-t pt-2">
+                    {accountBalances.map(({ account, balance }) => (
+                      <div key={account.id} className="flex items-center justify-between gap-3 text-sm">
+                        <span className="inline-flex min-w-0 items-center gap-2">
+                          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: account.color ?? "#64748b" }} />
+                          <span className="truncate">{account.name}</span>
+                        </span>
+                        <span className="shrink-0 tabular-nums text-muted-foreground">
+                          {formatAmount(balance, account.currency ? resolveCurrency({ currency: account.currency }) : currency)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </Card>
 
@@ -1647,32 +1770,6 @@ export default function FinancePage() {
                           );
                         })}
                       </ul>
-                    </div>
-                  )}
-                </div>
-              </Card>
-
-              <Card className="overflow-hidden">
-                <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Savings goal</span>
-                  {savingsTarget ? <span className="text-xs text-muted-foreground">{(savingsProgress ?? 0).toFixed(0)}%</span> : null}
-                </div>
-                <div className="p-4">
-                  {savingsTarget ? (
-                    <>
-                      <p className="text-sm text-muted-foreground">{formatDisplayAmount(netWorth)} of {formatDisplayAmount(savingsTarget)} saved</p>
-                      <div className="mt-3 h-3 overflow-hidden rounded-full bg-muted">
-                        <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(100, savingsProgress ?? 0)}%` }} />
-                      </div>
-                      <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-                        <span>{daysToGoal != null ? `${daysToGoal} days to goal` : "Keep saving to hit your target"}</span>
-                        <span>{formatDisplayAmount(netWorth)}</span>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="space-y-3 text-sm text-muted-foreground">
-                      <p>Set a savings goal to unlock progress tracking and personalized insights.</p>
-                      <Button variant="secondary" size="sm" onClick={() => setBudgetOpen(true)}>Set goal</Button>
                     </div>
                   )}
                 </div>
