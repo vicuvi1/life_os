@@ -657,9 +657,9 @@ export default function HabitsPage() {
                         const { wd, day } = fmtDay(k);
                         const isToday = k === today;
                         return (
-                          <th key={k} className={cn("w-[34px] px-0 py-1 text-center align-bottom", isToday && "bg-primary/5 text-primary")}>
-                            <div className="text-[9px] uppercase text-muted-foreground">{wd[0]}</div>
-                            <div className={cn("text-[11px] tabular-nums", isToday ? "font-bold text-primary" : "text-muted-foreground")}>{day}</div>
+                          <th key={k} className={cn("w-[44px] px-0 py-2 text-center align-bottom", isToday && "bg-primary/5 text-primary")}>
+                            <div className="text-[10px] uppercase text-muted-foreground">{wd[0]}</div>
+                            <div className={cn("text-xs tabular-nums", isToday ? "font-bold text-primary" : "text-muted-foreground")}>{day}</div>
                           </th>
                         );
                       })}
@@ -731,7 +731,7 @@ export default function HabitsPage() {
                             </div>
                           </td>
                           {cells.map((c) => (
-                            <td key={c.key} className={cn("p-0.5 text-center", c.key === today && "bg-primary/5")}>
+                            <td key={c.key} className={cn("p-1 text-center", c.key === today && "bg-primary/5")}>
                               <StatusCell
                                 status={c.status}
                                 color={color}
@@ -1055,7 +1055,7 @@ function StatusCell({ status, color, value, showNumber, disabled, hasNote, anima
   status: DayStatus; color: string; value: number | null; showNumber: boolean; disabled: boolean; hasNote: boolean; animate?: boolean; title?: string; onClick: () => void; onNote: () => void;
 }) {
   const base = cn(
-    "relative mx-auto flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold tabular-nums transition",
+    "relative mx-auto flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold tabular-nums transition",
     animate && status === "completed" && "animate-checkin"
   );
   let cls = "";
@@ -1065,7 +1065,7 @@ function StatusCell({ status, color, value, showNumber, disabled, hasNote, anima
   if (status === "completed") {
     cls = "text-white";
     style = { backgroundColor: color };
-    content = showNumber ? value : <Check className="h-3.5 w-3.5" />;
+    content = showNumber ? value : <Check className="h-5 w-5" />;
     label = "Completed";
   } else if (status === "partial") {
     style = { backgroundColor: `${color}40`, color };
@@ -1089,7 +1089,7 @@ function StatusCell({ status, color, value, showNumber, disabled, hasNote, anima
       title={title ?? label}
     >
       {content}
-      {hasNote && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-sky-400 ring-1 ring-card" />}
+      {hasNote && <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-sky-400 ring-1 ring-card" />}
     </button>
   );
 }
