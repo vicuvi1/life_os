@@ -2863,3 +2863,35 @@ next thing to do**.
 
 > **Next.** Phase 2 (Momentum & health): a real momentum score, on-track/at-risk
 > pacing, streaks, a stall radar, and a wins log.
+
+---
+
+## 🎯 Goals — Productivity Overhaul, Phase 2: Momentum & health
+
+**What it is.** Signals that tell you, honestly and at a glance, which goals are
+*moving* and which have gone quiet — replacing meaningless numbers with a plain
+read on health.
+
+**How it works.**
+- **Momentum score + label.** A new engine (`goalMomentum`) blends recent
+  velocity (%/week over the last 14 days) with how recently progress last
+  *increased* into one 0-100 score and a plain label: **Flying / Steady /
+  Warming up / Stalled** (or "New" until there's history). Every goal card shows
+  a coloured momentum chip with either "+X%/wk" or "idle Nd".
+- **Header stat row.** Four honest tiles across the top: **Active**, **At risk**
+  (stale *or* behind pace), **Avg velocity** (mean %/week across active goals with
+  history — the real version of the screenshot's "+4.2%/wk"), and **Wins (7d)**
+  (milestones completed this week).
+- **Stall radar.** A card listing the active goals that haven't moved lately,
+  worst first, each with how many days it's been idle — one click opens the goal.
+- **Recent wins.** A companion card celebrating the milestones you completed in
+  the last two weeks. Momentum needs proof.
+- **At risk / behind** reuses the existing pace engine (linear velocity vs. the
+  target date) so "at risk" means something concrete.
+
+**How to use it.** Glance at the stat row and momentum chips to see where you
+stand; work the **Stall radar** to un-stick quiet goals; enjoy the **Recent
+wins**. No data entry — it's all derived from the progress you already log.
+
+> **Next.** Phase 3 (Structure & breakdown): Key Results (OKR), goal templates,
+> dependencies/blocking, and life-area grouping.

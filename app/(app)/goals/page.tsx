@@ -19,6 +19,10 @@ import {
   Circle,
   CheckCircle2,
   CornerDownRight,
+  Activity,
+  Trophy,
+  TrendingUp,
+  type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -31,7 +35,16 @@ import {
   setTaskDone,
   updateGoalMilestones,
 } from "@/lib/firebase/db";
-import { goalProgressDetail, goalStale, goalNextAction, type NextAction } from "@/lib/goals";
+import {
+  goalProgressDetail,
+  goalStale,
+  goalNextAction,
+  goalMomentum,
+  goalPace,
+  shortDate,
+  type NextAction,
+  type MomentumInfo,
+} from "@/lib/goals";
 import { toDateKey } from "@/lib/greeting";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -54,6 +67,59 @@ const actionKindLabel: Record<NextAction["kind"], string> = {
   step: "step",
   milestone: "milestone",
 };
+
+const MOMENTUM_STYLE: Record<MomentumInfo["tone"], { dot: string; text: string }> = {
+  good: { dot: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400" },
+  ok: { dot: "bg-blue-500", text: "text-blue-600 dark:text-blue-400" },
+  warn: { dot: "bg-amber-500", text: "text-amber-600 dark:text-amber-400" },
+  none: { dot: "bg-muted-foreground/40", text: "text-muted-foreground" },
+};
+
+function MomentumChip({ m }: { m: MomentumInfo }) {
+  if (m.label === "New")
+    return <span className="text-xs text-muted-foreground/60">New — no history yet</span>;
+  const s = MOMENTUM_STYLE[m.tone];
+  return (
+    <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", s.text)}>
+      <span className={cn("h-1.5 w-1.5 rounded-full", s.dot)} />
+      {m.label}
+      {m.velocityPerWeek > 0 ? (
+        <span className="font-normal text-muted-foreground">· +{m.velocityPerWeek}%/wk</span>
+      ) : m.daysSinceGain != null && m.daysSinceGain > 0 ? (
+        <span className="font-normal text-muted-foreground">· idle {m.daysSinceGain}d</span>
+      ) : null}
+    </span>
+  );
+}
+
+function StatTile({
+  icon: Icon,
+  label,
+  value,
+  tone = "default",
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  tone?: "default" | "amber" | "emerald";
+}) {
+  return (
+    <div className="rounded-xl border bg-card p-3">
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Icon className="h-3.5 w-3.5" /> {label}
+      </div>
+      <p
+        className={cn(
+          "mt-1 text-xl font-bold tabular-nums",
+          tone === "amber" && "text-amber-500",
+          tone === "emerald" && "text-emerald-500"
+        )}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
 
 export default function GoalsPage() {
   const { user } = useAuth();
@@ -89,6 +155,59 @@ export default function GoalsPage() {
     () => goals.filter((g) => g.status === "active").length,
     [goals]
   );
+
+  // Health stats for the header row.
+  const stats = useMemo(() => {
+    const active = goals.filter((g) => g.status === "active");
+    const weekAgo = (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 7);
+      return toDateKey(d);
+    })();
+    const atRisk = active.filter((g) => {
+      if (goalStale(g, today)) return true;
+      const p = goalPace(g, today);
+      return p ? p.tone === "bad" || p.tone === "warn" : false;
+    }).length;
+    const vels = active
+      .filter((g) => g.progressLog.length >= 2)
+      .map((g) => goalMomentum(g, today).velocityPerWeek);
+    const avgVelocity = vels.length
+      ? Math.round((vels.reduce((a, b) => a + b, 0) / vels.length) * 10) / 10
+      : null;
+    const winsThisWeek = goals
+      .flatMap((g) => g.milestones)
+      .filter((m) => m.done && m.completedDate && m.completedDate >= weekAgo).length;
+    return { active: active.length, atRisk, avgVelocity, winsThisWeek };
+  }, [goals, today]);
+
+  // Goals that have gone quiet — the stall radar.
+  const stalled = useMemo(
+    () =>
+      goals
+        .filter((g) => g.status === "active" && goalStale(g, today))
+        .map((g) => ({ goal: g, m: goalMomentum(g, today) }))
+        .sort((a, b) => (b.m.daysSinceGain ?? 9999) - (a.m.daysSinceGain ?? 9999))
+        .slice(0, 5),
+    [goals, today]
+  );
+
+  // Milestones completed in the last two weeks — the wins log.
+  const recentWins = useMemo(() => {
+    const twoWeeksAgo = (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 14);
+      return toDateKey(d);
+    })();
+    return goals
+      .flatMap((g) =>
+        g.milestones
+          .filter((m) => m.done && m.completedDate && m.completedDate >= twoWeeksAgo)
+          .map((m) => ({ goal: g, m }))
+      )
+      .sort((a, b) => ((a.m.completedDate ?? "") < (b.m.completedDate ?? "") ? 1 : -1))
+      .slice(0, 6);
+  }, [goals]);
 
   // Next action per goal — memoised so the Today strip and cards agree.
   const nextActions = useMemo(() => {
@@ -168,6 +287,7 @@ export default function GoalsPage() {
   // A single goal card, prominent (focus) or compact (everything else).
   function GoalCard({ goal, prominent }: { goal: Goal; prominent: boolean }) {
     const action = nextActions.get(goal.id) ?? null;
+    const momentum = goalMomentum(goal, today);
     return (
       <Card
         className={cn(
@@ -248,6 +368,11 @@ export default function GoalsPage() {
               <span className="font-medium text-foreground">{goal.progress}%</span>
             </div>
             <Progress value={goal.progress} />
+          </div>
+
+          {/* Momentum — am I moving on this? */}
+          <div>
+            <MomentumChip m={momentum} />
           </div>
 
           {/* Next action — context only; completion lives in Today's Momentum */}
@@ -348,6 +473,32 @@ export default function GoalsPage() {
         </Card>
       ) : (
         <div className="space-y-8">
+          {/* Health stat row */}
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <StatTile icon={Activity} label="Active" value={String(stats.active)} />
+            <StatTile
+              icon={AlertTriangle}
+              label="At risk"
+              value={String(stats.atRisk)}
+              tone={stats.atRisk > 0 ? "amber" : "default"}
+            />
+            <StatTile
+              icon={TrendingUp}
+              label="Avg velocity"
+              value={
+                stats.avgVelocity == null
+                  ? "—"
+                  : `${stats.avgVelocity >= 0 ? "+" : ""}${stats.avgVelocity}%/wk`
+              }
+            />
+            <StatTile
+              icon={Trophy}
+              label="Wins (7d)"
+              value={String(stats.winsThisWeek)}
+              tone={stats.winsThisWeek > 0 ? "emerald" : "default"}
+            />
+          </div>
+
           {/* Focus prompt / WIP nudge */}
           {showFocusPrompt && (
             <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.07] p-4">
@@ -414,6 +565,70 @@ export default function GoalsPage() {
                 </CardContent>
               </Card>
             </section>
+          )}
+
+          {/* Stall radar + Wins */}
+          {(stalled.length > 0 || recentWins.length > 0) && (
+            <div className="grid gap-4 md:grid-cols-2">
+              {stalled.length > 0 && (
+                <Card className="border-amber-500/25">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center gap-2 text-sm font-semibold">
+                      <AlertTriangle className="h-4 w-4 text-amber-500" /> Stall radar
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {stalled.length} goal{stalled.length > 1 ? "s" : ""} haven&apos;t moved lately
+                    </p>
+                  </CardHeader>
+                  <CardContent className="space-y-0.5 pt-0">
+                    {stalled.map(({ goal, m }) => (
+                      <Link
+                        key={goal.id}
+                        href={`/goals/${goal.id}`}
+                        className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
+                      >
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          {goal.icon && <span aria-hidden>{goal.icon}</span>}
+                          <span className="truncate">{goal.title}</span>
+                        </span>
+                        <span className="shrink-0 text-xs font-medium text-amber-600 dark:text-amber-400">
+                          {m.daysSinceGain != null ? `${m.daysSinceGain}d idle` : "no progress"}
+                        </span>
+                      </Link>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+              {recentWins.length > 0 && (
+                <Card className="border-emerald-500/25">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center gap-2 text-sm font-semibold">
+                      <Trophy className="h-4 w-4 text-emerald-500" /> Recent wins
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Milestones completed in the last 2 weeks
+                    </p>
+                  </CardHeader>
+                  <CardContent className="space-y-0.5 pt-0">
+                    {recentWins.map(({ goal, m }) => (
+                      <Link
+                        key={m.id}
+                        href={`/goals/${goal.id}`}
+                        className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
+                      >
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                          <span className="truncate">{m.title}</span>
+                        </span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {m.completedDate ? shortDate(m.completedDate) : ""}
+                        </span>
+                      </Link>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           )}
 
           {/* Focus goals */}

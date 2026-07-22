@@ -460,6 +460,62 @@ export function goalNextAction(goal: Goal, tasks: Task[]): NextAction | null {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Momentum — "am I actually moving on this?" independent of any deadline.
+// Blends recent velocity with recency of the last gain into one 0-100 score +
+// a plain-language label, so a goal reads at a glance: Flying / Steady /
+// Warming up / Stalled. Deliberately simple, explainable arithmetic.
+// ---------------------------------------------------------------------------
+export type MomentumLabel = "Flying" | "Steady" | "Warming up" | "Stalled" | "New";
+export interface MomentumInfo {
+  score: number; // 0-100
+  label: MomentumLabel;
+  tone: "good" | "ok" | "warn" | "none";
+  velocityPerWeek: number; // %/week over the recent window (1 dp)
+  daysSinceGain: number | null; // days since progress last increased
+}
+
+export function goalMomentum(
+  goal: Pick<Goal, "progressLog">,
+  today: string
+): MomentumInfo {
+  const log = [...goal.progressLog].sort(byDate);
+  if (log.length < 2)
+    return { score: 0, label: "New", tone: "none", velocityPerWeek: 0, daysSinceGain: null };
+
+  const last = log[log.length - 1];
+
+  // Most recent day where progress increased vs the entry before it.
+  let lastGain: string | null = null;
+  for (let i = 1; i < log.length; i++) {
+    if (log[i].value > log[i - 1].value) lastGain = log[i].date;
+  }
+  const daysSinceGain = lastGain ? daysBetween(lastGain, today) : null;
+
+  // Velocity across the last up-to-14 days of history.
+  const windowStart = shiftKey(last.date, -14);
+  const win = log.filter((e) => e.date >= windowStart);
+  const first = win[0] ?? log[0];
+  const span = Math.max(1, daysBetween(first.date, last.date));
+  const velocityPerWeek = Math.round(((last.value - first.value) / span) * 7 * 10) / 10;
+
+  if (last.value >= 100)
+    return { score: 100, label: "Steady", tone: "good", velocityPerWeek, daysSinceGain };
+
+  const vScore = clamp(Math.round(velocityPerWeek * 8), 0, 70);
+  const recency = daysSinceGain == null ? 0 : clamp(30 - daysSinceGain * 3, 0, 30);
+  const score = clamp(vScore + recency, 0, 100);
+  const label: MomentumLabel =
+    score >= 70 ? "Flying" : score >= 40 ? "Steady" : score >= 15 ? "Warming up" : "Stalled";
+  const tone: MomentumInfo["tone"] =
+    label === "Flying" || label === "Steady"
+      ? "good"
+      : label === "Warming up"
+        ? "ok"
+        : "warn";
+  return { score, label, tone, velocityPerWeek, daysSinceGain };
+}
+
 /** Compact "Jul 14"-style label for a date key (for the trend chart axis). */
 export function shortDate(key: string): string {
   const d = new Date(key + "T00:00:00");
