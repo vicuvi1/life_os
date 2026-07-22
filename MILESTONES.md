@@ -2474,3 +2474,33 @@ a loose backlog effortless, and let the app do the tedious slotting.
 **Back-compatible, as before.** `recurrence`, `seriesId` and `reminders` are all
 optional on disk and defaulted by `mapTask`, so every existing task keeps
 working with no migration.
+
+---
+
+## 🗓️ Tasks — planner Phase 3 (true time-grid · hover · month workload)
+
+**Purpose.** Make the Week view read like a real calendar (Notion / Google
+Calendar), not coarse buckets — and make an empty calendar explain itself.
+
+**True hourly time-grid Week view.** The Week view was rebuilt from three
+Morning/Afternoon/Evening lanes into a proper **TIME gutter × 7 day columns**
+grid: an **All-day row** on top, then hourly rows **6am–10pm**. Each task sits
+in its start-hour cell as a compact colored card; **drop a task on any day +
+hour cell** to reschedule to that exact time (it keeps its duration), or drop on
+the All-day row to make it untimed. Today is highlighted; the whole grid scrolls
+horizontally on small screens. Scheduling is now expressed as a precise start
+minute everywhere (drag, drop, quick-add), not a bucket.
+
+**Hover previews.** Hovering a task card shows a rich popover — priority, time +
+duration, goal, energy, location, the subtask checklist, and tags — rendered
+through a portal so the scrolling grid never clips it. Click still opens the
+full editable detail sheet.
+
+**Month workload.** Month cells now show **both** signals from the mock: the
+priority dots (+overflow count) *and* a **workload bar** underneath — □ light
+(<2h) · ■ normal (2–6h) · ■■■ heavy (6h+) — from each day's open-task time.
+
+**Never-empty calendar.** When the week (or today) has nothing scheduled but you
+have unscheduled tasks, a hint appears with **Open planner** and **Auto-schedule**
+buttons — because an empty grid usually means tasks just need dates/times, not
+that anything is broken.

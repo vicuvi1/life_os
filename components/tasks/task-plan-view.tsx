@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Inbox, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { PRIORITY_ACCENT, type LaneKey } from "@/lib/tasks";
+import { PRIORITY_ACCENT } from "@/lib/tasks";
 import { TaskCard } from "@/components/tasks/task-card";
 import { TaskWeekView } from "@/components/tasks/task-week-view";
 import type { Task } from "@/lib/types";
@@ -19,9 +19,9 @@ interface Props {
   goalTitle: (id: string | null) => string | null;
   onOpen: (task: Task) => void;
   onToggleDone: (task: Task, done: boolean) => void;
-  onReschedule: (taskId: string, date: string, lane: LaneKey) => void;
+  onReschedule: (taskId: string, date: string, startMin: number | null) => void;
   onUnschedule: (taskId: string) => void;
-  onAdd: (date: string, lane: LaneKey) => void;
+  onAdd: (date: string, startMin: number | null) => void;
   onAutoSchedule: () => void;
   autoScheduling: boolean;
 }

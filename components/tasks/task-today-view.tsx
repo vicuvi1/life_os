@@ -4,16 +4,22 @@ import { useState } from "react";
 import { CalendarClock, Clock, Flame, ListTodo, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
+  DAY_BLOCKS,
   DAY_LANES,
   durationLabel,
   finishLabel,
   laneForTask,
   sortDayTasks,
   summarizeDay,
-  type LaneKey,
 } from "@/lib/tasks";
 import { TaskCard } from "@/components/tasks/task-card";
 import type { Task } from "@/lib/types";
+
+/** Representative start time (minutes) for a lane; null = all-day. */
+function laneStartMin(laneKey: string): number | null {
+  if (laneKey === "allday") return null;
+  return DAY_BLOCKS.find((b) => b.key === laneKey)?.startMin ?? null;
+}
 
 interface Props {
   date: string;
@@ -21,8 +27,8 @@ interface Props {
   goalTitle: (id: string | null) => string | null;
   onOpen: (task: Task) => void;
   onToggleDone: (task: Task, done: boolean) => void;
-  onReschedule: (taskId: string, date: string, lane: LaneKey) => void;
-  onAdd: (date: string, lane: LaneKey) => void;
+  onReschedule: (taskId: string, date: string, startMin: number | null) => void;
+  onAdd: (date: string, startMin: number | null) => void;
 }
 
 export function TaskTodayView({
@@ -34,7 +40,7 @@ export function TaskTodayView({
   onReschedule,
   onAdd,
 }: Props) {
-  const [over, setOver] = useState<LaneKey | null>(null);
+  const [over, setOver] = useState<string | null>(null);
   const summary = summarizeDay(tasks);
   const finish = finishLabel(summary);
 
@@ -69,7 +75,7 @@ export function TaskTodayView({
                 e.preventDefault();
                 setOver(null);
                 const id = e.dataTransfer.getData("text/plain");
-                if (id) onReschedule(id, date, lane.key);
+                if (id) onReschedule(id, date, laneStartMin(lane.key));
               }}
               className={cn(
                 "rounded-xl border p-3 transition-colors",
@@ -83,7 +89,7 @@ export function TaskTodayView({
                 </div>
                 <button
                   type="button"
-                  onClick={() => onAdd(date, lane.key)}
+                  onClick={() => onAdd(date, laneStartMin(lane.key))}
                   className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                 >
                   <Plus className="h-3.5 w-3.5" /> Add

@@ -1,7 +1,7 @@
 "use client";
 
 import { monthGrid, isInMonth, dayNum, formatLongDate, WEEKDAYS_SHORT } from "@/lib/dates";
-import { PRIORITY_ACCENT, sortDayTasks } from "@/lib/tasks";
+import { PRIORITY_ACCENT, WORKLOAD_BARS, dayWorkload, sortDayTasks } from "@/lib/tasks";
 import { TaskCard } from "@/components/tasks/task-card";
 import { cn } from "@/lib/utils";
 import type { Priority, Task } from "@/lib/types";
@@ -48,6 +48,7 @@ export function TaskMonthView({
           const isSelected = key === selected;
           // Up to three dots, highest-priority first.
           const dots = sortByPriority(open).slice(0, 3);
+          const bars = WORKLOAD_BARS[dayWorkload(dayTasks)];
           return (
             <button
               key={key}
@@ -79,6 +80,13 @@ export function TaskMonthView({
                   </span>
                 )}
               </div>
+              {bars > 0 && (
+                <div className="flex items-center gap-0.5" aria-label="workload">
+                  {Array.from({ length: bars }).map((_, i) => (
+                    <span key={i} className="h-0.5 w-2.5 rounded-full bg-muted-foreground/40" />
+                  ))}
+                </div>
+              )}
             </button>
           );
         })}

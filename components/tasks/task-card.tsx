@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Clock, ListChecks, MapPin, Repeat } from "lucide-react";
+import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { Clock, ListChecks, MapPin, Repeat, Target, Zap } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import {
@@ -21,6 +22,13 @@ interface Props {
   onDragEnd?: () => void;
   /** Trailing context, e.g. the goal title. */
   context?: string | null;
+  /** Dense variant for the week time-grid cells. */
+  compact?: boolean;
+}
+
+interface HoverPos {
+  top: number;
+  left: number;
 }
 
 export function TaskCard({
@@ -30,16 +38,34 @@ export function TaskCard({
   onDragStart,
   onDragEnd,
   context,
+  compact,
 }: Props) {
   const [dragging, setDragging] = useState(false);
+  const [hover, setHover] = useState<HoverPos | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
   const done = task.status === "done";
   const accent = PRIORITY_ACCENT[task.priority];
   const time = taskTimeLabel(task);
   const dur = durationLabel(taskDurationMin(task));
   const sub = subtaskProgress(task);
 
+  function openHover() {
+    const el = ref.current;
+    if (!el || typeof window === "undefined") return;
+    const r = el.getBoundingClientRect();
+    const W = 264;
+    const H = 240; // estimate for placement only
+    let left = r.right + 8;
+    if (left + W > window.innerWidth - 8) left = r.left - W - 8; // flip to left
+    if (left < 8) left = Math.min(r.left, window.innerWidth - W - 8);
+    let top = r.top;
+    if (top + H > window.innerHeight - 8) top = Math.max(8, window.innerHeight - H - 8);
+    setHover({ top, left });
+  }
+
   return (
     <div
+      ref={ref}
       role="button"
       tabIndex={0}
       draggable
@@ -47,12 +73,15 @@ export function TaskCard({
         e.dataTransfer.setData("text/plain", task.id);
         e.dataTransfer.effectAllowed = "move";
         setDragging(true);
+        setHover(null);
         onDragStart?.(task);
       }}
       onDragEnd={() => {
         setDragging(false);
         onDragEnd?.();
       }}
+      onMouseEnter={openHover}
+      onMouseLeave={() => setHover(null)}
       onClick={() => onOpen(task)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -61,17 +90,15 @@ export function TaskCard({
         }
       }}
       className={cn(
-        "group relative flex cursor-grab gap-2 overflow-hidden rounded-lg border bg-card p-2 pl-3 text-left shadow-sm transition-all hover:shadow-md hover:ring-1 active:cursor-grabbing",
+        "group relative flex cursor-grab gap-2 overflow-hidden rounded-lg border bg-card text-left shadow-sm transition-all hover:shadow-md hover:ring-1 active:cursor-grabbing",
         accent.ring,
+        compact ? "p-1.5 pl-2.5" : "p-2 pl-3",
         dragging && "opacity-40",
         done && "opacity-60"
       )}
     >
       {/* Priority color bar */}
-      <span
-        aria-hidden
-        className={cn("absolute inset-y-0 left-0 w-1", accent.bar)}
-      />
+      <span aria-hidden className={cn("absolute inset-y-0 left-0 w-1", accent.bar)} />
 
       <span
         className="mt-0.5 shrink-0"
@@ -88,7 +115,8 @@ export function TaskCard({
       <div className="min-w-0 flex-1">
         <p
           className={cn(
-            "truncate text-[13px] font-medium leading-tight",
+            "truncate font-medium leading-tight",
+            compact ? "text-[12px]" : "text-[13px]",
             done && "text-muted-foreground line-through"
           )}
         >
@@ -109,19 +137,19 @@ export function TaskCard({
               {sub.done}/{sub.total}
             </span>
           )}
-          {task.location && (
+          {(task.recurrence || task.seriesId) && (
+            <Repeat className="h-3 w-3" aria-label="Repeats" />
+          )}
+          {!compact && task.location && (
             <span className="inline-flex items-center gap-1">
               <MapPin className="h-3 w-3" />
               {task.location}
             </span>
           )}
-          {(task.recurrence || task.seriesId) && (
-            <Repeat className="h-3 w-3" aria-label="Repeats" />
-          )}
-          {context && <span className="truncate">· {context}</span>}
+          {!compact && context && <span className="truncate">· {context}</span>}
         </div>
 
-        {task.tags.length > 0 && (
+        {!compact && task.tags.length > 0 && (
           <div className="mt-1 flex flex-wrap gap-1">
             {task.tags.slice(0, 3).map((tag) => (
               <span
@@ -135,11 +163,85 @@ export function TaskCard({
         )}
       </div>
 
-      {/* Priority dot (visual anchor, top-right) */}
-      <span
-        aria-hidden
-        className={cn("mt-1 h-2 w-2 shrink-0 rounded-full", accent.dot)}
-      />
+      <span aria-hidden className={cn("mt-1 h-2 w-2 shrink-0 rounded-full", accent.dot)} />
+
+      {/* Hover preview (portaled so the scrolling grid can't clip it) */}
+      {hover &&
+        !dragging &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            style={{ position: "fixed", top: hover.top, left: hover.left, width: 264 }}
+            className="pointer-events-none z-[70] rounded-xl border bg-card p-3 shadow-xl"
+          >
+            <div className="flex items-start gap-2">
+              <span className={cn("mt-1 h-2 w-2 shrink-0 rounded-full", accent.dot)} />
+              <p className="text-sm font-semibold leading-tight">{task.title}</p>
+            </div>
+            <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+              <PreviewRow label="Priority" value={accent.label} />
+              {time && <PreviewRow label="Time" value={`${time}${dur ? ` · ${dur}` : ""}`} icon={<Clock className="h-3 w-3" />} />}
+              {context && <PreviewRow label="Goal" value={context} icon={<Target className="h-3 w-3" />} />}
+              {task.energy != null && <PreviewRow label="Energy" value={`${task.energy}/10`} icon={<Zap className="h-3 w-3" />} />}
+              {task.location && <PreviewRow label="Location" value={task.location} icon={<MapPin className="h-3 w-3" />} />}
+            </div>
+            {task.subtasks.length > 0 && (
+              <div className="mt-2 space-y-0.5 border-t pt-2">
+                {task.subtasks.slice(0, 4).map((s) => (
+                  <div key={s.id} className="flex items-center gap-1.5 text-xs">
+                    <span
+                      className={cn(
+                        "flex h-3 w-3 items-center justify-center rounded-[3px] border text-[8px]",
+                        s.done ? "border-emerald-500 bg-emerald-500 text-white" : "border-muted-foreground/40"
+                      )}
+                    >
+                      {s.done ? "✓" : ""}
+                    </span>
+                    <span className={cn("truncate", s.done && "text-muted-foreground line-through")}>
+                      {s.title}
+                    </span>
+                  </div>
+                ))}
+                {task.subtasks.length > 4 && (
+                  <p className="text-[11px] text-muted-foreground">
+                    +{task.subtasks.length - 4} more
+                  </p>
+                )}
+              </div>
+            )}
+            {task.tags.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {task.tags.map((t) => (
+                  <span key={t} className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
+            <p className="mt-2 text-[10px] text-muted-foreground/60">Click to open · drag to reschedule</p>
+          </div>,
+          document.body
+        )}
+    </div>
+  );
+}
+
+function PreviewRow({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: string;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="inline-flex items-center gap-1">
+        {icon}
+        {label}
+      </span>
+      <span className="truncate text-right font-medium text-foreground">{value}</span>
     </div>
   );
 }

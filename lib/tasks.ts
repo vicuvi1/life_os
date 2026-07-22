@@ -68,6 +68,67 @@ export function scheduleForLane(
 }
 
 // ---------------------------------------------------------------------------
+// Hourly grid — the true week time-grid view (TIME rows × day columns).
+// ---------------------------------------------------------------------------
+export const GRID_START_HOUR = 6; // first row (6 AM)
+export const GRID_END_HOUR = 22; // last row (10 PM)
+export const GRID_HOURS: number[] = Array.from(
+  { length: GRID_END_HOUR - GRID_START_HOUR + 1 },
+  (_, i) => GRID_START_HOUR + i
+);
+
+/** Compact hour label for the time gutter, e.g. "6am", "12pm", "5pm". */
+export function hourLabelShort(h: number): string {
+  const suffix = h < 12 ? "am" : "pm";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}${suffix}`;
+}
+
+/** Which hour row a timed task sits in, clamped into the visible grid. */
+export function gridHourFor(startMin: number): number {
+  return Math.min(
+    GRID_END_HOUR,
+    Math.max(GRID_START_HOUR, Math.floor(startMin / 60))
+  );
+}
+
+/**
+ * Resolve a task's schedule when moved to a target start (minutes) or to the
+ * all-day lane (null), preserving its existing duration (default 1h).
+ */
+export function scheduleAtMin(
+  task: Pick<Task, "startMin" | "endMin">,
+  startMin: number | null
+): { startMin: number | null; endMin: number | null } {
+  if (startMin == null) return { startMin: null, endMin: null };
+  const dur = taskDurationMin(task) ?? 60;
+  return { startMin, endMin: Math.min(startMin + dur, 24 * 60) };
+}
+
+// ---------------------------------------------------------------------------
+// Workload — month-view intensity (□ / ■ / ■■).
+// ---------------------------------------------------------------------------
+export type Workload = "none" | "light" | "normal" | "heavy";
+
+/** A day's load from its open tasks' total blocked (or estimated) time. */
+export function dayWorkload(tasks: Task[]): Workload {
+  const open = tasks.filter((t) => t.status !== "done");
+  if (open.length === 0) return "none";
+  const mins = open.reduce((s, t) => s + (taskDurationMin(t) ?? 60), 0);
+  const hours = mins / 60;
+  if (hours >= 6) return "heavy";
+  if (hours >= 2) return "normal";
+  return "light";
+}
+
+export const WORKLOAD_BARS: Record<Workload, number> = {
+  none: 0,
+  light: 1,
+  normal: 2,
+  heavy: 3,
+};
+
+// ---------------------------------------------------------------------------
 // Priority accents — color-coding by priority (🔴 high / 🟡 medium / 🟢 low).
 // Static class strings only, so Tailwind's JIT keeps them.
 // ---------------------------------------------------------------------------

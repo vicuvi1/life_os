@@ -25,10 +25,9 @@ import { minToLabel } from "@/lib/sessions";
 import {
   autoSchedule,
   planRecurringOccurrences,
-  scheduleForLane,
+  scheduleAtMin,
   tasksByDate as buildTasksByDate,
   upcomingReminders,
-  type LaneKey,
 } from "@/lib/tasks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -173,6 +172,13 @@ export default function TasksPage() {
 
   const detailTask = detailId ? visibleTasks.find((t) => t.id === detailId) ?? null : null;
 
+  // Nudge to schedule when the calendar is empty but there's a backlog.
+  const weekHasTasks = weekDates.some((k) => (byDate.get(k)?.length ?? 0) > 0);
+  const showEmptyHint =
+    backlog.length > 0 &&
+    ((view === "week" && !weekHasTasks) ||
+      (view === "today" && (byDate.get(today)?.length ?? 0) === 0));
+
   // -- Mutations -------------------------------------------------------------
   /** Optimistically patch one task in local state; returns a revert fn. */
   function patch(id: string, updater: (t: Task) => Task): () => void {
@@ -207,10 +213,10 @@ export default function TasksPage() {
     });
   }
 
-  function reschedule(taskId: string, date: string, lane: LaneKey) {
+  function reschedule(taskId: string, date: string, startMin: number | null) {
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
-    const sched = scheduleForLane(task, lane);
+    const sched = scheduleAtMin(task, startMin);
     // No-op guard: dropped exactly where it already is.
     if (
       task.dueDate === date &&
@@ -340,8 +346,8 @@ export default function TasksPage() {
     setFormOpen(true);
   }
 
-  function onAddToCell(date: string, lane: LaneKey) {
-    const sched = scheduleForLane({ startMin: null, endMin: null }, lane);
+  function onAddToCell(date: string, startMin: number | null) {
+    const sched = scheduleAtMin({ startMin: null, endMin: null }, startMin);
     openNew({ dueDate: date, startMin: sched.startMin, endMin: sched.endMin });
   }
 
@@ -488,6 +494,23 @@ export default function TasksPage() {
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {showEmptyHint && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3 text-sm">
+          <span className="text-muted-foreground">
+            <span className="font-medium text-foreground">{backlog.length}</span>{" "}
+            unscheduled task{backlog.length > 1 ? "s" : ""} — put them on the calendar.
+          </span>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setView("plan")}>
+              Open planner
+            </Button>
+            <Button size="sm" onClick={handleAutoSchedule} disabled={autoScheduling}>
+              {autoScheduling ? "Scheduling…" : "Auto-schedule"}
+            </Button>
+          </div>
         </div>
       )}
 
