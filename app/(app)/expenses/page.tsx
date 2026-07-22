@@ -113,6 +113,7 @@ import { ExpenseFormDialog } from "@/components/expenses/expense-form-dialog";
 import { BudgetFormDialog } from "@/components/expenses/budget-form-dialog";
 import { TransferDialog } from "@/components/expenses/transfer-dialog";
 import { AccountManagerDialog } from "@/components/expenses/account-manager-dialog";
+import { CashCounterDialog } from "@/components/expenses/cash-counter-dialog";
 import { RecurringDialog } from "@/components/expenses/recurring-dialog";
 import { DuplicatesDialog } from "@/components/expenses/duplicates-dialog";
 import { ConfirmDialog } from "@/components/expenses/confirm-dialog";
@@ -200,6 +201,7 @@ export default function FinancePage() {
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [accountsOpen, setAccountsOpen] = useState(false);
+  const [cashOpen, setCashOpen] = useState(false);
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -1477,9 +1479,14 @@ export default function FinancePage() {
               <Card className="overflow-hidden">
                 <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
                   <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Accounts</span>
-                  <Button variant="ghost" size="sm" onClick={() => setAccountsOpen(true)}>
-                    <Settings2 className="h-3.5 w-3.5" /> Manage
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => setCashOpen(true)}>
+                      Count cash
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setAccountsOpen(true)}>
+                      <Settings2 className="h-3.5 w-3.5" /> Manage
+                    </Button>
+                  </div>
                 </div>
                 <div className="space-y-2 p-4">
                   {accountBalances.map(({ account, balance }) => {
@@ -1727,6 +1734,16 @@ export default function FinancePage() {
             open={accountsOpen}
             onOpenChange={setAccountsOpen}
             userId={user.uid}
+            accounts={accounts}
+            expenses={expenses}
+            currency={currency}
+            onSaved={load}
+          />
+          <CashCounterDialog
+            open={cashOpen}
+            onOpenChange={setCashOpen}
+            userId={user.uid}
+            legend={budget?.cashLegend ?? []}
             accounts={accounts}
             expenses={expenses}
             currency={currency}

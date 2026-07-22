@@ -2733,3 +2733,24 @@ every transaction attributable to a specific account.
   hard-deleting** so history is preserved.
 - *No FX conversion between differing account currencies (each shows in its own
   set currency), and balances stay manual/transaction-derived — no bank API.*
+
+---
+
+## 🪙 Finance — color-coded cash counter
+
+**Purpose.** Count physical cash by a personal colour convention (yellow = 1000,
+blue = 2000, …) instead of bill-by-bill.
+
+- **Fully user-defined legend** — each entry is a colour + label + value, with
+  **no locked defaults**. On first use it offers a one-tap example (Yellow 1000 ·
+  Blue 2000 · Red 5000 · Green 10000) that you can then rename, revalue,
+  recolour, **reorder**, add to, or delete. The legend is stored embedded on the
+  budget doc (no new collection/rule).
+- **Fast counting** — a "Count cash" tool (from the Accounts panel) shows each
+  colour with big +/- steppers and a directly-typeable count, and a **big live
+  total** that updates instantly as `Σ(count × value)`.
+- **Save as account balance** — apply the counted total straight to a chosen
+  account (sets its starting balance so the live balance equals the count) —
+  ideal right after counting a cash wallet.
+- **Reset counts** zeroes the counts for a fresh count while leaving the legend
+  definitions intact.
