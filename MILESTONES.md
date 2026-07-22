@@ -2934,6 +2934,29 @@ by area** when the list gets long.
 
 ---
 
+## 💬 Top-bar motivational quote ticker
+
+**What it is.** A rotating motivational quote lives in the center of the top bar,
+so every screen greets you with a little momentum.
+
+**How it works.**
+- A **curated database of ~300 quotes** (`lib/quotes.ts`), each with its author
+  where known (anonymous sayings/proverbs show none). Trivial to extend — just
+  add `{ t, a }` entries.
+- The order is **shuffled once per session**, and a **new quote appears every 2
+  minutes** with a soft fade-up-and-unblur animation (`animate-quote-in`,
+  reduced-motion aware).
+- **Hover to pause** the rotation (so you can finish reading) and reveal the
+  **‹ / ›** controls — go **back to the previous** quote or jump to the **next**
+  one whenever you like.
+- Full text + author show on hover (tooltip); the bar itself truncates so it
+  never breaks the header layout. Hidden on small screens to keep mobile clean.
+
+**How to use it.** Nothing to configure — glance up any time. Use ‹ / › to
+revisit the last one or skip ahead.
+
+---
+
 ## 🎯 Goals — Productivity Overhaul, Phase 4: Notion-style cards, subtasks & a database table
 
 **What it is.** A big usability + polish pass to make Goals feel like Notion:
