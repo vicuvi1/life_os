@@ -180,6 +180,10 @@ function renewalText(days: number): string {
 
 type AccountFilter = string; // "all" or an account id
 
+// Session cache: re-opening Finance renders instantly from the last fetch while
+// a quiet background refresh runs, instead of a full skeleton reload each time.
+let financeCache: { uid: string; expenses: Expense[]; budget: Budget | null } | null = null;
+
 function pctChange(cur: number, prev: number): number {
   if (prev === 0) return cur === 0 ? 0 : 100;
   return ((cur - prev) / Math.abs(prev)) * 100;
@@ -199,9 +203,9 @@ export default function FinancePage() {
 
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [budget, setBudget] = useState<Budget | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [expenses, setExpenses] = useState<Expense[]>(() => financeCache?.expenses ?? []);
+  const [budget, setBudget] = useState<Budget | null>(() => financeCache?.budget ?? null);
+  const [loading, setLoading] = useState(() => !financeCache);
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [accountsOpen, setAccountsOpen] = useState(false);
@@ -234,11 +238,20 @@ export default function FinancePage() {
   const load = useCallback(
     async (opts?: { quiet?: boolean }) => {
       if (!user) return;
-      if (!opts?.quiet) setLoading(true);
+      const cached = financeCache && financeCache.uid === user.uid ? financeCache : null;
+      if (cached && !opts?.quiet) {
+        // Render the cached snapshot immediately; refresh quietly below.
+        setExpenses(cached.expenses);
+        setBudget(cached.budget);
+        setLoading(false);
+      } else if (!opts?.quiet) {
+        setLoading(true);
+      }
       try {
         const [ex, bg] = await Promise.all([getExpenses(user.uid), getBudget(user.uid)]);
         setExpenses(ex);
         setBudget(bg);
+        financeCache = { uid: user.uid, expenses: ex, budget: bg };
       } finally {
         if (!opts?.quiet) setLoading(false);
       }

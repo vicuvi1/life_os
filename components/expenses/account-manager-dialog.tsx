@@ -125,7 +125,9 @@ export function AccountManagerDialog({
     setUploadError(null);
     setUploadingId(id);
     try {
-      const url = await compressImageToThumbnail(file);
+      // Account logos render at ~40px — keep them tiny so the budget doc (which
+      // holds every account inline) stays small and fast to load.
+      const url = await compressImageToThumbnail(file, { size: 96, maxBytes: 20_000 });
       patch(id, { image: url });
     } catch (e) {
       setUploadError(e instanceof Error ? e.message : "Couldn't process the image.");

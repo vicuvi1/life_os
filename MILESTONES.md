@@ -2797,3 +2797,18 @@ working — only the left cell initiates a drag. The emoji picker (both the quic
 icon/colour editor and the create form) also gained a **much larger set** —
 health, food & drink, learning, work, creative, home, nature, feelings & symbols
 — in a taller, scrollable grid.
+
+---
+
+## ⚡ Finance — faster tab load
+
+Two fixes so opening Finance feels instant:
+- **Session cache** — after the first load, re-opening Finance renders the last
+  snapshot immediately and refreshes in the background, instead of showing a
+  full skeleton reload every time.
+- **Lean account logos** — custom logos are now compressed to a small avatar
+  (~96px, ~20 KB) instead of the full Wardrobe thumbnail (~140 KB). Since every
+  account is stored inline on the single budget document, this keeps that doc
+  small — faster to download on each load and safely clear of Firestore's 1 MB
+  document limit (which large logos could otherwise blow past, causing save
+  errors).

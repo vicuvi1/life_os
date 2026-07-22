@@ -12,7 +12,19 @@ const THUMB_SIZE = 384; // px, square
 // 4 photos × ~140 KB + metadata still leaves ample headroom.
 const MAX_DATA_URL_BYTES = 140_000;
 
-export async function compressImageToThumbnail(file: File): Promise<string> {
+export interface ThumbnailOptions {
+  /** Output square size in px (default 384). */
+  size?: number;
+  /** Max data-URL length in bytes (default ~140 KB). */
+  maxBytes?: number;
+}
+
+export async function compressImageToThumbnail(
+  file: File,
+  opts: ThumbnailOptions = {}
+): Promise<string> {
+  const size = opts.size ?? THUMB_SIZE;
+  const maxBytes = opts.maxBytes ?? MAX_DATA_URL_BYTES;
   if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) {
     throw new Error("Please choose a JPG, PNG, or WEBP image.");
   }
@@ -29,19 +41,19 @@ export async function compressImageToThumbnail(file: File): Promise<string> {
   const sy = (img.naturalHeight - side) / 2;
 
   const canvas = document.createElement("canvas");
-  canvas.width = THUMB_SIZE;
-  canvas.height = THUMB_SIZE;
+  canvas.width = size;
+  canvas.height = size;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Couldn't process the image.");
-  ctx.drawImage(img, sx, sy, side, side, 0, 0, THUMB_SIZE, THUMB_SIZE);
+  ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
 
   // Prefer WebP; step quality down until it fits comfortably.
   for (const type of ["image/webp", "image/jpeg"]) {
-    for (const quality of [0.8, 0.65, 0.5, 0.35]) {
+    for (const quality of [0.8, 0.65, 0.5, 0.35, 0.25]) {
       const out = canvas.toDataURL(type, quality);
       // canvas may silently fall back to png for unsupported types — check.
       if (!out.startsWith(`data:${type}`)) break;
-      if (out.length <= MAX_DATA_URL_BYTES) return out;
+      if (out.length <= maxBytes) return out;
     }
   }
   throw new Error("Couldn't compress the image enough — try a smaller photo.");
