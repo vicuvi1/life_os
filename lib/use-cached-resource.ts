@@ -20,6 +20,8 @@ export interface CachedResource<T> {
   loading: boolean;
   /** Re-fetch; never flashes the skeleton once something is cached. */
   refresh: () => Promise<void>;
+  /** Optimistically update the cached value (and the cache) in place. */
+  mutate: (updater: (prev: T | undefined) => T) => void;
 }
 
 /**
@@ -51,6 +53,17 @@ export function useCachedResource<T>(
     }
   }, [key]);
 
+  const mutate = useCallback(
+    (updater: (prev: T | undefined) => T) => {
+      setData((prev) => {
+        const next = updater(prev);
+        if (key != null) cache.set(key, next);
+        return next;
+      });
+    },
+    [key]
+  );
+
   useEffect(() => {
     if (key == null) return;
     // Paint the cached snapshot immediately, then revalidate.
@@ -61,5 +74,5 @@ export function useCachedResource<T>(
     void load();
   }, [key, load]);
 
-  return { data, loading, refresh: load };
+  return { data, loading, refresh: load, mutate };
 }

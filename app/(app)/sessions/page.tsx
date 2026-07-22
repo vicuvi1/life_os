@@ -2,12 +2,11 @@
 
 import { SkeletonCard } from "@/components/ui/skeleton";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   CalendarClock,
   ChevronLeft,
   ChevronRight,
-  Loader2,
   Plus,
   AlertTriangle,
 } from "lucide-react";
@@ -18,6 +17,7 @@ import {
   deleteSession,
   updateSession,
 } from "@/lib/firebase/db";
+import { useCachedResource } from "@/lib/use-cached-resource";
 import { toDateKey } from "@/lib/greeting";
 import { addDays } from "@/lib/habits";
 import { formatLongDate } from "@/lib/dates";
@@ -35,31 +35,21 @@ export default function SessionsPage() {
   const today = toDateKey(new Date());
 
   const [date, setDate] = useState(today);
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, loading, refresh } = useCachedResource(
+    user ? `sessions-goals:${user.uid}` : null,
+    async () => {
+      const [s, g] = await Promise.all([getSessions(user!.uid), getGoals(user!.uid)]);
+      return { sessions: s, goals: g };
+    }
+  );
+  const sessions = useMemo(() => data?.sessions ?? [], [data]);
+  const goals = useMemo(() => data?.goals ?? [], [data]);
 
   const [form, setForm] = useState<{ open: boolean; session: Session | null }>({
     open: false,
     session: null,
   });
   const [deleting, setDeleting] = useState<Session | null>(null);
-
-  const load = useCallback(async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      const [s, g] = await Promise.all([getSessions(user.uid), getGoals(user.uid)]);
-      setSessions(s);
-      setGoals(g);
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   const daySessions = useMemo(
     () => sessions.filter((s) => s.date === date),
@@ -79,12 +69,12 @@ export default function SessionsPage() {
     await updateSession(s.id, { status: "done" });
     // Reopen in edit mode so a quality rating can be added right away.
     setForm({ open: true, session: { ...s, status: "done" } });
-    await load();
+    await refresh();
   }
 
   async function markSkipped(s: Session) {
     await updateSession(s.id, { status: "skipped" });
-    await load();
+    await refresh();
   }
 
   function fmtHours(min: number): string {
@@ -207,7 +197,7 @@ export default function SessionsPage() {
           goals={goals}
           sessions={sessions}
           session={form.session}
-          onSaved={load}
+          onSaved={refresh}
         />
       )}
 
@@ -219,7 +209,7 @@ export default function SessionsPage() {
           if (deleting) {
             await deleteSession(deleting.id);
             setDeleting(null);
-            await load();
+            await refresh();
           }
         }}
       />

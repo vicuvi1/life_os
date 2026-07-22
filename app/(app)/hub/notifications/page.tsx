@@ -2,10 +2,11 @@
 
 import { SkeletonCard } from "@/components/ui/skeleton";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Bell, Check, Trash2, ChevronRight } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { getHubDocs, setNotificationRead, markAllNotificationsRead, clearNotifications } from "@/lib/firebase/db";
+import { useCachedResource } from "@/lib/use-cached-resource";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -23,35 +24,25 @@ function timeAgo(ms: number): string {
 
 export default function NotificationsPage() {
   const { user } = useAuth();
-  const [items, setItems] = useState<HubNotification[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async (opts?: { quiet?: boolean }) => {
-    if (!user) return;
-    if (!opts?.quiet) setLoading(true);
-    try {
-      setItems((await getHubDocs(user.uid)).notifications);
-    } finally {
-      if (!opts?.quiet) setLoading(false);
-    }
-  }, [user]);
-
-  useEffect(() => { load(); }, [load]);
-
+  const { data, loading, mutate } = useCachedResource(
+    user ? `notifications:${user.uid}` : null,
+    async () => (await getHubDocs(user!.uid)).notifications
+  );
+  const items = useMemo(() => data ?? [], [data]);
   const unread = useMemo(() => items.filter((n) => !n.read), [items]);
 
   async function toggleRead(n: HubNotification) {
-    setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: !n.read } : x)));
+    mutate((prev) => (prev ?? []).map((x) => (x.id === n.id ? { ...x, read: !n.read } : x)));
     await setNotificationRead(n.id, !n.read);
   }
   async function markAll() {
     const ids = unread.map((n) => n.id);
-    setItems((prev) => prev.map((x) => ({ ...x, read: true })));
+    mutate((prev) => (prev ?? []).map((x) => ({ ...x, read: true })));
     await markAllNotificationsRead(ids);
   }
   async function clearAll() {
     const ids = items.map((n) => n.id);
-    setItems([]);
+    mutate(() => []);
     await clearNotifications(ids);
   }
 

@@ -2,7 +2,7 @@
 
 import { SkeletonCard } from "@/components/ui/skeleton";
 
-import { useCallback, useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   SlidersHorizontal,
   Plus,
@@ -17,7 +17,6 @@ import {
   Moon,
   GlassWater,
   Flame,
-  Loader2,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -27,6 +26,7 @@ import {
   getPrefs,
   upsertPrefs,
 } from "@/lib/firebase/db";
+import { useCachedResource } from "@/lib/use-cached-resource";
 import { trackerIcon, formatTrackerValue } from "@/lib/trackers";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,40 +45,28 @@ const BUILT_INS = [
 
 export default function TrackersPage() {
   const { user } = useAuth();
-  const [trackers, setTrackers] = useState<Tracker[]>([]);
-  const [hidden, setHidden] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, loading, refresh, mutate } = useCachedResource(
+    user ? `trackers:${user.uid}` : null,
+    async () => {
+      const [t, prefs] = await Promise.all([getTrackers(user!.uid), getPrefs(user!.uid)]);
+      return { trackers: t, hidden: prefs.hiddenTrackers };
+    }
+  );
+  const trackers = useMemo(() => data?.trackers ?? [], [data]);
+  const hidden = useMemo(() => data?.hidden ?? [], [data]);
+
   const [form, setForm] = useState<{ open: boolean; tracker: Tracker | null }>({
     open: false,
     tracker: null,
   });
   const [deleting, setDeleting] = useState<Tracker | null>(null);
 
-  const load = useCallback(async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      const [t, prefs] = await Promise.all([
-        getTrackers(user.uid),
-        getPrefs(user.uid),
-      ]);
-      setTrackers(t);
-      setHidden(prefs.hiddenTrackers);
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
   async function toggleHidden(key: string) {
     if (!user) return;
     const next = hidden.includes(key)
       ? hidden.filter((k) => k !== key)
       : [...hidden, key];
-    setHidden(next);
+    mutate((prev) => ({ trackers: prev?.trackers ?? [], hidden: next }));
     await upsertPrefs(user.uid, { hiddenTrackers: next });
   }
 
@@ -90,11 +78,12 @@ export default function TrackersPage() {
     // Swap sort orders locally + persist both.
     const a = { ...tracker, sortOrder: swapWith.sortOrder };
     const b = { ...swapWith, sortOrder: tracker.sortOrder };
-    setTrackers((prev) =>
-      prev
+    mutate((prev) => ({
+      trackers: (prev?.trackers ?? [])
         .map((t) => (t.id === a.id ? a : t.id === b.id ? b : t))
-        .sort((x, y) => x.sortOrder - y.sortOrder || x.createdAt - y.createdAt)
-    );
+        .sort((x, y) => x.sortOrder - y.sortOrder || x.createdAt - y.createdAt),
+      hidden: prev?.hidden ?? [],
+    }));
     await Promise.all([
       updateTracker(a.id, { sortOrder: a.sortOrder }),
       updateTracker(b.id, { sortOrder: b.sortOrder }),
@@ -102,11 +91,12 @@ export default function TrackersPage() {
   }
 
   async function toggleArchived(tracker: Tracker) {
-    setTrackers((prev) =>
-      prev.map((t) =>
+    mutate((prev) => ({
+      trackers: (prev?.trackers ?? []).map((t) =>
         t.id === tracker.id ? { ...t, archived: !t.archived } : t
-      )
-    );
+      ),
+      hidden: prev?.hidden ?? [],
+    }));
     await updateTracker(tracker.id, { archived: !tracker.archived });
   }
 
@@ -331,7 +321,7 @@ export default function TrackersPage() {
           userId={user.uid}
           tracker={form.tracker}
           nextSortOrder={nextSortOrder}
-          onSaved={load}
+          onSaved={refresh}
         />
       )}
 
@@ -344,7 +334,7 @@ export default function TrackersPage() {
           if (deleting) {
             await deleteTracker(deleting.id);
             setDeleting(null);
-            await load();
+            await refresh();
           }
         }}
       />

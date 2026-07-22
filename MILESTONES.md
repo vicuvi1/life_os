@@ -3017,10 +3017,13 @@ bespoke caches.
 - **`useCachedResource(key, fetcher)`** — a tiny stale-while-revalidate hook over
   a shared module cache. It paints the last snapshot for a key instantly, then
   revalidates in the background; `refresh()` re-fetches without flashing the
-  skeleton. `invalidateCache()` clears it (e.g. on sign-out).
-- **Adopted on Projects, Time Audit, Dependencies, and Calendar** so far — each
-  now opens instantly on repeat visits. More pages to follow; the pattern is a
-  drop-in for any read-and-display page.
+  skeleton, `mutate()` applies optimistic updates in place, and
+  `invalidateCache()` clears it (e.g. on sign-out).
+- **Adopted on Projects, Time Audit, Dependencies, Calendar, Sessions, Trackers,
+  and the Notifications inbox** — each now opens instantly on repeat visits.
+  Read-only pages use `refresh()` after edits; pages with optimistic updates
+  (Trackers, Notifications) use `mutate()`. More pages to follow; the pattern is
+  a drop-in.
 
 ---
 
