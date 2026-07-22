@@ -607,6 +607,9 @@ export default function FinancePage() {
       .sort((a, b) => b.spent / b.cap - a.spent / a.cap);
   }, [budget, monthExpenses]);
 
+  // Fraction of the (current) month elapsed — powers per-envelope pace hints.
+  const monthProgress = isCurrentMonth ? Math.min(1, now.getDate() / dim) : 1;
+
   // Recurring rules (embedded on the budget doc) + subscription tracking.
   const recurring = useMemo<RecurringRule[]>(() => budget?.recurring ?? [], [budget]);
   const activeRecurring = useMemo(() => recurring.filter((r) => r.active), [recurring]);
@@ -1843,6 +1846,9 @@ export default function FinancePage() {
                       const over = spent > cap;
                       const near = !over && pct >= 80;
                       const barCls = over ? "bg-rose-500" : near ? "bg-amber-500" : "bg-emerald-500";
+                      // Pace: project month-end spend from how far the month has run.
+                      const projected = monthProgress > 0 ? spent / monthProgress : spent;
+                      const overPace = isCurrentMonth && !over && spent > 0 && cap > 0 && spent / cap > monthProgress + 0.15;
                       return (
                         <div key={category}>
                           <div className="mb-1 flex items-center justify-between text-sm">
@@ -1857,6 +1863,17 @@ export default function FinancePage() {
                           <div className="h-2 overflow-hidden rounded-full bg-muted">
                             <div className={cn("h-full rounded-full", barCls)} style={{ width: `${pct}%` }} />
                           </div>
+                          {(over || (isCurrentMonth && spent > 0)) && (
+                            <p className="mt-1 text-[11px]">
+                              {over ? (
+                                <span className="text-rose-500">Over by {formatDisplayAmount(spent - cap)}</span>
+                              ) : overPace ? (
+                                <span className="text-amber-500">Ahead of pace · projected {formatDisplayAmount(projected)}</span>
+                              ) : (
+                                <span className="text-muted-foreground">On pace · projected {formatDisplayAmount(projected)}</span>
+                              )}
+                            </p>
+                          )}
                         </div>
                       );
                     })}

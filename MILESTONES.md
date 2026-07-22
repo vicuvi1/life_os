@@ -3162,6 +3162,21 @@ the dashboard banner for whatever's slipping.
 
 ---
 
+## 💸 Finance — pace-aware budget envelopes
+
+**What it is.** The existing per-category "Category budgets" bars became a
+spending coach.
+
+**How it works.** Each envelope now shows a **projection + pace** line: how much
+you're on track to spend by month-end at the current rate, and whether you're
+**On pace**, **Ahead of pace** (spending faster than the month is elapsing), or
+already **Over** (by how much). Colours stay green/amber/red.
+
+**How to use it.** Set per-category caps in Budget settings; the bars tell you
+not just where you are, but where you're heading.
+
+---
+
 ## 💬 Top-bar motivational quote ticker
 
 **What it is.** A rotating motivational quote lives in the center of the top bar,
