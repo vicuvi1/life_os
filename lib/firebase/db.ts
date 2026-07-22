@@ -732,6 +732,13 @@ export async function updateHabit(
   await updateDoc(doc(db, COLLECTIONS.habits, id), { ...input });
 }
 
+/** Persist a new habit order (sortOrder = position) after a drag reorder. */
+export async function reorderHabits(ids: string[]): Promise<void> {
+  const batch = writeBatch(db);
+  ids.forEach((id, i) => batch.update(doc(db, COLLECTIONS.habits, id), { sortOrder: i }));
+  await batch.commit();
+}
+
 export async function deleteHabit(userId: string, id: string): Promise<void> {
   const batch = writeBatch(db);
   // Query by userId (owner-scoped rules deny a query filtered only by habitId),

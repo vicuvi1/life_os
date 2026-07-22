@@ -22,6 +22,7 @@ import {
   LayoutTemplate,
   ArrowUp,
   ArrowDown,
+  GripVertical,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -31,6 +32,7 @@ import {
   createHabit,
   updateHabit,
   deleteHabit,
+  reorderHabits,
 } from "@/lib/firebase/db";
 import {
   dayStatus,
@@ -127,6 +129,7 @@ export default function HabitsPage() {
   const [windowDays, setWindowDays] = useState(WINDOW);
   const [weekStart, setWeekStart] = useState<"mon" | "sun">("mon");
   const [viewMode, setViewMode] = useState<"table" | "cards" | "compact" | "calendar">("table");
+  const [dragHabit, setDragHabit] = useState<string | null>(null);
   const [showNumbers, setShowNumbers] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [filterCategory, setFilterCategory] = useState<string>("all");
@@ -364,6 +367,26 @@ export default function HabitsPage() {
       await Promise.all([updateHabit(a.id, { sortOrder: bOrder }), updateHabit(b.id, { sortOrder: aOrder })]);
     } catch {
       await load({ quiet: true });
+    }
+  }
+
+  /** Drag reorder: move `fromId` to `toId`'s position and persist the new order. */
+  async function reorderHabit(fromId: string, toId: string) {
+    if (fromId === toId) return;
+    const ordered = [...habits].sort(
+      (a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt
+    );
+    const from = ordered.findIndex((h) => h.id === fromId);
+    const to = ordered.findIndex((h) => h.id === toId);
+    if (from < 0 || to < 0) return;
+    const [moved] = ordered.splice(from, 1);
+    ordered.splice(to, 0, moved);
+    const next = ordered.map((h, i) => ({ ...h, sortOrder: i }));
+    setHabits(next); // optimistic
+    try {
+      await reorderHabits(next.map((h) => h.id));
+    } catch {
+      load({ quiet: true });
     }
   }
 
@@ -652,9 +675,33 @@ export default function HabitsPage() {
                       const best = streaksByHabit.get(habit.id)?.best ?? 0;
                       const unit = (habit.frequency ?? "daily") === "weekly" ? "w" : "d";
                       return (
-                        <tr key={habit.id} className={cn("group border-b last:border-0 hover:bg-accent/30", habit.archived && "opacity-50")}>
-                          <td className="sticky left-0 z-10 bg-card px-3 py-2">
+                        <tr
+                          key={habit.id}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={() => {
+                            if (dragHabit) reorderHabit(dragHabit, habit.id);
+                            setDragHabit(null);
+                          }}
+                          className={cn(
+                            "group border-b last:border-0 hover:bg-accent/30",
+                            habit.archived && "opacity-50",
+                            dragHabit === habit.id && "opacity-40"
+                          )}
+                        >
+                          <td
+                            draggable
+                            onDragStart={() => setDragHabit(habit.id)}
+                            onDragEnd={() => setDragHabit(null)}
+                            className="sticky left-0 z-10 bg-card px-3 py-2"
+                          >
                             <div className="flex items-center gap-2">
+                              <span
+                                aria-hidden
+                                title="Drag to reorder"
+                                className="-ml-1 shrink-0 cursor-grab text-muted-foreground/30 opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
+                              >
+                                <GripVertical className="h-4 w-4" />
+                              </span>
                               <button
                                 type="button"
                                 onClick={() => setAppearanceId(habit.id)}

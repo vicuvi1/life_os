@@ -2785,3 +2785,12 @@ Refinements that make the Accounts system feel finished.
   (star) so Quick Add pre-selects it; standard **empty state** when there are no
   accounts; and the mystery lock icon is now a real, explained
   **"hide balance until tapped"** privacy toggle.
+
+---
+
+## 🔥 Habits — drag to reorder
+
+The Habits **Table** view now lets you **drag a habit row into any position** (a
+grip handle appears on hover). The new order persists via `reorderHabits` and is
+used everywhere habits are listed. Cell toggles and the emoji/colour button keep
+working — only the left cell initiates a drag.
