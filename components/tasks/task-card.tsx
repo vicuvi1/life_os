@@ -93,12 +93,12 @@ export function TaskCard({
         }
       }}
       className={cn(
-        "group relative flex cursor-grab gap-2 overflow-hidden rounded-lg border text-left shadow-sm transition-all hover:shadow-md hover:ring-1 active:cursor-grabbing",
+        "group relative flex cursor-grab gap-2 overflow-hidden rounded-lg border text-left shadow-sm transition-all duration-150 ease-smooth hover:-translate-y-px hover:shadow-md hover:ring-1 active:cursor-grabbing active:translate-y-0",
         accent.soft,
         accent.ring,
         compact ? "p-1.5 pl-2.5" : "p-2 pl-3",
         fill && "h-full",
-        dragging && "opacity-40",
+        dragging && "rotate-[0.5deg] opacity-40 shadow-lg",
         done && "opacity-60"
       )}
     >

@@ -20,6 +20,7 @@ interface Props {
   onOpen: (task: Task) => void;
   onToggleDone: (task: Task, done: boolean) => void;
   onReschedule: (taskId: string, date: string, startMin: number | null) => void;
+  onResize: (taskId: string, endMin: number) => void;
   onUnschedule: (taskId: string) => void;
   onAdd: (date: string, startMin: number | null) => void;
   onAutoSchedule: () => void;
@@ -35,6 +36,7 @@ export function TaskPlanView({
   onOpen,
   onToggleDone,
   onReschedule,
+  onResize,
   onUnschedule,
   onAdd,
   onAutoSchedule,
@@ -125,6 +127,7 @@ export function TaskPlanView({
           onOpen={onOpen}
           onToggleDone={onToggleDone}
           onReschedule={onReschedule}
+          onResize={onResize}
           onAdd={onAdd}
         />
       </div>

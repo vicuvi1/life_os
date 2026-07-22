@@ -2527,3 +2527,34 @@ spacious and scannable — a real calendar surface.
   grid snaps to the same 30-min steps.
 - Today's column is tinted; the grid scrolls horizontally when the window is
   narrow so all seven days stay usable.
+
+---
+
+## 🗓️ Tasks — interaction & motion pass (feel like a calendar, not a dashboard)
+
+**Purpose.** Shift the planner from "boxes of content" toward direct
+manipulation and calm motion — the Google Calendar / Linear / Arc feel. Focus on
+*how it behaves*, not more panels.
+
+- **Drag-to-resize (direct manipulation).** Every week event has a bottom grab
+  handle — **drag it to change the task's duration live**, snapped to 15-min
+  steps, persisted on release with a toast (optimistic, reverts on failure). The
+  block grows/shrinks under your cursor in real time.
+- **Shared motion system.** Added soft easing tokens (`ease-smooth`,
+  `ease-spring` — never linear). Cards **gently raise 1px on hover** and settle
+  on press; **buttons compress** slightly when clicked (app-wide); event blocks
+  **interpolate** as they move/resize; transitions sit in the 120–250ms range.
+  All of it respects the existing reduced-motion guard.
+- **Canvas de-clutter.** The week grid lost its heavy boxes: no outer border, a
+  translucent **blurred sticky header**, hairline hour lines and column
+  dividers, and more breathing room. It reads as one continuous surface rather
+  than a stack of cards.
+- **Hover-reveal actions.** Row action menus (List / goal tasks) stay hidden
+  until you hover or focus the row, so the default view is quiet.
+- **Click-empty-to-create** and **drag-to-move** already land inline — no modal
+  unless you open the full editor — keeping the common paths tactile.
+
+*Not done here (by design):* the extra right-rail dashboard panels from the
+reference shot (Upcoming / Overview / Focus Time) were intentionally skipped —
+the brief was to reduce cards and sharpen interaction, not add UI. Easy to add
+later if wanted.

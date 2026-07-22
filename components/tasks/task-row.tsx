@@ -53,7 +53,7 @@ export function TaskRow({ task, onChanged, onEdit, onDelete, context }: Props) {
   }
 
   return (
-    <div className="animate-fade-slide-in flex items-start gap-3 px-4 py-3">
+    <div className="group animate-fade-slide-in flex items-start gap-3 rounded-lg px-4 py-3 transition-colors duration-150 ease-smooth hover:bg-accent/40">
       <span className={cn("mt-0.5", popping && "animate-pop")}>
         <Checkbox
           checked={done}
@@ -106,7 +106,7 @@ export function TaskRow({ task, onChanged, onEdit, onDelete, context }: Props) {
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 shrink-0"
+              className="h-8 w-8 shrink-0 opacity-0 transition-opacity duration-150 ease-smooth focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
               aria-label="Task actions"
             >
               <MoreVertical className="h-4 w-4" />

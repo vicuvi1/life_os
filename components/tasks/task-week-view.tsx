@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
   GRID_END_HOUR,
@@ -33,6 +33,7 @@ interface Props {
   onOpen: (task: Task) => void;
   onToggleDone: (task: Task, done: boolean) => void;
   onReschedule: (taskId: string, date: string, startMin: number | null) => void;
+  onResize: (taskId: string, endMin: number) => void;
   onAdd: (date: string, startMin: number | null) => void;
 }
 
@@ -56,9 +57,53 @@ export function TaskWeekView({
   onOpen,
   onToggleDone,
   onReschedule,
+  onResize,
   onAdd,
 }: Props) {
   const [overCol, setOverCol] = useState<string | null>(null);
+
+  // --- Drag-to-resize (live duration edit) --------------------------------
+  const sessionRef = useRef<{
+    taskId: string;
+    startMin: number;
+    startEndMin: number;
+    startY: number;
+  } | null>(null);
+  const [preview, setPreview] = useState<{ taskId: string; endMin: number } | null>(null);
+  const onResizeRef = useRef(onResize);
+  onResizeRef.current = onResize;
+
+  useEffect(() => {
+    function move(e: PointerEvent) {
+      const s = sessionRef.current;
+      if (!s) return;
+      const deltaMin = Math.round(((e.clientY - s.startY) / HOUR_PX) * 60 / 15) * 15;
+      const end = clamp(s.startEndMin + deltaMin, s.startMin + 15, END_MIN);
+      setPreview({ taskId: s.taskId, endMin: end });
+    }
+    function up() {
+      const s = sessionRef.current;
+      if (!s) return;
+      sessionRef.current = null;
+      setPreview((p) => {
+        if (p && p.endMin !== s.startEndMin) onResizeRef.current(s.taskId, p.endMin);
+        return null;
+      });
+    }
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+  }, []);
+
+  function startResize(e: React.PointerEvent, startMin: number, endMin: number, taskId: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    sessionRef.current = { taskId, startMin, startEndMin: endMin, startY: e.clientY };
+    setPreview({ taskId, endMin });
+  }
 
   const perDay = useMemo(() => {
     const map = new Map<string, { allDay: Task[]; events: ReturnType<typeof layoutDayEvents> }>();
@@ -73,11 +118,11 @@ export function TaskWeekView({
   }, [weekDates, tasksByDate]);
 
   return (
-    <div className="overflow-x-auto rounded-xl border">
+    <div className={cn("overflow-x-auto rounded-2xl", preview && "select-none")}>
       <div style={{ minWidth: MIN_WIDTH }}>
         {/* Day headers */}
         <div
-          className="sticky top-0 z-20 grid border-b bg-card"
+          className="sticky top-0 z-20 grid border-b border-border/50 bg-background/80 backdrop-blur"
           style={{ gridTemplateColumns: GRID_COLS }}
         >
           <div />
@@ -88,8 +133,8 @@ export function TaskWeekView({
               <div
                 key={key}
                 className={cn(
-                  "flex items-center justify-center gap-2 border-l py-2.5 text-sm",
-                  isToday ? "bg-primary/10 font-semibold text-primary" : "text-muted-foreground"
+                  "flex items-center justify-center gap-2 py-3 text-sm transition-colors",
+                  isToday ? "font-semibold text-primary" : "text-muted-foreground"
                 )}
               >
                 <span className="uppercase tracking-wide">{WD_SHORT[d.getDay()]}</span>
@@ -108,8 +153,8 @@ export function TaskWeekView({
         </div>
 
         {/* All-day row */}
-        <div className="grid border-b bg-muted/20" style={{ gridTemplateColumns: GRID_COLS }}>
-          <div className="flex items-start justify-end p-2 pt-2.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+        <div className="grid border-b border-border/40" style={{ gridTemplateColumns: GRID_COLS }}>
+          <div className="flex items-start justify-end p-2 pt-2.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/60">
             All-day
           </div>
           {weekDates.map((key) => {
@@ -135,9 +180,9 @@ export function TaskWeekView({
                 }}
                 onClick={() => onAdd(key, null)}
                 className={cn(
-                  "min-h-[52px] space-y-1.5 border-l p-1.5 transition-colors",
-                  key === today && "bg-primary/5",
-                  isOver && "bg-primary/15 ring-1 ring-inset ring-primary/50"
+                  "min-h-[52px] space-y-1.5 p-1.5 transition-colors duration-150 ease-smooth",
+                  key === today && "bg-primary/[0.04]",
+                  isOver && "bg-primary/10 ring-1 ring-inset ring-primary/40"
                 )}
               >
                 {(perDay.get(key)?.allDay ?? []).map((t) => (
@@ -163,7 +208,7 @@ export function TaskWeekView({
             {GRID_HOURS.map((h, i) => (
               <div
                 key={h}
-                className="absolute right-2 -translate-y-1/2 text-[12px] font-medium tabular-nums text-muted-foreground/70"
+                className="absolute right-2 -translate-y-1/2 text-[12px] font-medium tabular-nums text-muted-foreground/60"
                 style={{ top: i * HOUR_PX }}
               >
                 {hourLabelShort(h)}
@@ -202,9 +247,9 @@ export function TaskWeekView({
                   onAdd(key, minFromY(e.clientY - rect.top));
                 }}
                 className={cn(
-                  "relative cursor-copy border-l transition-colors",
-                  isToday && "bg-primary/5",
-                  isOver && "bg-primary/10 ring-1 ring-inset ring-primary/40"
+                  "relative cursor-copy border-l border-border/20 transition-colors duration-150 ease-smooth",
+                  isToday && "bg-primary/[0.04]",
+                  isOver && "bg-primary/[0.07] ring-1 ring-inset ring-primary/30"
                 )}
                 style={{ height: BODY_HEIGHT }}
               >
@@ -212,22 +257,27 @@ export function TaskWeekView({
                 {GRID_HOURS.map((h, i) => (
                   <div
                     key={h}
-                    className="pointer-events-none absolute inset-x-0 border-t border-border/25"
+                    className="pointer-events-none absolute inset-x-0 border-t border-border/15"
                     style={{ top: i * HOUR_PX }}
                   />
                 ))}
 
-                {/* Event blocks (duration-proportional, overlaps side-by-side) */}
+                {/* Event blocks (duration-proportional; live resize) */}
                 {events.map((ev) => {
+                  const effEnd = preview?.taskId === ev.task.id ? preview.endMin : ev.endMin;
                   const top = yForMin(ev.startMin);
-                  const height = Math.max(yForMin(ev.endMin) - top, 34);
+                  const height = Math.max(yForMin(effEnd) - top, 34);
                   const width = `calc(${100 / ev.cols}% - 6px)`;
                   const left = `calc(${(ev.col * 100) / ev.cols}% + 3px)`;
+                  const isResizing = preview?.taskId === ev.task.id;
                   return (
                     <div
                       key={ev.task.id}
                       onClick={(e) => e.stopPropagation()}
-                      className="absolute"
+                      className={cn(
+                        "group/ev absolute transition-[top,height] duration-150 ease-smooth",
+                        isResizing && "z-30 transition-none"
+                      )}
                       style={{ top: top + 2, height: height - 4, left, width }}
                     >
                       <TaskCard
@@ -238,6 +288,20 @@ export function TaskWeekView({
                         onToggleDone={onToggleDone}
                         context={goalTitle(ev.task.goalId)}
                       />
+                      {/* Resize handle (drag to change duration) */}
+                      <div
+                        onPointerDown={(e) =>
+                          startResize(e, ev.startMin, ev.endMin, ev.task.id)
+                        }
+                        onDragStart={(e) => e.preventDefault()}
+                        draggable={false}
+                        className={cn(
+                          "absolute inset-x-0 bottom-0 flex h-2.5 cursor-ns-resize items-center justify-center opacity-0 transition-opacity group-hover/ev:opacity-100",
+                          isResizing && "opacity-100"
+                        )}
+                      >
+                        <span className="h-1 w-8 rounded-full bg-foreground/30" />
+                      </div>
                     </div>
                   );
                 })}

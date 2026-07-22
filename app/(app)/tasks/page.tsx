@@ -24,6 +24,7 @@ import {
 import { minToLabel } from "@/lib/sessions";
 import {
   autoSchedule,
+  durationLabel,
   planRecurringOccurrences,
   scheduleAtMin,
   tasksByDate as buildTasksByDate,
@@ -246,6 +247,23 @@ export default function TasksPage() {
       .catch(() => {
         revert();
         toast({ title: "Couldn't move task" });
+      });
+  }
+
+  function resizeTask(taskId: string, endMin: number) {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task || task.startMin == null || task.endMin === endMin) return;
+    const revert = patch(taskId, (t) => ({ ...t, endMin }));
+    updateTask(taskId, { endMin })
+      .then(() =>
+        toast({
+          title: "Duration updated",
+          description: `${task.title} · ${durationLabel(endMin - (task.startMin as number))}`,
+        })
+      )
+      .catch(() => {
+        revert();
+        toast({ title: "Couldn't resize task" });
       });
   }
 
@@ -528,6 +546,7 @@ export default function TasksPage() {
           onOpen={(t) => setDetailId(t.id)}
           onToggleDone={toggleDone}
           onReschedule={reschedule}
+          onResize={resizeTask}
           onAdd={onAddToCell}
         />
       ) : view === "today" ? (
@@ -562,6 +581,7 @@ export default function TasksPage() {
           onOpen={(t) => setDetailId(t.id)}
           onToggleDone={toggleDone}
           onReschedule={reschedule}
+          onResize={resizeTask}
           onUnschedule={unschedule}
           onAdd={onAddToCell}
           onAutoSchedule={handleAutoSchedule}
