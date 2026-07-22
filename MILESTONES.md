@@ -3080,6 +3080,26 @@ bespoke caches.
 
 ---
 
+## ✨ Visual polish pass (surfaces & type)
+
+**What it is.** A tasteful, app-wide lift so it reads as a premium product rather
+than flat default cards — done at the shared-component level so every screen
+benefits at once.
+
+**How it works.**
+- **Depth on every card.** A new base treatment gives cards a soft shadow in
+  light mode and a subtle top-highlight sheen + gentle gradient in dark mode, so
+  surfaces feel raised instead of flat. One class on the shared `Card`, so it
+  applies everywhere.
+- **Sharper headings.** Page titles get tighter letter-spacing for a more
+  intentional, designed feel.
+- **Accent-aware glow.** The dark-mode corner glow now tints with *your* chosen
+  accent colour instead of a fixed violet.
+- **Refined dashboard hero.** The greeting banner gains a soft accent halo and an
+  icon chip — a more premium first impression.
+
+---
+
 ## 💬 Top-bar motivational quote ticker
 
 **What it is.** A rotating motivational quote lives in the center of the top bar,

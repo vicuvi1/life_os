@@ -1250,14 +1250,22 @@ export default function DashboardPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       {/* Greeting */}
-      <div className="overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/12 via-card to-card p-6 md:p-8">
-        <h1 className="flex items-center gap-3 text-2xl font-bold md:text-3xl">
-          <GreetingIcon className="h-7 w-7 text-primary" />
-          {greeting}, {name}!
-        </h1>
-        <p className="mt-1 text-muted-foreground">
-          Here&apos;s what matters today. Let&apos;s make it count.
-        </p>
+      <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/15 via-card to-card p-6 md:p-8">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-primary/20 blur-3xl"
+        />
+        <div className="relative">
+          <h1 className="flex items-center gap-3 text-2xl font-bold md:text-3xl">
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/15 text-primary ring-1 ring-primary/20">
+              <GreetingIcon className="h-6 w-6" />
+            </span>
+            {greeting}, {name}!
+          </h1>
+          <p className="mt-2 text-muted-foreground">
+            Here&apos;s what matters today. Let&apos;s make it count.
+          </p>
+        </div>
       </div>
 
       {/* Quick actions */}
