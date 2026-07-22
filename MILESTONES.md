@@ -2800,6 +2800,18 @@ health, food & drink, learning, work, creative, home, nature, feelings & symbols
 
 ---
 
+## 🧭 Sidebar — colour-coded sections (and Routines removed)
+
+- **Removed the Routines** section — the `/routines` route and its sidebar/mobile
+  nav entry are gone.
+- The sidebar is less flat now: each section (Hub · Plan · Track · Wardrobe ·
+  Review) has its **own accent colour** shown as a dot beside the section label,
+  a tinted hairline divider in the collapsed rail, and **section-tinted icons**
+  (the active item still uses the primary violet + sliding pill). Same treatment
+  on the mobile menu's section headers.
+
+---
+
 ## ⚡ Finance — faster tab load
 
 Two fixes so opening Finance feels instant:

@@ -35,11 +35,14 @@ export interface NavItem {
 export interface NavSection {
   label: string;
   items: NavItem[];
+  /** Accent color that tints this section's label + icons in the sidebar. */
+  accent: string;
 }
 
 export const NAV_SECTIONS: NavSection[] = [
   {
     label: "Hub",
+    accent: "#a855f7",
     items: [
       { href: "/hub", label: "Agent Hub", icon: Bot },
       { href: "/hub/agents", label: "Agents", icon: MessageSquare },
@@ -49,17 +52,18 @@ export const NAV_SECTIONS: NavSection[] = [
   },
   {
     label: "Plan",
+    accent: "#3b82f6",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/goals", label: "Goals", icon: Target },
       { href: "/projects", label: "Projects", icon: FolderKanban },
       { href: "/tasks", label: "Tasks", icon: CheckSquare },
       { href: "/calendar", label: "Calendar", icon: CalendarDays },
-      { href: "/routines", label: "Routines", icon: Shirt },
     ],
   },
   {
     label: "Track",
+    accent: "#10b981",
     items: [
       { href: "/sessions", label: "Sessions", icon: CalendarClock },
       { href: "/habits", label: "Habits", icon: Flame },
@@ -71,6 +75,7 @@ export const NAV_SECTIONS: NavSection[] = [
   },
   {
     label: "Wardrobe",
+    accent: "#ec4899",
     items: [
       { href: "/wardrobe", label: "Wardrobe", icon: Shirt },
       { href: "/wardrobe/outfits", label: "Outfits", icon: Layers },
@@ -82,6 +87,7 @@ export const NAV_SECTIONS: NavSection[] = [
   },
   {
     label: "Review",
+    accent: "#f59e0b",
     items: [
       { href: "/review", label: "Weekly Review", icon: CalendarCheck },
       { href: "/insights", label: "Insights", icon: BarChart3 },

@@ -171,15 +171,18 @@ export function Sidebar() {
             {NAV_SECTIONS.map((section) => (
               <div key={section.label} className="space-y-0.5">
                 {expanded ? (
-                  <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/50">{section.label}</p>
+                  <p className="mb-1 flex items-center gap-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/60">
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: section.accent }} />
+                    {section.label}
+                  </p>
                 ) : (
-                  <div className="mx-3 mb-1 h-px bg-border/40" />
+                  <div className="mx-3 mb-1 h-px" style={{ backgroundColor: `${section.accent}55` }} />
                 )}
                 {section.items.map((item) => {
                   const isSectionActive = SUBNAV[item.href] && pathname.startsWith(item.href);
                   return (
                     <div key={item.href}>
-                      <SideLink innerRef={setItemRef(item.href)} href={item.href} label={item.label} Icon={item.icon} active={activeHref === item.href || (!expanded && !!isSectionActive)} sectionActive={!!isSectionActive} expanded={expanded} />
+                      <SideLink innerRef={setItemRef(item.href)} href={item.href} label={item.label} Icon={item.icon} accent={section.accent} active={activeHref === item.href || (!expanded && !!isSectionActive)} sectionActive={!!isSectionActive} expanded={expanded} />
                       {isSectionActive && expanded && subItems.length > 0 && (
                         <div className="mb-1 ml-[26px] mt-0.5 space-y-0.5 border-l border-border/40 pl-2">
                           {subItems.map((s) => (
@@ -220,8 +223,8 @@ export function Sidebar() {
   );
 }
 
-function SideLink({ href, label, Icon, active, sectionActive, expanded, innerRef, activeBg }: {
-  href: string; label: string; Icon: React.ComponentType<{ className?: string }>; active: boolean; sectionActive: boolean; expanded: boolean; innerRef?: (el: HTMLElement | null) => void; activeBg?: boolean;
+function SideLink({ href, label, Icon, active, sectionActive, expanded, innerRef, activeBg, accent }: {
+  href: string; label: string; Icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; active: boolean; sectionActive: boolean; expanded: boolean; innerRef?: (el: HTMLElement | null) => void; activeBg?: boolean; accent?: string;
 }) {
   return (
     <Link
@@ -235,7 +238,11 @@ function SideLink({ href, label, Icon, active, sectionActive, expanded, innerRef
         !expanded && "justify-center px-0"
       )}
     >
-      <Icon className={cn("h-[18px] w-[18px] shrink-0 transition-transform duration-150 group-hover:scale-110", active && "scale-105")} />
+      <Icon
+        className={cn("h-[18px] w-[18px] shrink-0 transition-transform duration-150 group-hover:scale-110", active && "scale-105")}
+        // Section-tinted icon when idle; the active item keeps the primary color.
+        style={!active && accent ? { color: accent } : undefined}
+      />
       <span className={cn("truncate transition-all duration-150", expanded ? "opacity-100" : "w-0 opacity-0")}>{label}</span>
     </Link>
   );

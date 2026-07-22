@@ -85,7 +85,8 @@ export function MobileNav() {
             <nav className="flex-1 space-y-5 overflow-y-auto p-3">
               {NAV_SECTIONS.map((section) => (
                 <div key={section.label} className="space-y-1">
-                  <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                  <p className="flex items-center gap-1.5 px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: section.accent }} />
                     {section.label}
                   </p>
                   {section.items.map(link)}
