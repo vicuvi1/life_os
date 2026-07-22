@@ -3035,8 +3035,11 @@ bespoke caches.
 **How it works.**
 - **Jump anywhere.** Every page in the app is a command; type a few letters and
   hit enter to navigate.
-- **Search your stuff.** Start typing and it searches your **goals and tasks**
-  live — pick one to jump straight to it.
+- **Search your stuff.** Start typing and it searches your **goals, tasks,
+  habits, and sessions** live — pick one to jump straight to it.
+- **Natural-language capture.** Whatever you type becomes something you can
+  make: "Create task “…”" is always offered, and typing a money amount (e.g.
+  "save 500") offers "Create goal: Save $500" — created on the spot with a toast.
 - **Create from anywhere.** "New task / New goal / New habit" open the real
   create dialogs without leaving the page you're on — also available from a new
   **＋ quick-add** button in the top bar (and a **Search ⌘K** button beside it).
