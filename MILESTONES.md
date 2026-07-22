@@ -2598,3 +2598,31 @@ manual and is never clobbered**.
 list); a per-goal **icon + colour** for visual distinction on the list; and
 every numeric field remains directly typeable. All new fields are optional on
 disk and defaulted in `mapGoal`, so existing goals migrate with no work.
+
+---
+
+## 🎯 Goals — Milestone 2: micro-goals (sub-goal hierarchy)
+
+**Purpose.** Make big goals tractable instead of one scary percentage — break a
+goal into weighted milestones that drive its progress and tie into tasks.
+
+**How it works.**
+- **Embedded, no new collection.** Milestones live as an array on the goal
+  document (the app's established pattern — like recurring rules on Budget), so
+  there's **no new Firestore collection or security rule** to deploy.
+- **Each milestone measures itself** — a **checkbox**, a **count toward target**
+  (with unit, e.g. "2 / 3 exams"), or its own **sub-step checklist** (nesting
+  one level deep, opt-in). Each has a **weight**, an optional **due date**
+  (independent of the goal), and a completion date stamped when done.
+- **Milestones drive the goal.** A goal set to the **Milestone checklist**
+  measurement computes its overall % from the **weighted completion** of its
+  milestones automatically — you never keep the top-level number in sync by hand.
+- **Tied to tasks.** A milestone can **link existing tasks**; when all linked
+  tasks are complete it either **auto-completes** (if you flagged it) or shows a
+  *"linked tasks done — mark complete?"* nudge. The detail view lists each linked
+  task with its done state.
+
+**In the goal detail view** milestones are an **ordered, collapsible checklist**:
+drag to reorder, a per-milestone **progress bar**, inline editing of the count
+value and sub-steps, due/weight/linked-task meta, and add/edit/delete — with the
+goal's overall bar updating live as milestones change.

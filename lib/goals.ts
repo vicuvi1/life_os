@@ -229,3 +229,51 @@ export const MILESTONE_MEASUREMENTS: { key: MilestoneMeasurement; label: string 
   { key: "count", label: "Count toward target" },
   { key: "steps", label: "Sub-steps checklist" },
 ];
+
+/** Milestones in display order. */
+export function sortMilestones(ms: GoalMilestone[]): GoalMilestone[] {
+  return [...ms].sort((a, b) => a.order - b.order);
+}
+
+/** Short detail for a milestone's own progress, e.g. "2 / 3 exams". */
+export function milestoneDetail(m: GoalMilestone): string | null {
+  if (m.measurement === "count" && m.targetValue)
+    return `${m.currentValue ?? 0} / ${m.targetValue}${m.unit ? ` ${m.unit}` : ""}`;
+  if (m.measurement === "steps" && m.steps.length)
+    return `${m.steps.filter((s) => s.done).length} / ${m.steps.length} steps`;
+  return null;
+}
+
+/**
+ * Auto-complete milestones whose linked tasks are all done (only those flagged
+ * `autoComplete`). Returns the (possibly) updated list + whether anything changed.
+ */
+export function autoAdvanceMilestones(
+  milestones: GoalMilestone[],
+  doneTaskIds: Set<string>,
+  today: string
+): { milestones: GoalMilestone[]; changed: boolean } {
+  let changed = false;
+  const next = milestones.map((m) => {
+    if (!m.autoComplete || m.done || m.linkedTaskIds.length === 0) return m;
+    if (m.linkedTaskIds.every((id) => doneTaskIds.has(id))) {
+      changed = true;
+      return { ...m, done: true, completedDate: m.completedDate ?? today };
+    }
+    return m;
+  });
+  return { milestones: next, changed };
+}
+
+/** A non-auto milestone whose linked tasks are all done → prompt to complete. */
+export function milestoneReadyToComplete(
+  m: GoalMilestone,
+  doneTaskIds: Set<string>
+): boolean {
+  return (
+    !m.done &&
+    !m.autoComplete &&
+    m.linkedTaskIds.length > 0 &&
+    m.linkedTaskIds.every((id) => doneTaskIds.has(id))
+  );
+}

@@ -31,6 +31,7 @@ import {
 } from "@/lib/labels";
 import { computeGoalProgress, goalProgressDetail } from "@/lib/goals";
 import { GoalBadges } from "@/components/goals/goal-badges";
+import { MilestonesSection } from "@/components/goals/milestones-section";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -206,6 +207,9 @@ export default function GoalDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Milestones (micro-goals) */}
+      <MilestonesSection goal={goal} tasks={tasks} onSaved={load} />
 
       {/* Actions */}
       <div className="flex flex-wrap gap-2">

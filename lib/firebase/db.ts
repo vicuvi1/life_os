@@ -294,6 +294,15 @@ export async function updateGoal(
   await recomputeGoalProgress(id);
 }
 
+/** Persist a goal's embedded milestones and recompute its progress. */
+export async function updateGoalMilestones(
+  goalId: string,
+  milestones: Goal["milestones"]
+): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.goals, goalId), { milestones });
+  await recomputeGoalProgress(goalId);
+}
+
 export async function deleteGoal(id: string): Promise<void> {
   // Cascade-delete the goal's projects and tasks (Firestore has no FK cascade).
   const batch = writeBatch(db);
