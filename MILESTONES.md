@@ -2626,3 +2626,29 @@ goal into weighted milestones that drive its progress and tie into tasks.
 drag to reorder, a per-milestone **progress bar**, inline editing of the count
 value and sub-steps, due/weight/linked-task meta, and add/edit/delete — with the
 goal's overall bar updating live as milestones change.
+
+---
+
+## 🎯 Goals — Milestone 3: progress history, trend & realistic pacing
+
+**Purpose.** A single current % doesn't tell you if you're on track. This adds a
+time dimension.
+
+- **Progress history.** Every progress change records a **daily snapshot**
+  (`progressLog`, embedded + bounded to ~400 days) — logging is centralized in
+  `recomputeGoalProgress`, so manual %, count edits, milestone completion, task
+  completion and linked-session changes all get captured (one entry per day).
+- **Progress-over-time chart** on the goal detail — a line chart of the log so
+  you can see acceleration, plateaus or stalling at a glance. It only appears
+  once there are **≥2 data points** (same "no fabricated trend on day one" rule
+  used elsewhere).
+- **Pace projection** — plain-language status from **simple linear math**
+  (progress velocity over the last ~4 weeks vs. the target date): **On track**,
+  **Ahead of schedule**, **Behind schedule**, or **No deadline set**. It's shown
+  as an estimate ("≈ 82% by the deadline at this pace (estimate)"), never a
+  guarantee, and never a forecasting model — and it's gated on having enough
+  history.
+- **Trend arrow** — up/down with the change vs ~a week ago, gated on ≥2 points.
+- **Stale-goal detection.** An active goal with no progress entry in a
+  **configurable number of days (default 14, per-goal)** gets a **"Needs
+  attention"** flag on the Goals list, so an important goal can't silently die.

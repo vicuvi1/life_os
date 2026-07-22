@@ -5,6 +5,7 @@ import { CATEGORY_LABEL } from "@/lib/labels";
 import type {
   Goal,
   GoalCompositeComponent,
+  GoalLogEntry,
   GoalMeasurement,
   GoalMilestone,
   GoalMilestoneStep,
@@ -276,4 +277,143 @@ export function milestoneReadyToComplete(
     m.linkedTaskIds.length > 0 &&
     m.linkedTaskIds.every((id) => doneTaskIds.has(id))
   );
+}
+
+// ---------------------------------------------------------------------------
+// Milestone 3 — progress history, trend & realistic pacing.
+// ---------------------------------------------------------------------------
+function keyOf(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const da = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${da}`;
+}
+function shiftKey(key: string, days: number): string {
+  const d = new Date(key + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  return keyOf(d);
+}
+function daysBetween(a: string, b: string): number {
+  const da = new Date(a + "T00:00:00").getTime();
+  const dbb = new Date(b + "T00:00:00").getTime();
+  if (Number.isNaN(da) || Number.isNaN(dbb)) return 0;
+  return Math.round((dbb - da) / 86_400_000);
+}
+const byDate = (a: GoalLogEntry, b: GoalLogEntry) =>
+  a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+
+/** Upsert a daily snapshot (one entry per date), keeping the log bounded. */
+export function upsertGoalLog(
+  log: GoalLogEntry[],
+  date: string,
+  value: number,
+  cap = 400
+): GoalLogEntry[] {
+  const next = [...log.filter((e) => e.date !== date), { date, value }].sort(byDate);
+  return next.length > cap ? next.slice(next.length - cap) : next;
+}
+
+/** Days from `today` to the target date (negative = past); null if no deadline. */
+export function daysToDeadline(
+  goal: Pick<Goal, "deadline">,
+  today: string
+): number | null {
+  if (!goal.deadline) return null;
+  const d = new Date(goal.deadline + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return null;
+  return daysBetween(today, goal.deadline);
+}
+
+export interface TrendInfo {
+  direction: "up" | "down" | "flat";
+  delta: number; // percentage points vs the recent reference point
+}
+
+/** Recent trend (current vs the value ~1 week ago). Null until ≥2 data points. */
+export function goalTrend(goal: Pick<Goal, "progressLog">): TrendInfo | null {
+  const log = [...goal.progressLog].sort(byDate);
+  if (log.length < 2) return null;
+  const last = log[log.length - 1];
+  const refKey = shiftKey(last.date, -7);
+  // Latest point on/before the reference day, else the earliest available.
+  const ref = [...log].reverse().find((e) => e.date <= refKey) ?? log[0];
+  const delta = Math.round(last.value - ref.value);
+  return { direction: delta > 0 ? "up" : delta < 0 ? "down" : "flat", delta };
+}
+
+export type PaceLabel =
+  | "On track"
+  | "Ahead of schedule"
+  | "Behind schedule"
+  | "No deadline set";
+export interface PaceInfo {
+  label: PaceLabel;
+  tone: "good" | "warn" | "bad" | "none";
+  detail: string | null;
+}
+
+/**
+ * Plain-language pace from simple linear extrapolation (velocity over the last
+ * ~4 weeks vs. the target date). Deliberately arithmetic, clearly an estimate —
+ * not a forecast model. Returns null when there isn't enough history to judge.
+ */
+export function goalPace(
+  goal: Pick<Goal, "deadline" | "progressLog">,
+  today: string
+): PaceInfo | null {
+  if (!goal.deadline) return { label: "No deadline set", tone: "none", detail: null };
+  const log = [...goal.progressLog].sort(byDate);
+  if (log.length < 2) return null; // not enough history — gate the estimate
+
+  const last = log[log.length - 1];
+  const current = last.value;
+  if (current >= 100) return { label: "On track", tone: "good", detail: "Complete 🎉" };
+
+  const daysLeft = daysToDeadline(goal, today);
+  if (daysLeft == null) return null;
+  if (daysLeft <= 0)
+    return { label: "Behind schedule", tone: "bad", detail: "Past the target date" };
+
+  // Velocity across the last up-to-28 days of history.
+  const windowStart = shiftKey(last.date, -28);
+  const win = log.filter((e) => e.date >= windowStart);
+  const first = win[0];
+  const span = Math.max(1, daysBetween(first.date, last.date));
+  const velocity = (last.value - first.value) / span; // %/day
+  const remaining = 100 - current;
+  const required = remaining / daysLeft;
+
+  if (velocity <= 0)
+    return { label: "Behind schedule", tone: "bad", detail: "No recent progress (estimate)" };
+
+  const projected = Math.min(100, Math.round(current + velocity * daysLeft));
+  const ratio = velocity / required;
+  const label: PaceLabel =
+    ratio >= 1.15 ? "Ahead of schedule" : ratio >= 0.9 ? "On track" : "Behind schedule";
+  return {
+    label,
+    tone: label === "Behind schedule" ? "warn" : "good",
+    detail: `≈ ${projected}% by the deadline at this pace (estimate)`,
+  };
+}
+
+/** An active goal with no progress in `staleDays` (default 14) needs attention. */
+export function goalStale(
+  goal: Pick<Goal, "status" | "progressLog" | "staleDays">,
+  today: string,
+  defaultDays = 14
+): boolean {
+  if (goal.status !== "active") return false;
+  const days = goal.staleDays ?? defaultDays;
+  const log = [...goal.progressLog].sort(byDate);
+  if (log.length === 0) return true; // active but never logged → attention
+  return daysBetween(log[log.length - 1].date, today) >= days;
+}
+
+/** Compact "Jul 14"-style label for a date key (for the trend chart axis). */
+export function shortDate(key: string): string {
+  const d = new Date(key + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return key;
+  const M = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${M[d.getMonth()]} ${d.getDate()}`;
 }

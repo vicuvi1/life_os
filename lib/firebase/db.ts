@@ -18,7 +18,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { normalizeRecurringRule } from "@/lib/recurring";
-import { compositeProgress, milestonesProgress } from "@/lib/goals";
+import { compositeProgress, milestonesProgress, upsertGoalLog } from "@/lib/goals";
 import { entryGrams } from "@/lib/food";
 import {
   estimateDocBytes,
@@ -112,6 +112,8 @@ function mapGoal(snap: QueryDocumentSnapshot<DocumentData>): Goal {
     unit: d.unit ?? null,
     composite: Array.isArray(d.composite) ? d.composite : [],
     milestones: Array.isArray(d.milestones) ? d.milestones : [],
+    progressLog: Array.isArray(d.progressLog) ? d.progressLog : [],
+    staleDays: d.staleDays ?? null,
     startDate: d.startDate ?? null,
     deadline: d.deadline ?? null,
     quarter: d.quarter ?? null,
@@ -250,6 +252,7 @@ export type GoalInput = Pick<
   | "milestones"
   | "icon"
   | "color"
+  | "staleDays"
 > & { progress?: number };
 
 /** Legacy mirror so any un-migrated reader (older dashboard code) still works. */
@@ -272,6 +275,8 @@ export async function createGoal(
     unit: input.unit ?? null,
     composite: input.composite ?? [],
     milestones: input.milestones ?? [],
+    progressLog: [],
+    staleDays: input.staleDays ?? null,
     startDate: input.startDate ?? null,
     deadline: input.deadline ?? null,
     quarter: input.quarter ?? null,
@@ -544,7 +549,8 @@ export async function recomputeGoalProgress(goalId: string): Promise<number> {
   let progress = g.progress;
   switch (g.measurement) {
     case "percentage":
-      return g.progress; // manual — never clobbered by other changes
+      progress = g.progress; // manual value — logged but never overwritten
+      break;
     case "count":
       progress =
         g.targetValue && g.targetValue > 0
@@ -582,7 +588,9 @@ export async function recomputeGoalProgress(goalId: string): Promise<number> {
       break;
     }
   }
-  await updateDoc(goalRef, { progress });
+  // Record a daily snapshot so the goal has a real progress history (M3).
+  const progressLog = upsertGoalLog(g.progressLog, toDateKey(new Date()), progress);
+  await updateDoc(goalRef, { progress, progressLog });
   return progress;
 }
 

@@ -12,10 +12,12 @@ import {
   Trash2,
   Loader2,
   ArrowRight,
+  AlertTriangle,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { getGoals, deleteGoal } from "@/lib/firebase/db";
-import { goalProgressDetail } from "@/lib/goals";
+import { goalProgressDetail, goalStale } from "@/lib/goals";
+import { toDateKey } from "@/lib/greeting";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -32,6 +34,7 @@ import type { Goal } from "@/lib/types";
 
 export default function GoalsPage() {
   const { user } = useAuth();
+  const today = toDateKey(new Date());
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -143,8 +146,13 @@ export default function GoalsPage() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
-                  <div className="pt-1">
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
                     <GoalBadges goal={goal} />
+                    {goalStale(goal, today) && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-300">
+                        <AlertTriangle className="h-3 w-3" /> Needs attention
+                      </span>
+                    )}
                   </div>
                 </CardHeader>
                 <CardContent className="mt-auto space-y-3">

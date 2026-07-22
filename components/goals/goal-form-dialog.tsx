@@ -71,6 +71,7 @@ export function GoalFormDialog({ open, onOpenChange, userId, goal, onSaved }: Pr
   const [deadline, setDeadline] = useState("");
   const [icon, setIcon] = useState<string | null>(null);
   const [color, setColor] = useState<string | null>(null);
+  const [staleDays, setStaleDays] = useState<number | null>(null);
 
   const [measurement, setMeasurement] = useState<GoalMeasurement>("tasks");
   const [manualProgress, setManualProgress] = useState(0);
@@ -94,6 +95,7 @@ export function GoalFormDialog({ open, onOpenChange, userId, goal, onSaved }: Pr
     setDeadline(goal?.deadline ?? "");
     setIcon(goal?.icon ?? null);
     setColor(goal?.color ?? null);
+    setStaleDays(goal?.staleDays ?? null);
     setMeasurement(goal?.measurement ?? "tasks");
     setManualProgress(goal?.progress ?? 0);
     setCurrentValue(goal?.currentValue ?? null);
@@ -130,6 +132,7 @@ export function GoalFormDialog({ open, onOpenChange, userId, goal, onSaved }: Pr
       deadline: deadline || null,
       icon,
       color,
+      staleDays,
       targetValue:
         measurement === "count" || measurement === "linked" ? targetValue : null,
       currentValue: measurement === "count" ? currentValue ?? 0 : null,
@@ -322,6 +325,24 @@ export function GoalFormDialog({ open, onOpenChange, userId, goal, onSaved }: Pr
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
               />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-sm">Flag as stale after (days idle)</Label>
+            <div className="flex items-center gap-2">
+              <NumberField
+                value={staleDays}
+                onCommit={(v) => setStaleDays(v && v > 0 ? Math.round(v) : null)}
+                min={1}
+                decimals={false}
+                placeholder="14"
+                inputClassName="w-20"
+                aria-label="Flag as stale after days"
+              />
+              <span className="text-xs text-muted-foreground">
+                No progress for this many days → &quot;Needs attention&quot;. Default 14.
+              </span>
             </div>
           </div>
 

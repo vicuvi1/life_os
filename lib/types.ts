@@ -106,6 +106,12 @@ export interface GoalMilestoneStep {
   done: boolean;
 }
 
+/** One timestamped progress snapshot (daily granularity) — powers the trend. */
+export interface GoalLogEntry {
+  date: string; // YYYY-MM-DD
+  value: number; // 0-100 progress at that point
+}
+
 /** How a single milestone measures its own completion. */
 export type MilestoneMeasurement = "check" | "count" | "steps";
 
@@ -158,6 +164,10 @@ export interface Goal {
   composite: GoalCompositeComponent[];
   /** Embedded micro-goals (Milestone 2). */
   milestones: GoalMilestone[];
+  /** Bounded daily progress history (Milestone 3) — newest last. */
+  progressLog: GoalLogEntry[];
+  /** Days without a progress entry before this goal is flagged stale (null = 14). */
+  staleDays: number | null;
   startDate: string | null; // YYYY-MM-DD
   deadline: string | null; // YYYY-MM-DD — the target date (optional)
   quarter: string | null;

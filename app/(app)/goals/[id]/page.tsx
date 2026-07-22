@@ -14,6 +14,8 @@ import {
   Loader2,
   FolderKanban,
   ListTodo,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -21,6 +23,7 @@ import {
   getProjectsForGoal,
   getTasksForGoal,
   getSessions,
+  recomputeGoalProgress,
   deleteGoal,
   deleteProject,
   deleteTask,
@@ -29,9 +32,19 @@ import {
   PROJECT_STATUS_LABEL,
   PROJECT_STATUS_VARIANT,
 } from "@/lib/labels";
-import { computeGoalProgress, goalProgressDetail } from "@/lib/goals";
+import {
+  computeGoalProgress,
+  goalPace,
+  goalProgressDetail,
+  goalTrend,
+  shortDate,
+  type PaceInfo,
+} from "@/lib/goals";
+import { toDateKey } from "@/lib/greeting";
+import { cn } from "@/lib/utils";
 import { GoalBadges } from "@/components/goals/goal-badges";
 import { MilestonesSection } from "@/components/goals/milestones-section";
+import { TrendChart } from "@/components/sleep/trend-chart";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -49,11 +62,25 @@ import { TaskRow } from "@/components/tasks/task-row";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { Goal, Project, Session, Task } from "@/lib/types";
 
+function paceClass(tone: PaceInfo["tone"]): string {
+  switch (tone) {
+    case "good":
+      return "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300";
+    case "warn":
+      return "bg-amber-500/15 text-amber-600 dark:text-amber-300";
+    case "bad":
+      return "bg-rose-500/15 text-rose-600 dark:text-rose-300";
+    default:
+      return "bg-muted text-muted-foreground";
+  }
+}
+
 export default function GoalDetailPage() {
   const { user } = useAuth();
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const goalId = params.id;
+  const today = toDateKey(new Date());
 
   const [goal, setGoal] = useState<Goal | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -81,6 +108,9 @@ export default function GoalDetailPage() {
     if (!user || !goalId) return;
     setLoading(true);
     try {
+      // Snapshot today's progress so the history/pace reflect the latest state
+      // (idempotent — one daily entry, deduped).
+      await recomputeGoalProgress(goalId).catch(() => {});
       const [g, p, t, se] = await Promise.all([
         getGoal(goalId),
         getProjectsForGoal(goalId),
@@ -146,6 +176,9 @@ export default function GoalDetailPage() {
   };
   const livePct = computeGoalProgress(goal, progressCtx);
   const progressDetail = goalProgressDetail(goal, progressCtx);
+  const pace = goalPace(goal, today);
+  const trend = goalTrend(goal);
+  const hasHistory = goal.progressLog.length >= 2;
 
   function openAddTask(projectId: string | null) {
     setTaskForm({ open: true, projectId, task: null });
@@ -205,6 +238,73 @@ export default function GoalDetailPage() {
             </div>
             <Progress value={livePct} />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Progress over time (M3) */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold">Progress over time</p>
+            <div className="flex items-center gap-2">
+              {trend && trend.direction !== "flat" && (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 text-xs font-medium",
+                    trend.direction === "up"
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-rose-600 dark:text-rose-400"
+                  )}
+                >
+                  {trend.direction === "up" ? (
+                    <TrendingUp className="h-3.5 w-3.5" />
+                  ) : (
+                    <TrendingDown className="h-3.5 w-3.5" />
+                  )}
+                  {Math.abs(trend.delta)}% / wk
+                </span>
+              )}
+              {pace && (
+                <span
+                  className={cn(
+                    "rounded-full px-2 py-0.5 text-xs font-medium",
+                    paceClass(pace.tone)
+                  )}
+                >
+                  {pace.label}
+                </span>
+              )}
+            </div>
+          </div>
+          {pace?.detail && (
+            <p className="text-xs text-muted-foreground">{pace.detail}</p>
+          )}
+          {!pace && goal.deadline && (
+            <p className="text-xs text-muted-foreground">
+              Not enough history yet for a pace estimate.
+            </p>
+          )}
+        </CardHeader>
+        <CardContent>
+          {hasHistory ? (
+            <TrendChart
+              categories={goal.progressLog.map((e) => shortDate(e.date))}
+              series={[
+                {
+                  label: "Progress",
+                  color: goal.color ?? "#8b5cf6",
+                  points: goal.progressLog.map((e) => e.value),
+                },
+              ]}
+              min={0}
+              max={100}
+              format={(n) => `${Math.round(n)}%`}
+            />
+          ) : (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              Progress history will appear here as you update this goal.
+            </p>
+          )}
         </CardContent>
       </Card>
 
