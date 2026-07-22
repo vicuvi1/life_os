@@ -2504,3 +2504,26 @@ priority dots (+overflow count) *and* a **workload bar** underneath — □ ligh
 have unscheduled tasks, a hint appears with **Open planner** and **Auto-schedule**
 buttons — because an empty grid usually means tasks just need dates/times, not
 that anything is broken.
+
+---
+
+## 🗓️ Tasks — Week view visual overhaul (spacing · proportional blocks)
+
+**Purpose.** The time-grid worked but read as cramped. This pass makes it
+spacious and scannable — a real calendar surface.
+
+- **Duration-proportional blocks.** Tasks are now absolutely positioned by time:
+  a 2-hour task is literally twice as tall as a 1-hour one, sized against **88px
+  per hour** (was ~46px). Overlapping tasks split the column **side-by-side**
+  (an overlap-column layout), so nothing hides behind anything.
+- **Roomier grid.** Wider day columns (min 158px, growing to fill), a cleaner
+  time gutter with labels centered on each hour line, and a distinct **all-day**
+  band on top.
+- **Vibrant priority colors.** Every task card now carries a priority-tinted
+  surface — 🔴 rose / 🟡 amber / 🟢 emerald (border + fill + hover) — so
+  priority reads at a glance across all views, not just a thin bar.
+- **Click-empty-to-add.** Clicking any empty spot in a day opens the New-task
+  form prefilled to that day and (30-min-snapped) time. Dropping a task on the
+  grid snaps to the same 30-min steps.
+- Today's column is tinted; the grid scrolls horizontally when the window is
+  narrow so all seven days stay usable.

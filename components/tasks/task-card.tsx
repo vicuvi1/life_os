@@ -24,6 +24,8 @@ interface Props {
   context?: string | null;
   /** Dense variant for the week time-grid cells. */
   compact?: boolean;
+  /** Fill the parent's height (duration-proportional block in the week grid). */
+  fill?: boolean;
 }
 
 interface HoverPos {
@@ -39,6 +41,7 @@ export function TaskCard({
   onDragEnd,
   context,
   compact,
+  fill,
 }: Props) {
   const [dragging, setDragging] = useState(false);
   const [hover, setHover] = useState<HoverPos | null>(null);
@@ -90,9 +93,11 @@ export function TaskCard({
         }
       }}
       className={cn(
-        "group relative flex cursor-grab gap-2 overflow-hidden rounded-lg border bg-card text-left shadow-sm transition-all hover:shadow-md hover:ring-1 active:cursor-grabbing",
+        "group relative flex cursor-grab gap-2 overflow-hidden rounded-lg border text-left shadow-sm transition-all hover:shadow-md hover:ring-1 active:cursor-grabbing",
+        accent.soft,
         accent.ring,
         compact ? "p-1.5 pl-2.5" : "p-2 pl-3",
+        fill && "h-full",
         dragging && "opacity-40",
         done && "opacity-60"
       )}

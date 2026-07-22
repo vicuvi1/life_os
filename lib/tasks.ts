@@ -93,6 +93,70 @@ export function gridHourFor(startMin: number): number {
 }
 
 /**
+ * A timed task positioned for the week grid: its span plus which sub-column it
+ * takes within a cluster of overlapping events (so overlaps sit side-by-side).
+ */
+export interface PlacedEvent {
+  task: Task;
+  startMin: number;
+  endMin: number;
+  col: number; // 0-based column within its overlap cluster
+  cols: number; // total columns in that cluster
+}
+
+/** Minimum visual span so short tasks stay readable. */
+export const MIN_EVENT_MIN = 30;
+
+/** Lay out a day's timed tasks into side-by-side columns for overlaps. */
+export function layoutDayEvents(tasks: Task[]): PlacedEvent[] {
+  const evs = tasks
+    .filter((t) => t.startMin != null)
+    .map((t) => {
+      const s = t.startMin as number;
+      const rawE = t.endMin != null && t.endMin > s ? t.endMin : s + MIN_EVENT_MIN;
+      return { task: t, s, e: Math.max(rawE, s + MIN_EVENT_MIN) };
+    })
+    .sort((a, b) => a.s - b.s || a.e - b.e);
+
+  const out: PlacedEvent[] = [];
+  let cluster: { task: Task; s: number; e: number; col: number }[] = [];
+  let clusterEnd = -1;
+
+  const flush = () => {
+    if (cluster.length === 0) return;
+    const colEnds: number[] = [];
+    for (const ev of cluster) {
+      let placed = false;
+      for (let i = 0; i < colEnds.length; i++) {
+        if (ev.s >= colEnds[i]) {
+          ev.col = i;
+          colEnds[i] = ev.e;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        ev.col = colEnds.length;
+        colEnds.push(ev.e);
+      }
+    }
+    const cols = colEnds.length;
+    for (const ev of cluster)
+      out.push({ task: ev.task, startMin: ev.s, endMin: ev.e, col: ev.col, cols });
+    cluster = [];
+    clusterEnd = -1;
+  };
+
+  for (const ev of evs) {
+    if (cluster.length > 0 && ev.s >= clusterEnd) flush();
+    cluster.push({ ...ev, col: 0 });
+    clusterEnd = Math.max(clusterEnd, ev.e);
+  }
+  flush();
+  return out;
+}
+
+/**
  * Resolve a task's schedule when moved to a target start (minutes) or to the
  * all-day lane (null), preserving its existing duration (default 1h).
  */
@@ -138,29 +202,34 @@ export interface PriorityAccent {
   chip: string;
   ring: string;
   label: string;
+  /** Vibrant tinted card surface (bg + border + hover) for color-coded cards. */
+  soft: string;
 }
 
 export const PRIORITY_ACCENT: Record<Priority, PriorityAccent> = {
   high: {
     dot: "bg-rose-500",
     bar: "bg-rose-500",
-    chip: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
+    chip: "bg-rose-500/15 text-rose-600 dark:text-rose-300",
     ring: "ring-rose-500/40",
     label: "High",
+    soft: "border-rose-500/40 bg-rose-500/15 hover:bg-rose-500/25",
   },
   medium: {
     dot: "bg-amber-500",
     bar: "bg-amber-500",
-    chip: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    chip: "bg-amber-500/15 text-amber-600 dark:text-amber-300",
     ring: "ring-amber-500/40",
     label: "Medium",
+    soft: "border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25",
   },
   low: {
     dot: "bg-emerald-500",
     bar: "bg-emerald-500",
-    chip: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    chip: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
     ring: "ring-emerald-500/40",
     label: "Low",
+    soft: "border-emerald-500/40 bg-emerald-500/15 hover:bg-emerald-500/25",
   },
 };
 
