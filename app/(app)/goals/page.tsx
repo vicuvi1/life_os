@@ -15,12 +15,18 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
-import { getGoals, deleteGoal } from "@/lib/firebase/db";
+import {
+  getGoals,
+  deleteGoal,
+  setGoalCurrentValue,
+  setGoalManualProgress,
+} from "@/lib/firebase/db";
 import { goalProgressDetail, goalStale } from "@/lib/goals";
 import { toDateKey } from "@/lib/greeting";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { NumberField } from "@/components/ui/number-field";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -64,6 +70,15 @@ export default function GoalsPage() {
   function openEdit(goal: Goal) {
     setEditing(goal);
     setFormOpen(true);
+  }
+
+  async function quickPercent(goal: Goal, v: number) {
+    await setGoalManualProgress(goal.id, v);
+    await load();
+  }
+  async function quickCount(goal: Goal, v: number) {
+    await setGoalCurrentValue({ id: goal.id }, v);
+    await load();
   }
 
   return (
@@ -170,6 +185,39 @@ export default function GoalsPage() {
                     </div>
                     <Progress value={goal.progress} />
                   </div>
+
+                  {/* One/two-click quick update, by measurement type */}
+                  {goal.measurement === "percentage" ? (
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-xs text-muted-foreground">Update</span>
+                      <NumberField
+                        value={goal.progress}
+                        onCommit={(v) => quickPercent(goal, v)}
+                        min={0}
+                        max={100}
+                        decimals={false}
+                        suffix="%"
+                        inputClassName="w-16"
+                        aria-label="Update progress percent"
+                      />
+                    </div>
+                  ) : goal.measurement === "count" ? (
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-xs text-muted-foreground">Update</span>
+                      <NumberField
+                        value={goal.currentValue}
+                        onCommit={(v) => quickCount(goal, v)}
+                        min={0}
+                        inputClassName="w-16"
+                        aria-label="Update current value"
+                      />
+                      <span className="text-muted-foreground">
+                        / {goal.targetValue ?? 0}
+                        {goal.unit ? ` ${goal.unit}` : ""}
+                      </span>
+                    </div>
+                  ) : null}
+
                   <Button
                     asChild
                     variant="ghost"
@@ -177,7 +225,7 @@ export default function GoalsPage() {
                     className="w-full justify-between"
                   >
                     <Link href={`/goals/${goal.id}`}>
-                      Open projects & tasks
+                      Open goal
                       <ArrowRight className="h-4 w-4" />
                     </Link>
                   </Button>

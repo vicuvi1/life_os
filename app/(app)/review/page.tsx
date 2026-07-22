@@ -12,6 +12,7 @@ import {
   Construction,
   Target,
 } from "lucide-react";
+import Link from "next/link";
 import { useAuth } from "@/components/auth-provider";
 import {
   getWeeklyReview,
@@ -19,7 +20,11 @@ import {
   upsertWeeklyReview,
   getPrefs,
   upsertPrefs,
+  getGoals,
 } from "@/lib/firebase/db";
+import { goalPace } from "@/lib/goals";
+import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -37,7 +42,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { NumberField } from "@/components/ui/number-field";
 import { Badge } from "@/components/ui/badge";
-import type { WeeklyReview } from "@/lib/types";
+import type { Goal, WeeklyReview } from "@/lib/types";
+
+function paceToneClass(tone: "good" | "warn" | "bad" | "none"): string {
+  if (tone === "good") return "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300";
+  if (tone === "warn") return "bg-amber-500/15 text-amber-600 dark:text-amber-300";
+  if (tone === "bad") return "bg-rose-500/15 text-rose-600 dark:text-rose-300";
+  return "bg-muted text-muted-foreground";
+}
 
 interface ReviewDraft {
   accomplishments: string;
@@ -76,7 +88,9 @@ const DEFAULT_SCORE = 50;
 
 export default function ReviewPage() {
   const { user } = useAuth();
-  const thisWeek = startOfWeekKey(toDateKey(new Date()));
+  const todayKey = toDateKey(new Date());
+  const thisWeek = startOfWeekKey(todayKey);
+  const [goals, setGoals] = useState<Goal[]>([]);
 
   const [weekStart, setWeekStart] = useState(thisWeek);
   const [accomplishments, setAccomplishments] = useState("");
@@ -115,13 +129,17 @@ export default function ReviewPage() {
 
   const loadHistory = useCallback(async () => {
     if (!user) return;
-    const [reviews, prefs] = await Promise.all([
+    const [reviews, prefs, gs] = await Promise.all([
       getWeeklyReviews(user.uid),
       getPrefs(user.uid),
+      getGoals(user.uid),
     ]);
     setHistory(reviews);
     setScale(prefs.reviewScale);
+    setGoals(gs);
   }, [user]);
+
+  const activeGoals = goals.filter((g) => g.status === "active");
 
   async function changeScale(next: 10 | 100) {
     if (!user) return;
@@ -328,6 +346,52 @@ export default function ReviewPage() {
             </form>
           </CardContent>
         </Card>
+      )}
+
+      {/* Goals check-in — reflect on goal progress as part of the routine */}
+      {activeGoals.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+            <Target className="h-4 w-4" /> Goals this week
+          </h2>
+          <Card>
+            <CardContent className="divide-y p-0">
+              {activeGoals.map((g) => {
+                const pace = goalPace(g, todayKey);
+                return (
+                  <Link
+                    key={g.id}
+                    href={`/goals/${g.id}`}
+                    className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/40"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-sm font-medium">
+                          {g.icon ? `${g.icon} ` : ""}
+                          {g.title}
+                        </span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {g.progress}%
+                        </span>
+                      </div>
+                      <Progress value={g.progress} className="mt-1.5" />
+                    </div>
+                    {pace && (
+                      <span
+                        className={cn(
+                          "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
+                          paceToneClass(pace.tone)
+                        )}
+                      >
+                        {pace.label}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </CardContent>
+          </Card>
+        </section>
       )}
 
       {/* History */}

@@ -112,6 +112,14 @@ export interface GoalLogEntry {
   value: number; // 0-100 progress at that point
 }
 
+/** A free-text reflection tied to a goal (Milestone 4). */
+export interface GoalJournalEntry {
+  id: string;
+  date: string; // YYYY-MM-DD
+  text: string;
+  createdAt: number;
+}
+
 /** How a single milestone measures its own completion. */
 export type MilestoneMeasurement = "check" | "count" | "steps";
 
@@ -166,6 +174,8 @@ export interface Goal {
   milestones: GoalMilestone[];
   /** Bounded daily progress history (Milestone 3) — newest last. */
   progressLog: GoalLogEntry[];
+  /** Free-text journal / reflections tied to this goal (Milestone 4). */
+  journal: GoalJournalEntry[];
   /** Days without a progress entry before this goal is flagged stale (null = 14). */
   staleDays: number | null;
   startDate: string | null; // YYYY-MM-DD

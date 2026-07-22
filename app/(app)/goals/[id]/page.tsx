@@ -24,6 +24,7 @@ import {
   getTasksForGoal,
   getSessions,
   recomputeGoalProgress,
+  updateGoalJournal,
   deleteGoal,
   deleteProject,
   deleteTask,
@@ -49,6 +50,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -103,6 +105,7 @@ export default function GoalDetailPage() {
     task: Task | null;
   }>({ open: false, projectId: null, task: null });
   const [deletingTask, setDeletingTask] = useState<Task | null>(null);
+  const [journalDraft, setJournalDraft] = useState("");
 
   const load = useCallback(async () => {
     if (!user || !goalId) return;
@@ -179,6 +182,33 @@ export default function GoalDetailPage() {
   const pace = goalPace(goal, today);
   const trend = goalTrend(goal);
   const hasHistory = goal.progressLog.length >= 2;
+  const goalSessions = sessions
+    .filter((s) => s.goalId === goal.id)
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+
+  async function addJournal() {
+    if (!goal || !journalDraft.trim()) return;
+    const entry = {
+      id:
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `j_${Date.now()}`,
+      date: today,
+      text: journalDraft.trim(),
+      createdAt: Date.now(),
+    };
+    await updateGoalJournal(goal.id, [entry, ...goal.journal]);
+    setJournalDraft("");
+    await load();
+  }
+  async function removeJournal(id: string) {
+    if (!goal) return;
+    await updateGoalJournal(
+      goal.id,
+      goal.journal.filter((j) => j.id !== id)
+    );
+    await load();
+  }
 
   function openAddTask(projectId: string | null) {
     setTaskForm({ open: true, projectId, task: null });
@@ -445,6 +475,78 @@ export default function GoalDetailPage() {
             })}
           </div>
         )}
+      </section>
+
+      {/* Linked sessions (time logged toward this goal) */}
+      {goalSessions.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+            Linked sessions
+            <span className="text-xs font-normal">
+              · {(linkedMinutes / 60).toFixed(1)}h across {goalSessions.length}
+            </span>
+          </h2>
+          <Card>
+            <CardContent className="divide-y p-0">
+              {goalSessions.slice(0, 5).map((s) => (
+                <div key={s.id} className="flex items-center justify-between gap-2 px-4 py-2.5 text-sm">
+                  <span className="truncate">{s.title}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {shortDate(s.date)} ·{" "}
+                    {(Math.max(0, s.endMin - s.startMin) / 60).toFixed(1)}h
+                  </span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </section>
+      )}
+
+      {/* Journal / reflections */}
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold text-muted-foreground">Journal</h2>
+        <Card>
+          <CardContent className="space-y-3 p-4">
+            <div className="flex gap-2">
+              <Textarea
+                value={journalDraft}
+                onChange={(e) => setJournalDraft(e.target.value)}
+                placeholder="A reflection on this goal — what's working, what's stuck…"
+                className="min-h-[60px]"
+              />
+              <Button
+                type="button"
+                className="self-end"
+                disabled={!journalDraft.trim()}
+                onClick={addJournal}
+              >
+                <Plus className="h-4 w-4" /> Add
+              </Button>
+            </div>
+            {goal.journal.length > 0 && (
+              <div className="space-y-2">
+                {goal.journal.map((j) => (
+                  <div key={j.id} className="rounded-lg border p-3">
+                    <div className="mb-1 flex items-center justify-between">
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {shortDate(j.date)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeJournal(j.id)}
+                        aria-label="Delete entry"
+                        className="text-muted-foreground hover:text-destructive"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <p className="whitespace-pre-wrap text-sm">{j.text}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </section>
 
       {/* Dialogs */}

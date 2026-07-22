@@ -79,6 +79,7 @@ import { buildPriorityStack, type PriorityItem } from "@/lib/priority";
 import { trackerIcon, formatTrackerValue, trackerValueMeetsTarget } from "@/lib/trackers";
 import { currentPermission, showNotification } from "@/lib/notify";
 import { CATEGORY_LABEL } from "@/lib/labels";
+import { daysToDeadline, goalPace, goalStale } from "@/lib/goals";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -800,6 +801,34 @@ export default function DashboardPage() {
       ? Math.round(goals.reduce((s, g) => s + (g.progress ?? 0), 0) / goals.length)
       : 0;
   const bestStreak = habits.reduce((m, h) => Math.max(m, h.bestStreak ?? 0), 0);
+
+  // The one active goal that most needs attention today (stale > behind >
+  // nearest deadline). Surfaces it on the dashboard instead of on Goals only.
+  const urgentGoal = useMemo(() => {
+    let best: { id: string; title: string; score: number; reason: string } | null = null;
+    for (const g of allGoals) {
+      if (g.status !== "active") continue;
+      const pace = goalPace(g, today);
+      const dtd = daysToDeadline(g, today);
+      let score = 0;
+      let reason = "";
+      if (goalStale(g, today)) {
+        score = 1000;
+        reason = "no recent progress";
+      } else if (pace?.label === "Behind schedule") {
+        score = 500;
+        reason = "behind schedule";
+      } else if (dtd != null && dtd >= 0 && dtd <= 14) {
+        score = 200 - dtd;
+        reason = dtd === 0 ? "due today" : `due in ${dtd}d`;
+      }
+      if (score > 0 && (!best || score > best.score)) {
+        best = { id: g.id, title: g.title, score, reason };
+      }
+    }
+    return best;
+  }, [allGoals, today]);
+
   const lastNight = sleepLogs[0];
 
   // Done-semantics per habit (count habits are done once value >= target).
@@ -1290,6 +1319,18 @@ export default function DashboardPage() {
             label="Active goals"
             value={<AnimatedNumber value={goals.length} />}
           >
+            {urgentGoal && (
+              <Link
+                href={`/goals/${urgentGoal.id}`}
+                className="mb-2 flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs transition-colors hover:bg-amber-500/20"
+              >
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="font-medium">{urgentGoal.title}</span> —{" "}
+                  {urgentGoal.reason}
+                </span>
+              </Link>
+            )}
             {goals.length === 0 ? (
               <p className="text-muted-foreground">
                 No active goals.{" "}

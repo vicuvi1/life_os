@@ -113,6 +113,7 @@ function mapGoal(snap: QueryDocumentSnapshot<DocumentData>): Goal {
     composite: Array.isArray(d.composite) ? d.composite : [],
     milestones: Array.isArray(d.milestones) ? d.milestones : [],
     progressLog: Array.isArray(d.progressLog) ? d.progressLog : [],
+    journal: Array.isArray(d.journal) ? d.journal : [],
     staleDays: d.staleDays ?? null,
     startDate: d.startDate ?? null,
     deadline: d.deadline ?? null,
@@ -276,6 +277,7 @@ export async function createGoal(
     composite: input.composite ?? [],
     milestones: input.milestones ?? [],
     progressLog: [],
+    journal: [],
     staleDays: input.staleDays ?? null,
     startDate: input.startDate ?? null,
     deadline: input.deadline ?? null,
@@ -597,15 +599,31 @@ export async function recomputeGoalProgress(goalId: string): Promise<number> {
 /** @deprecated use {@link recomputeGoalProgress}. */
 export const recalcGoalProgress = recomputeGoalProgress;
 
-/** Update a count-type goal's current value and derive its progress %. */
+/** Set a count goal's current value; recompute derives + logs the progress. */
 export async function setGoalCurrentValue(
-  goal: Pick<Goal, "id" | "targetValue">,
+  goal: Pick<Goal, "id">,
   currentValue: number
 ): Promise<void> {
-  const target = goal.targetValue ?? 0;
-  const progress =
-    target > 0 ? Math.max(0, Math.min(100, Math.round((currentValue / target) * 100))) : 0;
-  await updateDoc(doc(db, COLLECTIONS.goals, goal.id), { currentValue, progress });
+  await updateDoc(doc(db, COLLECTIONS.goals, goal.id), { currentValue });
+  await recomputeGoalProgress(goal.id);
+}
+
+/** Set a percentage goal's manual progress; recompute records the snapshot. */
+export async function setGoalManualProgress(
+  goalId: string,
+  progress: number
+): Promise<void> {
+  const clamped = Math.max(0, Math.min(100, Math.round(progress)));
+  await updateDoc(doc(db, COLLECTIONS.goals, goalId), { progress: clamped });
+  await recomputeGoalProgress(goalId);
+}
+
+/** Persist a goal's journal entries (no progress impact). */
+export async function updateGoalJournal(
+  goalId: string,
+  journal: Goal["journal"]
+): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.goals, goalId), { journal });
 }
 
 // ---------------------------------------------------------------------------

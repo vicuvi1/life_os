@@ -2652,3 +2652,28 @@ time dimension.
 - **Stale-goal detection.** An active goal with no progress entry in a
   **configurable number of days (default 14, per-goal)** gets a **"Needs
   attention"** flag on the Goals list, so an important goal can't silently die.
+
+---
+
+## 🎯 Goals — Milestone 4: unified detail & daily integration
+
+**Purpose.** Bring everything into one strong goal page and connect goals to the
+rest of the app instead of leaving them on an island.
+
+- **Unified goal detail** — header (icon/colour, title, badges), measurement
+  summary, the progress-over-time chart + pace (M3), the milestone checklist
+  (M2), linked tasks/projects, a **linked-sessions** summary (hours logged toward
+  the goal), and a free-text **journal / reflections** section (dated entries,
+  add + delete). *(Trackers aren't goal-linked in the data model, so "linked
+  trackers" surfaces as linked sessions only.)*
+- **Quick update from the Goals list** — for the two manually-updated types you
+  can set progress in one or two clicks right on the list card (type the %,
+  or the current count toward target); it records a history snapshot just like a
+  "log today". Derived types (tasks/milestones/linked) update themselves.
+- **Dashboard integration** — the single most urgent active goal (stale →
+  behind-schedule → nearest deadline) surfaces as an amber callout in the
+  dashboard's Active-goals tile, so it's not something you have to remember to
+  check on a separate page.
+- **Weekly Review integration** — a "Goals this week" section lists each active
+  goal with its progress bar and pace status right inside the review flow, so
+  reflecting on goals happens as part of the routine that already exists.
