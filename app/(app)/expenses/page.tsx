@@ -55,6 +55,7 @@ import {
   deleteExpense,
   deleteExpenses,
   setRecurringRules,
+  setBudgetAccounts,
 } from "@/lib/firebase/db";
 import { toDateKey, resolveFirstName } from "@/lib/greeting";
 import {
@@ -65,7 +66,6 @@ import {
   totalEarned,
   totalSpent,
   netTotal,
-  accountBalance,
   spendByCategory,
   categoryColor,
   categoryLabel,
@@ -73,9 +73,12 @@ import {
   EXPENSE_CATEGORY_LABEL,
   INCOME_CATEGORIES,
   INCOME_CATEGORY_LABEL,
-  ACCOUNTS,
-  ACCOUNT_LABEL,
   isTransfer,
+  seedAccounts,
+  sortAccounts,
+  activeAccounts,
+  accountById,
+  computeAccountBalance,
 } from "@/lib/expenses";
 import {
   isDue,
@@ -109,11 +112,12 @@ import {
 import { ExpenseFormDialog } from "@/components/expenses/expense-form-dialog";
 import { BudgetFormDialog } from "@/components/expenses/budget-form-dialog";
 import { TransferDialog } from "@/components/expenses/transfer-dialog";
+import { AccountManagerDialog } from "@/components/expenses/account-manager-dialog";
 import { RecurringDialog } from "@/components/expenses/recurring-dialog";
 import { DuplicatesDialog } from "@/components/expenses/duplicates-dialog";
 import { ConfirmDialog } from "@/components/expenses/confirm-dialog";
 import { cn } from "@/lib/utils";
-import type { AccountKey, Budget, EntryKind, Expense, RecurringRule } from "@/lib/types";
+import type { Account, Budget, EntryKind, Expense, RecurringRule } from "@/lib/types";
 import type { LucideIcon } from "lucide-react";
 
 const MONTHS_SHORT = [
@@ -169,7 +173,7 @@ function renewalText(days: number): string {
   return days <= 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;
 }
 
-type AccountFilter = "all" | AccountKey;
+type AccountFilter = string; // "all" or an account id
 
 function pctChange(cur: number, prev: number): number {
   if (prev === 0) return cur === 0 ? 0 : 100;
@@ -195,11 +199,12 @@ export default function FinancePage() {
   const [loading, setLoading] = useState(true);
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [accountsOpen, setAccountsOpen] = useState(false);
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [clearTarget, setClearTarget] = useState<{ ids: string[]; scope: string } | null>(null);
-  const [newAccount, setNewAccount] = useState<AccountKey>("wallet");
+  const [newAccount, setNewAccount] = useState<string>("wallet");
   const [filter, setFilter] = useState<AccountFilter>("all");
   const [amountView, setAmountView] = useState<"full" | "compact">("full");
   const [viewMode, setViewMode] = useState<"table" | "cards" | "calendar">("table");
@@ -239,10 +244,23 @@ export default function FinancePage() {
   const currency = resolveCurrency(budget);
   const mKey = monthKey(year, month);
   const todayKey = toDateKey(now);
+
+  // User-defined accounts (embedded on the budget). Seed wallet/safe for legacy
+  // data so existing transactions keep their account reference.
+  const accounts = useMemo(() => {
+    const a = budget?.accounts ?? [];
+    return a.length ? sortAccounts(a) : seedAccounts(budget);
+  }, [budget]);
+  const activeAccts = useMemo(() => activeAccounts(accounts), [accounts]);
+  const acctMap = useMemo(() => accountById(accounts), [accounts]);
+  const accountName = useCallback(
+    (id: string) => acctMap.get(id)?.name ?? id,
+    [acctMap]
+  );
   const [quickEntry, setQuickEntry] = useState({
     date: todayKey,
     kind: "expense" as EntryKind,
-    account: "wallet" as AccountKey,
+    account: "wallet" as string,
     category: DEFAULT_CATEGORY["expense"],
     note: "",
     amount: null as number | null,
@@ -318,9 +336,9 @@ export default function FinancePage() {
     try {
       const saved = window.localStorage.getItem("finance:quickDefaults");
       if (!saved) return;
-      const d = JSON.parse(saved) as { kind?: EntryKind; account?: AccountKey; category?: string };
+      const d = JSON.parse(saved) as { kind?: EntryKind; account?: string; category?: string };
       const kind: EntryKind = d.kind === "income" ? "income" : "expense";
-      const account: AccountKey = d.account === "safe" ? "safe" : "wallet";
+      const account = typeof d.account === "string" && d.account ? d.account : "wallet";
       const validCats = kind === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
       const category = d.category && (validCats as string[]).includes(d.category) ? d.category : DEFAULT_CATEGORY[kind];
       setQuickEntry((prev) => ({ ...prev, kind, account, category }));
@@ -328,6 +346,29 @@ export default function FinancePage() {
       // ignore localStorage failures
     }
   }, []);
+
+  // One-time: persist the seeded accounts so they gain stable ids/createdAt.
+  useEffect(() => {
+    if (!user || !budget) return;
+    if (!budget.accounts || budget.accounts.length === 0) {
+      setBudgetAccounts(
+        user.uid,
+        seedAccounts(budget).map((a) => ({ ...a, createdAt: Date.now() }))
+      )
+        .then(() => load({ quiet: true }))
+        .catch(() => {});
+    }
+  }, [user, budget, load]);
+
+  // Keep the selected quick-add / add-line account valid as accounts change.
+  useEffect(() => {
+    if (activeAccts.length === 0) return;
+    const ids = new Set(activeAccts.map((a) => a.id));
+    if (!ids.has(quickEntry.account))
+      setQuickEntry((prev) => ({ ...prev, account: activeAccts[0].id }));
+    if (!ids.has(newAccount)) setNewAccount(activeAccts[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeAccts]);
 
   const quickInit = useRef(true);
   useEffect(() => {
@@ -422,12 +463,17 @@ export default function FinancePage() {
   }, [displayExpenses]);
 
   const openingTotal = useMemo(
-    () => ACCOUNTS.reduce((s, a) => s + (budget?.openingBalances?.[a] ?? 0), 0),
-    [budget]
+    () => activeAccts.reduce((s, a) => s + a.startingBalance, 0),
+    [activeAccts]
   );
-  const walletBalance = accountBalance(expenses, "wallet", budget?.openingBalances?.wallet ?? 0);
-  const safeBalance = accountBalance(expenses, "safe", budget?.openingBalances?.safe ?? 0);
-  const netWorth = walletBalance + safeBalance;
+  const netWorth = useMemo(
+    () => activeAccts.reduce((s, a) => s + computeAccountBalance(a, expenses), 0),
+    [activeAccts, expenses]
+  );
+  const accountBalances = useMemo(
+    () => activeAccts.map((a) => ({ account: a, balance: computeAccountBalance(a, expenses) })),
+    [activeAccts, expenses]
+  );
 
   const dim = daysInMonth(year, month);
   const days = useMemo(() => Array.from({ length: dim }, (_, i) => i + 1), [dim]);
@@ -942,7 +988,7 @@ export default function FinancePage() {
           <SelectTrigger className="h-9 w-[128px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All accounts</SelectItem>
-            {ACCOUNTS.map((a) => <SelectItem key={a} value={a}>{ACCOUNT_LABEL[a]}</SelectItem>)}
+            {activeAccts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
           </SelectContent>
         </Select>
 
@@ -1002,20 +1048,6 @@ export default function FinancePage() {
               value={formatDisplayAmount(netWorth)}
               sub={<span className="text-xs text-muted-foreground">Across all accounts</span>}
               spark={sparkData}
-            />
-            <StatCard
-              icon={Wallet}
-              iconClass="bg-sky-500/15 text-sky-500"
-              label="Wallet (cash)"
-              value={formatDisplayAmount(walletBalance)}
-              sub={<span className="text-xs text-muted-foreground">Available to spend</span>}
-            />
-            <StatCard
-              icon={PiggyBank}
-              iconClass="bg-emerald-500/15 text-emerald-500"
-              label="Safe (savings)"
-              value={formatDisplayAmount(safeBalance)}
-              sub={<span className="text-xs text-muted-foreground">Keep building 💪</span>}
             />
             <StatCard
               icon={net >= 0 ? TrendingUp : TrendingDown}
@@ -1115,7 +1147,7 @@ export default function FinancePage() {
                                 <div className="min-w-0 flex-1">
                                   <p className="truncate text-sm font-medium">{e.note || categoryLabel(e.category)}</p>
                                   <p className="text-xs text-muted-foreground">
-                                    {formatDayLabel(e.date)} · {ACCOUNT_LABEL[e.account]}
+                                    {formatDayLabel(e.date)} · {accountName(e.account)}
                                   </p>
                                 </div>
                                 <span className={cn("shrink-0 text-sm font-semibold tabular-nums", e.kind === "income" ? "text-emerald-500" : "text-rose-500")}> 
@@ -1204,10 +1236,10 @@ export default function FinancePage() {
                     <select
                       className="h-10 rounded-lg border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       value={quickEntry.account}
-                      onChange={(event) => setQuickEntry((prev) => ({ ...prev, account: event.target.value as AccountKey }))}
+                      onChange={(event) => setQuickEntry((prev) => ({ ...prev, account: event.target.value }))}
                     >
-                      {ACCOUNTS.map((a) => (
-                        <option key={a} value={a}>{ACCOUNT_LABEL[a]}</option>
+                      {activeAccts.map((a) => (
+                        <option key={a.id} value={a.id}>{a.name}</option>
                       ))}
                     </select>
                     <Input
@@ -1342,7 +1374,7 @@ export default function FinancePage() {
                               <div className="min-w-0 flex-1">
                                 <p className="truncate text-sm font-semibold">{entry.note || categoryLabel(entry.category)}</p>
                                 <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                                  {formatDayLabel(entry.date)} · {categoryLabel(entry.category)} · {ACCOUNT_LABEL[entry.account]}
+                                  {formatDayLabel(entry.date)} · {categoryLabel(entry.category)} · {accountName(entry.account)}
                                 </p>
                               </div>
                               <span className={cn("shrink-0 text-sm font-semibold tabular-nums", transfer ? "text-sky-500" : income ? "text-emerald-500" : "text-rose-500")}>
@@ -1444,44 +1476,48 @@ export default function FinancePage() {
             <aside className="space-y-4">
               <Card className="overflow-hidden">
                 <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Account summary</span>
-                  <Button variant="ghost" size="icon" aria-label="Refresh" onClick={() => load({ quiet: true })}>
-                    <ArrowUp className="h-4 w-4" />
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Accounts</span>
+                  <Button variant="ghost" size="sm" onClick={() => setAccountsOpen(true)}>
+                    <Settings2 className="h-3.5 w-3.5" /> Manage
                   </Button>
                 </div>
-                <div className="space-y-3 p-4">
-                  <div className="rounded-2xl border border-input bg-background/80 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Wallet (Cash)</p>
-                        <p className="mt-2 text-lg font-semibold">{formatDisplayAmount(walletBalance)}</p>
-                      </div>
-                      <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/10 text-sky-500">
-                        <Wallet className="h-5 w-5" />
-                      </span>
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-input bg-background/80 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Safe (Savings)</p>
-                        <p className="mt-2 text-lg font-semibold">{formatDisplayAmount(safeBalance)}</p>
-                      </div>
-                      <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500">
-                        <PiggyBank className="h-5 w-5" />
-                      </span>
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-input bg-background/80 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Net worth</p>
-                        <p className="mt-2 text-lg font-semibold">{formatDisplayAmount(netWorth)}</p>
-                      </div>
-                      <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                        <Landmark className="h-5 w-5" />
-                      </span>
-                    </div>
+                <div className="space-y-2 p-4">
+                  {accountBalances.map(({ account, balance }) => {
+                    const isActive = filter === account.id;
+                    return (
+                      <button
+                        key={account.id}
+                        type="button"
+                        onClick={() => setFilter(isActive ? "all" : account.id)}
+                        title="Filter transactions to this account"
+                        className={cn(
+                          "flex w-full items-center justify-between gap-3 rounded-2xl border p-3.5 text-left transition-colors hover:bg-accent/40",
+                          isActive ? "border-primary/60 bg-primary/5" : "border-input bg-background/80"
+                        )}
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-base"
+                            style={{ backgroundColor: `${account.color ?? "#64748b"}22`, color: account.color ?? "#64748b" }}
+                          >
+                            {account.icon ?? account.name.charAt(0).toUpperCase()}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{account.name}</p>
+                            <p className="truncate text-[11px] uppercase tracking-wide text-muted-foreground">{account.type}</p>
+                          </div>
+                        </div>
+                        <span className="shrink-0 text-sm font-semibold tabular-nums">
+                          {formatAmount(balance, account.currency ? resolveCurrency({ currency: account.currency }) : currency)}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  <div className="flex items-center justify-between rounded-2xl bg-muted/40 px-3.5 py-3">
+                    <span className="inline-flex items-center gap-2 text-sm font-medium">
+                      <Landmark className="h-4 w-4 text-primary" /> Net worth
+                    </span>
+                    <span className="text-sm font-semibold tabular-nums">{formatDisplayAmount(netWorth)}</span>
                   </div>
                 </div>
               </Card>
@@ -1674,6 +1710,7 @@ export default function FinancePage() {
             userId={user.uid}
             defaultDate={isCurrentMonth ? todayKey : `${mKey}-01`}
             initialKind={form.kind}
+            accounts={activeAccts}
             expense={form.expense}
             onSaved={load}
           />
@@ -1683,6 +1720,16 @@ export default function FinancePage() {
             onOpenChange={setTransferOpen}
             userId={user.uid}
             defaultDate={isCurrentMonth ? todayKey : `${mKey}-01`}
+            accounts={activeAccts}
+            onSaved={load}
+          />
+          <AccountManagerDialog
+            open={accountsOpen}
+            onOpenChange={setAccountsOpen}
+            userId={user.uid}
+            accounts={accounts}
+            expenses={expenses}
+            currency={currency}
             onSaved={load}
           />
           <RecurringDialog
@@ -1696,6 +1743,7 @@ export default function FinancePage() {
             onOpenChange={setDuplicatesOpen}
             groups={duplicateGroups}
             format={formatDisplayAmount}
+            accountName={accountName}
             onDelete={removeEntry}
           />
           <ConfirmDialog

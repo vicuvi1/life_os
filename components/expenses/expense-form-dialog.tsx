@@ -25,11 +25,9 @@ import {
   EXPENSE_CATEGORY_LABEL,
   INCOME_CATEGORIES,
   INCOME_CATEGORY_LABEL,
-  ACCOUNTS,
-  ACCOUNT_LABEL,
 } from "@/lib/expenses";
 import { cn } from "@/lib/utils";
-import type { AccountKey, EntryKind, Expense } from "@/lib/types";
+import type { Account, EntryKind, Expense } from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -38,6 +36,7 @@ interface Props {
   defaultDate: string;
   /** Which kind to preselect when adding (ignored when editing). */
   initialKind?: EntryKind;
+  accounts: Account[];
   expense?: Expense | null;
   onSaved: () => void;
 }
@@ -53,13 +52,14 @@ export function ExpenseFormDialog({
   userId,
   defaultDate,
   initialKind = "expense",
+  accounts,
   expense,
   onSaved,
 }: Props) {
   const isEdit = Boolean(expense);
   const [kind, setKind] = useState<EntryKind>("expense");
   const [amount, setAmount] = useState("");
-  const [account, setAccount] = useState<AccountKey>("wallet");
+  const [account, setAccount] = useState<string>("wallet");
   const [category, setCategory] = useState<string>("food");
   const [note, setNote] = useState("");
   const [date, setDate] = useState(defaultDate);
@@ -71,7 +71,7 @@ export function ExpenseFormDialog({
     const k = expense?.kind ?? initialKind;
     setKind(k);
     setAmount(expense ? String(expense.amount) : "");
-    setAccount(expense?.account ?? "wallet");
+    setAccount(expense?.account ?? accounts[0]?.id ?? "wallet");
     setCategory(expense?.category ?? DEFAULT_CATEGORY[k]);
     setNote(expense?.note ?? "");
     setDate(expense?.date ?? defaultDate);
@@ -206,17 +206,14 @@ export function ExpenseFormDialog({
             </div>
             <div className="space-y-2">
               <Label>Account</Label>
-              <Select
-                value={account}
-                onValueChange={(v) => setAccount(v as AccountKey)}
-              >
+              <Select value={account} onValueChange={setAccount}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {ACCOUNTS.map((a) => (
-                    <SelectItem key={a} value={a}>
-                      {ACCOUNT_LABEL[a]}
+                  {accounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

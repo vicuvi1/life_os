@@ -29,8 +29,10 @@ import {
 } from "@/lib/storage";
 import {
   COLLECTIONS,
+  type Account,
   type AIProviders,
   type Budget,
+  type CashDenom,
   type ChatMessage,
   type ClothingItem,
   type HubAgent,
@@ -1777,6 +1779,8 @@ export async function getBudget(userId: string): Promise<Budget | null> {
     monthlyTotal: d.monthlyTotal ?? null,
     byCategory: d.byCategory ?? {},
     openingBalances: d.openingBalances ?? {},
+    accounts: Array.isArray(d.accounts) ? d.accounts : [],
+    cashLegend: Array.isArray(d.cashLegend) ? d.cashLegend : [],
     savingsGoal: d.savingsGoal ?? null,
     recurring: Array.isArray(d.recurring) ? d.recurring.map(normalizeRecurringRule) : [],
   };
@@ -1797,10 +1801,37 @@ export async function upsertBudget(
   // Recurring rules aren't part of the budget form, so carry them through
   // rather than wiping them on every budget save.
   const snap = await getDoc(ref);
-  const recurring = snap.exists() && Array.isArray(snap.data().recurring)
-    ? snap.data().recurring
-    : [];
-  await setDoc(ref, { userId, ...input, recurring });
+  const data = snap.exists() ? snap.data() : {};
+  // Carry through fields the budget form doesn't submit (full replace otherwise
+  // wipes them): recurring rules, accounts, and the cash-counter legend.
+  const recurring = Array.isArray(data.recurring) ? data.recurring : [];
+  const accounts = Array.isArray(data.accounts) ? data.accounts : [];
+  const cashLegend = Array.isArray(data.cashLegend) ? data.cashLegend : [];
+  await setDoc(ref, { userId, ...input, recurring, accounts, cashLegend });
+}
+
+/** Persist the user's accounts (merge — leaves the rest of the budget intact). */
+export async function setBudgetAccounts(
+  userId: string,
+  accounts: Account[]
+): Promise<void> {
+  await setDoc(
+    doc(db, COLLECTIONS.budgets, userId),
+    { userId, accounts },
+    { merge: true }
+  );
+}
+
+/** Persist the cash-counter legend (merge). */
+export async function setCashLegend(
+  userId: string,
+  cashLegend: CashDenom[]
+): Promise<void> {
+  await setDoc(
+    doc(db, COLLECTIONS.budgets, userId),
+    { userId, cashLegend },
+    { merge: true }
+  );
 }
 
 /**

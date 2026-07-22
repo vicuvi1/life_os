@@ -32,7 +32,7 @@ export function entriesToCsv(entries: Expense[]): string {
       [
         e.date,
         e.kind === "income" ? "Income" : "Expense",
-        ACCOUNT_LABEL[e.account] ?? e.account,
+        ACCOUNT_LABEL[e.account as keyof typeof ACCOUNT_LABEL] ?? e.account,
         categoryLabel(e.category),
         e.note ?? "",
         e.kind === "income" ? e.amount : "",

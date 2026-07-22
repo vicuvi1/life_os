@@ -1,5 +1,8 @@
 import type {
+  Account,
   AccountKey,
+  Budget,
+  CashDenom,
   Expense,
   ExpenseCategory,
   IncomeCategory,
@@ -191,7 +194,7 @@ export function spendByCategory(entries: Expense[]): CategorySpend[] {
  */
 export function accountBalance(
   entries: Expense[],
-  account: AccountKey,
+  account: string,
   opening = 0
 ): number {
   let bal = opening;
@@ -200,6 +203,119 @@ export function accountBalance(
     bal += e.kind === "income" ? e.amount : -e.amount;
   }
   return toCents(bal);
+}
+
+// ---------------------------------------------------------------------------
+// Accounts (user-defined cards / wallets) + cash counter legend.
+// ---------------------------------------------------------------------------
+export const ACCOUNT_TYPE_SUGGESTIONS = ["Cash", "Debit", "Credit", "Savings", "Other"];
+export const ACCOUNT_COLORS = [
+  "#8b5cf6",
+  "#10b981",
+  "#3b82f6",
+  "#f59e0b",
+  "#ef4444",
+  "#ec4899",
+  "#14b8a6",
+  "#eab308",
+  "#22c55e",
+  "#64748b",
+];
+export const ACCOUNT_ICONS = ["💵", "🔒", "💳", "🏦", "👛", "📈", "🪙", "💰"];
+
+function uid(prefix: string): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${prefix}_${Date.now()}_${Math.round(Math.random() * 1e6)}`;
+}
+
+/** Seed the two legacy accounts from the old opening balances (one-time). */
+export function seedAccounts(budget: Pick<Budget, "openingBalances"> | null): Account[] {
+  const ob = budget?.openingBalances ?? {};
+  return [
+    { id: "wallet", name: "Wallet", description: null, color: "#8b5cf6", icon: "💵", type: "Cash", startingBalance: ob.wallet ?? 0, currency: null, archived: false, order: 0, createdAt: 0 },
+    { id: "safe", name: "Safe", description: null, color: "#10b981", icon: "🔒", type: "Savings", startingBalance: ob.safe ?? 0, currency: null, archived: false, order: 1, createdAt: 0 },
+  ];
+}
+
+export function makeAccount(order: number): Account {
+  return {
+    id: uid("acc"),
+    name: "",
+    description: null,
+    color: ACCOUNT_COLORS[order % ACCOUNT_COLORS.length],
+    icon: null,
+    type: "Cash",
+    startingBalance: 0,
+    currency: null,
+    archived: false,
+    order,
+    createdAt: Date.now(),
+  };
+}
+
+export function sortAccounts(accounts: Account[]): Account[] {
+  return [...accounts].sort((a, b) => a.order - b.order);
+}
+export function activeAccounts(accounts: Account[]): Account[] {
+  return sortAccounts(accounts.filter((a) => !a.archived));
+}
+export function accountById(accounts: Account[]): Map<string, Account> {
+  return new Map(accounts.map((a) => [a.id, a]));
+}
+
+/** Live balance of an account: starting balance + income − expenses on it. */
+export function computeAccountBalance(
+  account: Pick<Account, "id" | "startingBalance">,
+  entries: Expense[]
+): number {
+  let bal = account.startingBalance;
+  for (const e of entries) {
+    if (e.account !== account.id) continue;
+    bal += e.kind === "income" ? e.amount : -e.amount;
+  }
+  return toCents(bal);
+}
+
+/** Starting balance needed so the live balance equals `target` given `entries`. */
+export function startingBalanceForTarget(
+  account: Pick<Account, "id" | "startingBalance">,
+  entries: Expense[],
+  target: number
+): number {
+  const net = computeAccountBalance({ id: account.id, startingBalance: 0 }, entries);
+  return toCents(target - net);
+}
+
+/** Whether an account still has any linked transactions (→ archive, not delete). */
+export function accountHasHistory(accountId: string, entries: Expense[]): boolean {
+  return entries.some((e) => e.account === accountId);
+}
+
+// --- Cash counter legend ---
+export function defaultCashLegend(): CashDenom[] {
+  return [
+    { id: uid("cd"), color: "#eab308", label: "Yellow", value: 1000, order: 0 },
+    { id: uid("cd"), color: "#3b82f6", label: "Blue", value: 2000, order: 1 },
+    { id: uid("cd"), color: "#ef4444", label: "Red", value: 5000, order: 2 },
+    { id: uid("cd"), color: "#22c55e", label: "Green", value: 10000, order: 3 },
+  ];
+}
+export function makeDenom(order: number): CashDenom {
+  return {
+    id: uid("cd"),
+    color: ACCOUNT_COLORS[order % ACCOUNT_COLORS.length],
+    label: "",
+    value: 0,
+    order,
+  };
+}
+export function sortDenoms(legend: CashDenom[]): CashDenom[] {
+  return [...legend].sort((a, b) => a.order - b.order);
+}
+/** Running total = Σ(count × value). */
+export function cashTotal(legend: CashDenom[], counts: Record<string, number>): number {
+  return toCents(legend.reduce((s, d) => s + (counts[d.id] ?? 0) * d.value, 0));
 }
 
 export interface EntryWithBalance extends Expense {

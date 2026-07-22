@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { ACCOUNT_LABEL, categoryLabel, categoryColor } from "@/lib/expenses";
+import { categoryLabel, categoryColor } from "@/lib/expenses";
 import { cn } from "@/lib/utils";
 import type { Expense } from "@/lib/types";
 
@@ -20,11 +20,12 @@ interface Props {
   /** Groups of entries that look like duplicates (same date/amount/category/kind). */
   groups: Expense[][];
   format: (amount: number) => string;
+  accountName: (id: string) => string;
   onDelete: (entry: Expense) => void;
 }
 
 /** Review look-alike transactions and delete the extras. */
-export function DuplicatesDialog({ open, onOpenChange, groups, format, onDelete }: Props) {
+export function DuplicatesDialog({ open, onOpenChange, groups, format, accountName, onDelete }: Props) {
   const total = groups.reduce((s, g) => s + g.length, 0);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -59,7 +60,7 @@ export function DuplicatesDialog({ open, onOpenChange, groups, format, onDelete 
                     <li key={entry.id} className="flex items-center gap-3 px-3 py-2 text-sm">
                       <div className="min-w-0 flex-1">
                         <p className="truncate">{entry.note || <span className="text-muted-foreground">No description</span>}</p>
-                        <p className="text-xs text-muted-foreground">{ACCOUNT_LABEL[entry.account]}</p>
+                        <p className="text-xs text-muted-foreground">{accountName(entry.account)}</p>
                       </div>
                       <span className={cn("shrink-0 tabular-nums", entry.kind === "income" ? "text-emerald-500" : "text-rose-500")}>
                         {entry.kind === "income" ? "+" : "−"}{format(entry.amount)}

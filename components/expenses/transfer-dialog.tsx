@@ -14,15 +14,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createExpense, type ExpenseInput } from "@/lib/firebase/db";
-import { ACCOUNTS, ACCOUNT_LABEL, TRANSFER_CATEGORY } from "@/lib/expenses";
+import { TRANSFER_CATEGORY } from "@/lib/expenses";
 import { cn } from "@/lib/utils";
-import type { AccountKey } from "@/lib/types";
+import type { Account } from "@/lib/types";
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   userId: string;
   defaultDate: string;
+  accounts: Account[];
   onSaved: () => void;
 }
 
@@ -31,9 +32,10 @@ interface Props {
  * entries — an expense out of the source and income into the destination — both in
  * the {@link TRANSFER_CATEGORY} so it moves balances without polluting income/spend.
  */
-export function TransferDialog({ open, onOpenChange, userId, defaultDate, onSaved }: Props) {
-  const [from, setFrom] = useState<AccountKey>("wallet");
-  const [to, setTo] = useState<AccountKey>("safe");
+export function TransferDialog({ open, onOpenChange, userId, defaultDate, accounts, onSaved }: Props) {
+  const nameOf = (id: string) => accounts.find((a) => a.id === id)?.name ?? id;
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(defaultDate);
   const [note, setNote] = useState("");
@@ -42,13 +44,13 @@ export function TransferDialog({ open, onOpenChange, userId, defaultDate, onSave
 
   useEffect(() => {
     if (!open) return;
-    setFrom("wallet");
-    setTo("safe");
+    setFrom(accounts[0]?.id ?? "");
+    setTo(accounts[1]?.id ?? accounts[0]?.id ?? "");
     setAmount("");
     setDate(defaultDate);
     setNote("");
     setError(null);
-  }, [open, defaultDate]);
+  }, [open, defaultDate, accounts]);
 
   function swap() {
     setFrom(to);
@@ -73,7 +75,7 @@ export function TransferDialog({ open, onOpenChange, userId, defaultDate, onSave
     setSaving(true);
     setError(null);
     const rounded = Math.round(amt * 100) / 100;
-    const label = note.trim() || `Transfer ${ACCOUNT_LABEL[from]} → ${ACCOUNT_LABEL[to]}`;
+    const label = note.trim() || `Transfer ${nameOf(from)} → ${nameOf(to)}`;
     const out: ExpenseInput = {
       kind: "expense",
       amount: rounded,
@@ -120,10 +122,10 @@ export function TransferDialog({ open, onOpenChange, userId, defaultDate, onSave
               <select
                 className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 value={from}
-                onChange={(e) => setFrom(e.target.value as AccountKey)}
+                onChange={(e) => setFrom(e.target.value)}
               >
-                {ACCOUNTS.map((a) => (
-                  <option key={a} value={a}>{ACCOUNT_LABEL[a]}</option>
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
                 ))}
               </select>
             </div>
@@ -145,10 +147,10 @@ export function TransferDialog({ open, onOpenChange, userId, defaultDate, onSave
                   from === to && "border-destructive"
                 )}
                 value={to}
-                onChange={(e) => setTo(e.target.value as AccountKey)}
+                onChange={(e) => setTo(e.target.value)}
               >
-                {ACCOUNTS.map((a) => (
-                  <option key={a} value={a}>{ACCOUNT_LABEL[a]}</option>
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
                 ))}
               </select>
             </div>

@@ -2704,3 +2704,32 @@ bounded area with the **header row pinned to the top**, so the columns are never
 ambiguous no matter how far you scroll. The sticky header is opaque with a
 hairline bottom border (an inset shadow so it survives `border-collapse`), and
 numeric columns stay right-aligned while text columns stay left-aligned.
+
+---
+
+## 💳 Finance — Accounts / cards / wallets
+
+**Purpose.** Track each card/account separately instead of one money pool, with
+every transaction attributable to a specific account.
+
+- **User-defined accounts** — name, description, colour + icon, an extensible
+  **type** tag (Cash/Debit/Credit/Savings/Other, free text), optional per-account
+  **currency** override, and **archive** (retire without losing history). No
+  hard limit on how many. Stored **embedded on the budget doc** (no new
+  collection or security rule). The old fixed Wallet/Safe are **seeded as the
+  first two accounts** from the previous opening balances, so every existing
+  transaction keeps its account reference — zero migration for you.
+- **Balance = transactions + a starting balance.** Each account's live balance
+  is `startingBalance + income − expenses on it`; the starting balance is a
+  directly-editable correction for real-world drift (bank fees, etc.).
+- **Every transaction carries an account** — quick-add, the full add/edit form,
+  and transfers all pick from your accounts, defaulting to the last-used one.
+- **Transfers** move money between any two accounts (paired entries) and update
+  both balances without counting as income or spending.
+- **Accounts overview** — a card per account (icon, name, type, live balance) in
+  the Finance sidebar; click one to filter the transaction list to it, plus a
+  running **Net worth**. A **Manage** dialog does inline create/edit/colour/icon/
+  archive; deleting an account that still has transactions **archives instead of
+  hard-deleting** so history is preserved.
+- *No FX conversion between differing account currencies (each shows in its own
+  set currency), and balances stay manual/transaction-derived — no bank API.*

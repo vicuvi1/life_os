@@ -388,8 +388,8 @@ export interface Expense {
   /** Money in ("income") or money out ("expense"). Defaults to "expense". */
   kind: EntryKind;
   amount: number;
-  /** Which account the money moved through. Defaults to "wallet". */
-  account: AccountKey;
+  /** Id of the {@link Account} the money moved through (legacy: "wallet"/"safe"). */
+  account: string;
   /** ExpenseCategory for expenses, IncomeCategory for income (stored as a string). */
   category: string;
   note: string | null;
@@ -411,7 +411,7 @@ export interface RecurringRule {
   id: string;
   kind: EntryKind;
   amount: number;
-  account: AccountKey;
+  account: string;
   category: string;
   note: string | null;
   /** How often it repeats. */
@@ -428,14 +428,50 @@ export interface RecurringRule {
   lastPosted: string | null;
 }
 
+/**
+ * A money account / card / wallet. Stored embedded on the {@link Budget} doc so
+ * no extra collection or security rule is needed. Live balance is derived from
+ * linked transactions plus `startingBalance`.
+ */
+export interface Account {
+  id: string;
+  name: string;
+  description: string | null;
+  color: string | null;
+  icon: string | null;
+  /** User-extensible tag: Cash, Debit, Credit, Savings, Other, … */
+  type: string;
+  /** Manual starting balance; live balance = startingBalance + linked net. */
+  startingBalance: number;
+  /** Per-account currency override (null = use the budget currency). */
+  currency: string | null;
+  archived: boolean;
+  order: number;
+  createdAt: number;
+}
+
+/** One color→value entry in the cash-counting legend (embedded on Budget). */
+export interface CashDenom {
+  id: string;
+  color: string;
+  label: string;
+  value: number;
+  order: number;
+}
+
 /** One budget config per user (doc id = userId). */
 export interface Budget {
   userId: string;
   currency: string; // currency code, e.g. "MDL"
   monthlyTotal: number | null; // overall monthly cap
   byCategory: Partial<Record<string, number>>; // optional per-category caps
-  /** Starting balance for each account (e.g. what's already in your safe). */
+  /** @deprecated legacy per-account opening balances (wallet/safe). Superseded
+   * by each {@link Account}'s `startingBalance`; kept for one-time migration. */
   openingBalances?: Partial<Record<AccountKey, number>>;
+  /** User-defined accounts / cards / wallets. */
+  accounts?: Account[];
+  /** Color-coded cash-counter legend. */
+  cashLegend?: CashDenom[];
   /** Savings-goal target amount (progress is measured against net worth). */
   savingsGoal?: number | null;
   /** Recurring money rules (salary/rent/subscriptions). */
