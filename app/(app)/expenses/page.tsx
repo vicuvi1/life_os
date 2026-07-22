@@ -1042,7 +1042,7 @@ export default function FinancePage() {
       ) : (
         <>
           {/* KPI cards */}
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-5">
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
             <StatCard
               icon={Landmark}
               iconClass="bg-primary/15 text-primary"
@@ -1086,6 +1086,77 @@ export default function FinancePage() {
               }
             />
           </div>
+
+          {/* Accounts — your cards */}
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                Accounts &amp; cards
+              </h2>
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="sm" onClick={() => setCashOpen(true)}>
+                  Count cash
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setAccountsOpen(true)}>
+                  <Settings2 className="h-3.5 w-3.5" /> Manage
+                </Button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {accountBalances.map(({ account, balance }) => {
+                const color = account.color ?? "#64748b";
+                const isActive = filter === account.id;
+                return (
+                  <button
+                    key={account.id}
+                    type="button"
+                    onClick={() => setAccountsOpen(true)}
+                    title={`Edit ${account.name}`}
+                    className={cn(
+                      "group relative flex min-h-[132px] flex-col justify-between overflow-hidden rounded-2xl border p-4 text-left transition-all duration-150 ease-smooth hover:-translate-y-0.5 hover:shadow-md",
+                      isActive && "ring-2 ring-primary"
+                    )}
+                    style={{
+                      borderColor: `${color}55`,
+                      background: `linear-gradient(135deg, ${color}26, ${color}0d)`,
+                    }}
+                  >
+                    <div className="flex items-start justify-between">
+                      <span
+                        className="flex h-10 w-10 items-center justify-center rounded-xl text-lg"
+                        style={{ backgroundColor: `${color}2e`, color }}
+                      >
+                        {account.icon ?? account.name.charAt(0).toUpperCase()}
+                      </span>
+                      <span className="rounded-md px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+                        Edit
+                      </span>
+                    </div>
+                    <div>
+                      <p className="truncate text-sm font-semibold">{account.name}</p>
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                        {account.type}
+                      </p>
+                      <p className="mt-1.5 text-xl font-bold tabular-nums">
+                        {formatAmount(
+                          balance,
+                          account.currency ? resolveCurrency({ currency: account.currency }) : currency
+                        )}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => setAccountsOpen(true)}
+                className="flex min-h-[132px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed text-muted-foreground transition-colors hover:border-primary/50 hover:bg-primary/5 hover:text-foreground"
+              >
+                <Plus className="h-6 w-6" />
+                <span className="text-sm font-medium">Add card</span>
+              </button>
+            </div>
+          </section>
 
           {/* Insights */}
           {insights.length > 0 && (
@@ -1478,54 +1549,21 @@ export default function FinancePage() {
             <aside className="space-y-4">
               <Card className="overflow-hidden">
                 <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Accounts</span>
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => setCashOpen(true)}>
-                      Count cash
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setAccountsOpen(true)}>
-                      <Settings2 className="h-3.5 w-3.5" /> Manage
-                    </Button>
-                  </div>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Net worth</span>
+                  <span className="text-sm font-semibold tabular-nums">{formatDisplayAmount(netWorth)}</span>
                 </div>
                 <div className="space-y-2 p-4">
-                  {accountBalances.map(({ account, balance }) => {
-                    const isActive = filter === account.id;
-                    return (
-                      <button
-                        key={account.id}
-                        type="button"
-                        onClick={() => setFilter(isActive ? "all" : account.id)}
-                        title="Filter transactions to this account"
-                        className={cn(
-                          "flex w-full items-center justify-between gap-3 rounded-2xl border p-3.5 text-left transition-colors hover:bg-accent/40",
-                          isActive ? "border-primary/60 bg-primary/5" : "border-input bg-background/80"
-                        )}
-                      >
-                        <div className="flex min-w-0 items-center gap-3">
-                          <span
-                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-base"
-                            style={{ backgroundColor: `${account.color ?? "#64748b"}22`, color: account.color ?? "#64748b" }}
-                          >
-                            {account.icon ?? account.name.charAt(0).toUpperCase()}
-                          </span>
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium">{account.name}</p>
-                            <p className="truncate text-[11px] uppercase tracking-wide text-muted-foreground">{account.type}</p>
-                          </div>
-                        </div>
-                        <span className="shrink-0 text-sm font-semibold tabular-nums">
-                          {formatAmount(balance, account.currency ? resolveCurrency({ currency: account.currency }) : currency)}
-                        </span>
-                      </button>
-                    );
-                  })}
-                  <div className="flex items-center justify-between rounded-2xl bg-muted/40 px-3.5 py-3">
-                    <span className="inline-flex items-center gap-2 text-sm font-medium">
-                      <Landmark className="h-4 w-4 text-primary" /> Net worth
-                    </span>
-                    <span className="text-sm font-semibold tabular-nums">{formatDisplayAmount(netWorth)}</span>
-                  </div>
+                  {accountBalances.map(({ account, balance }) => (
+                    <div key={account.id} className="flex items-center justify-between gap-3 text-sm">
+                      <span className="inline-flex min-w-0 items-center gap-2">
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: account.color ?? "#64748b" }} />
+                        <span className="truncate">{account.name}</span>
+                      </span>
+                      <span className="shrink-0 tabular-nums text-muted-foreground">
+                        {formatAmount(balance, account.currency ? resolveCurrency({ currency: account.currency }) : currency)}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </Card>
 

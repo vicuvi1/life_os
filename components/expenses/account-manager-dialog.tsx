@@ -167,6 +167,13 @@ export function AccountManagerDialog({
                   </div>
                 </div>
 
+                <Input
+                  value={a.description ?? ""}
+                  onChange={(e) => patch(a.id, { description: e.target.value || null })}
+                  placeholder="Description (optional)"
+                  className="h-8 text-sm"
+                />
+
                 <div className="flex flex-wrap items-center gap-1.5">
                   {ACCOUNT_COLORS.map((c) => (
                     <button

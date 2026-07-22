@@ -2726,11 +2726,13 @@ every transaction attributable to a specific account.
   and transfers all pick from your accounts, defaulting to the last-used one.
 - **Transfers** move money between any two accounts (paired entries) and update
   both balances without counting as income or spending.
-- **Accounts overview** — a card per account (icon, name, type, live balance) in
-  the Finance sidebar; click one to filter the transaction list to it, plus a
-  running **Net worth**. A **Manage** dialog does inline create/edit/colour/icon/
-  archive; deleting an account that still has transactions **archives instead of
-  hard-deleting** so history is preserved.
+- **Accounts overview** — a prominent **card grid** at the top of Finance: a
+  colour-tinted card per account (icon, name, type, live balance) plus an
+  **"Add card"** tile. Click a card to edit it; the **Manage** dialog does inline
+  create/edit of *every* value (name, description, type, colour, icon, currency,
+  starting balance) + archive, and deleting an account that still has
+  transactions **archives instead of hard-deleting** so history is preserved. A
+  compact Net-worth breakdown stays in the sidebar.
 - *No FX conversion between differing account currencies (each shows in its own
   set currency), and balances stay manual/transaction-derived — no bank API.*
 
