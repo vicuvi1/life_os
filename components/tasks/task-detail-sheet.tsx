@@ -11,6 +11,8 @@ import {
   Trash2,
   Check,
   RotateCcw,
+  Repeat,
+  Bell,
 } from "lucide-react";
 import {
   Sheet,
@@ -25,7 +27,9 @@ import { formatLongDate } from "@/lib/dates";
 import { PRIORITY_VARIANT, PRIORITY_LABEL } from "@/lib/labels";
 import {
   PRIORITY_ACCENT,
+  describeRecurrence,
   durationLabel,
+  reminderLabel,
   taskDurationMin,
   taskTimeLabel,
 } from "@/lib/tasks";
@@ -131,6 +135,19 @@ export function TaskDetailSheet({
                   </span>
                 ))}
               </div>
+            </Row>
+          )}
+          {task.recurrence && (
+            <Row label="Repeats" icon={<Repeat className="h-3.5 w-3.5" />}>
+              {describeRecurrence(task.recurrence)}
+            </Row>
+          )}
+          {task.reminders.length > 0 && (
+            <Row label="Reminders" icon={<Bell className="h-3.5 w-3.5" />}>
+              {[...task.reminders]
+                .sort((a, b) => a - b)
+                .map((r) => reminderLabel(r))
+                .join(", ")}
             </Row>
           )}
         </div>

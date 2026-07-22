@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Clock, ListChecks, MapPin } from "lucide-react";
+import { Clock, ListChecks, MapPin, Repeat } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import {
@@ -114,6 +114,9 @@ export function TaskCard({
               <MapPin className="h-3 w-3" />
               {task.location}
             </span>
+          )}
+          {(task.recurrence || task.seriesId) && (
+            <Repeat className="h-3 w-3" aria-label="Repeats" />
           )}
           {context && <span className="truncate">· {context}</span>}
         </div>

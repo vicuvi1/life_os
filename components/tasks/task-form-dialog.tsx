@@ -31,8 +31,26 @@ import {
 } from "@/lib/firebase/db";
 import { PRIORITIES, PRIORITY_LABEL } from "@/lib/labels";
 import { minToLabel, minToTime, timeToMin } from "@/lib/sessions";
-import { DURATION_OPTIONS, makeSubtask } from "@/lib/tasks";
-import type { Goal, Priority, Project, Subtask, Task } from "@/lib/types";
+import {
+  DURATION_OPTIONS,
+  makeSubtask,
+  RECURRENCE_FREQS,
+  RECURRENCE_LABEL,
+  REMINDER_OPTIONS,
+  WEEKDAY_CHIPS,
+} from "@/lib/tasks";
+import { cn } from "@/lib/utils";
+import type {
+  Goal,
+  Priority,
+  Project,
+  Subtask,
+  Task,
+  TaskRecurrence,
+  TaskRecurrenceFreq,
+} from "@/lib/types";
+
+type RepeatMode = "none" | TaskRecurrenceFreq;
 
 const NONE = "__none__";
 
@@ -79,6 +97,11 @@ export function TaskFormDialog({
   const [subMinsDraft, setSubMinsDraft] = useState("");
   const [goalSel, setGoalSel] = useState<string>(NONE);
   const [projectSel, setProjectSel] = useState<string>(NONE);
+  const [repeat, setRepeat] = useState<RepeatMode>("none");
+  const [weekdays, setWeekdays] = useState<number[]>([]);
+  const [monthDay, setMonthDay] = useState(1);
+  const [repeatEnd, setRepeatEnd] = useState("");
+  const [reminders, setReminders] = useState<number[]>([]);
 
   const [goals, setGoals] = useState<Goal[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -122,6 +145,14 @@ export function TaskFormDialog({
     setSubMinsDraft("");
     setGoalSel(task?.goalId ?? goalId ?? NONE);
     setProjectSel(task?.projectId ?? projectId ?? NONE);
+    const rec = task?.recurrence ?? null;
+    const anchorKey = task?.dueDate ?? defaults?.dueDate ?? "";
+    const anchorDay = anchorKey ? new Date(anchorKey + "T00:00:00") : new Date();
+    setRepeat(rec?.frequency ?? "none");
+    setWeekdays(rec && rec.weekdays.length ? rec.weekdays : [anchorDay.getDay()]);
+    setMonthDay(rec?.dayOfMonth ?? anchorDay.getDate());
+    setRepeatEnd(rec?.endDate ?? "");
+    setReminders(task?.reminders ?? []);
     setError(null);
   }, [open, task, goalId, projectId, defaults]);
 
@@ -174,6 +205,16 @@ export function TaskFormDialog({
         ? null
         : projectSel;
 
+    let recurrence: TaskRecurrence | null = null;
+    if (repeat !== "none") {
+      recurrence = {
+        frequency: repeat,
+        weekdays: repeat === "weekly" ? [...weekdays].sort((a, b) => a - b) : [],
+        dayOfMonth: repeat === "monthly" ? monthDay : null,
+        endDate: repeatEnd || null,
+      };
+    }
+
     const payload: TaskInput = {
       title: title.trim(),
       description: description.trim() || null,
@@ -187,7 +228,13 @@ export function TaskFormDialog({
       location: location.trim() || null,
       tags,
       subtasks,
+      reminders,
+      recurrence,
     };
+    // A series head's seriesId is its own id. On create, pass null and let
+    // createTask backfill the new doc id; on edit, anchor to this task's id
+    // (promoting an occurrence starts a clean, independent series).
+    if (recurrence) payload.seriesId = task?.id ?? null;
 
     try {
       if (isEdit && task) {
@@ -295,6 +342,112 @@ export function TaskFormDialog({
               Leave the start time empty to keep this an all-day task.
             </p>
           )}
+
+          {/* Repeat */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Repeat</Label>
+              <Select value={repeat} onValueChange={(v) => setRepeat(v as RepeatMode)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Doesn&apos;t repeat</SelectItem>
+                  {RECURRENCE_FREQS.map((f) => (
+                    <SelectItem key={f} value={f}>
+                      {RECURRENCE_LABEL[f]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {repeat !== "none" && (
+              <div className="space-y-2">
+                <Label htmlFor="t-repeat-end">Until (optional)</Label>
+                <Input
+                  id="t-repeat-end"
+                  type="date"
+                  value={repeatEnd}
+                  onChange={(e) => setRepeatEnd(e.target.value)}
+                />
+              </div>
+            )}
+          </div>
+          {repeat === "weekly" && (
+            <div className="flex flex-wrap gap-1.5">
+              {WEEKDAY_CHIPS.map((c) => {
+                const on = weekdays.includes(c.n);
+                return (
+                  <button
+                    key={c.n}
+                    type="button"
+                    onClick={() =>
+                      setWeekdays((prev) =>
+                        on ? prev.filter((x) => x !== c.n) : [...prev, c.n]
+                      )
+                    }
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                      on
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-input text-muted-foreground hover:bg-accent hover:text-foreground"
+                    )}
+                  >
+                    {c.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {repeat === "monthly" && (
+            <div className="space-y-2">
+              <Label htmlFor="t-monthday">Day of month</Label>
+              <Input
+                id="t-monthday"
+                type="number"
+                min={1}
+                max={31}
+                value={monthDay}
+                onChange={(e) =>
+                  setMonthDay(Math.min(31, Math.max(1, Number(e.target.value) || 1)))
+                }
+                className="w-24"
+              />
+            </div>
+          )}
+
+          {/* Reminders */}
+          <div className="space-y-2">
+            <Label>Reminders</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {REMINDER_OPTIONS.map((r) => {
+                const on = reminders.includes(r.min);
+                return (
+                  <button
+                    key={r.min}
+                    type="button"
+                    onClick={() =>
+                      setReminders((prev) =>
+                        on ? prev.filter((x) => x !== r.min) : [...prev, r.min]
+                      )
+                    }
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                      on
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-input text-muted-foreground hover:bg-accent hover:text-foreground"
+                    )}
+                  >
+                    {r.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Surfaced in-app as the task approaches. Phone push rides the daily
+              notification run.
+            </p>
+          </div>
 
           {/* Goal + project */}
           <div className="grid grid-cols-2 gap-4">

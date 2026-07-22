@@ -2,8 +2,15 @@
 // Kept framework-free so views stay thin. Scheduling reuses the Session
 // vocabulary (minutes since midnight) and the helpers in lib/sessions.ts.
 
-import type { Priority, Subtask, Task } from "@/lib/types";
+import type {
+  Priority,
+  Subtask,
+  Task,
+  TaskRecurrence,
+  TaskRecurrenceFreq,
+} from "@/lib/types";
 import { minToLabel } from "@/lib/sessions";
+import { addDays } from "@/lib/habits";
 
 // ---------------------------------------------------------------------------
 // Time-of-day blocks — the rows of the week grid and the Today schedule.
@@ -231,4 +238,232 @@ export function summarizeDay(tasks: Task[]): DaySummary {
 /** "6:30 PM" for the estimated finish, or null. */
 export function finishLabel(summary: DaySummary): string | null {
   return summary.finishMin != null ? minToLabel(summary.finishMin) : null;
+}
+
+// ---------------------------------------------------------------------------
+// Recurrence — repeating tasks that materialize real occurrences.
+// ---------------------------------------------------------------------------
+export const RECURRENCE_FREQS: TaskRecurrenceFreq[] = ["daily", "weekly", "monthly"];
+export const RECURRENCE_LABEL: Record<TaskRecurrenceFreq, string> = {
+  daily: "Daily",
+  weekly: "Weekly",
+  monthly: "Monthly",
+};
+
+/** Weekday chips, Monday-first, mapped to JS getDay() numbers. */
+export const WEEKDAY_CHIPS: { n: number; label: string }[] = [
+  { n: 1, label: "Mon" },
+  { n: 2, label: "Tue" },
+  { n: 3, label: "Wed" },
+  { n: 4, label: "Thu" },
+  { n: 5, label: "Fri" },
+  { n: 6, label: "Sat" },
+  { n: 0, label: "Sun" },
+];
+
+function ordinal(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
+}
+
+/** Human summary of a recurrence rule, e.g. "Weekly on Mon, Wed". */
+export function describeRecurrence(rec: TaskRecurrence): string {
+  switch (rec.frequency) {
+    case "daily":
+      return "Every day";
+    case "weekly": {
+      if (rec.weekdays.length === 0) return "Weekly";
+      const labels = WEEKDAY_CHIPS.filter((c) => rec.weekdays.includes(c.n)).map(
+        (c) => c.label
+      );
+      return `Weekly on ${labels.join(", ")}`;
+    }
+    case "monthly":
+      return rec.dayOfMonth != null
+        ? `Monthly on the ${ordinal(rec.dayOfMonth)}`
+        : "Monthly";
+  }
+}
+
+/** Does a recurrence produce an occurrence on `key` (anchored at `anchorKey`)? */
+function recurrenceMatches(
+  rec: TaskRecurrence,
+  anchorKey: string,
+  key: string
+): boolean {
+  if (key < anchorKey) return false;
+  if (rec.endDate && key > rec.endDate) return false;
+  const d = new Date(key + "T00:00:00");
+  switch (rec.frequency) {
+    case "daily":
+      return true;
+    case "weekly": {
+      if (rec.weekdays.length === 0)
+        return d.getDay() === new Date(anchorKey + "T00:00:00").getDay();
+      return rec.weekdays.includes(d.getDay());
+    }
+    case "monthly": {
+      const dom = rec.dayOfMonth ?? new Date(anchorKey + "T00:00:00").getDate();
+      const lastOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+      return d.getDate() === Math.min(dom, lastOfMonth);
+    }
+  }
+}
+
+/**
+ * Compute the occurrences that should exist but don't yet, for every recurring
+ * "head" task, within [fromKey, horizonKey]. Bounded by `cap` total to keep a
+ * page load cheap. Occurrences are de-duplicated against existing tasks in the
+ * same series (matched by seriesId).
+ */
+export function planRecurringOccurrences(
+  tasks: Task[],
+  fromKey: string,
+  horizonKey: string,
+  cap = 150
+): { head: Task; dueDate: string }[] {
+  const out: { head: Task; dueDate: string }[] = [];
+  const heads = tasks.filter((t) => t.recurrence && t.dueDate);
+  for (const head of heads) {
+    if (out.length >= cap) break;
+    const seriesId = head.seriesId ?? head.id;
+    const anchor = head.dueDate as string;
+    const existing = new Set(
+      tasks
+        .filter((t) => (t.seriesId ?? t.id) === seriesId && t.dueDate)
+        .map((t) => t.dueDate as string)
+    );
+    const start = anchor > fromKey ? anchor : fromKey;
+    let key = start;
+    // Hard iteration bound in case of bad data.
+    for (let i = 0; i < 400 && key <= horizonKey; i++) {
+      if (out.length >= cap) break;
+      if (recurrenceMatches(head.recurrence as TaskRecurrence, anchor, key) && !existing.has(key)) {
+        out.push({ head, dueDate: key });
+      }
+      key = addDays(key, 1);
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Smart auto-scheduling — pack unscheduled tasks into free slots.
+// ---------------------------------------------------------------------------
+export interface SchedulePlacement {
+  taskId: string;
+  dueDate: string;
+  startMin: number;
+  endMin: number;
+}
+
+export interface AutoScheduleOpts {
+  fromKey: string;
+  days?: number;
+  workStart?: number; // minutes since midnight
+  workEnd?: number;
+}
+
+/** Earliest free start >= workStart that fits `dur` without overlapping `occ`. */
+function firstFreeStart(
+  occ: [number, number][],
+  dur: number,
+  workStart: number,
+  workEnd: number
+): number | null {
+  const sorted = [...occ].sort((a, b) => a[0] - b[0]);
+  let cursor = workStart;
+  for (const [s, e] of sorted) {
+    if (e <= cursor) continue;
+    if (cursor + dur <= s) return cursor;
+    cursor = Math.max(cursor, e);
+  }
+  return cursor + dur <= workEnd ? cursor : null;
+}
+
+/**
+ * Place backlog tasks (highest priority first) into the earliest free work-hour
+ * slots across the coming days, avoiding overlaps with already-scheduled tasks.
+ * Pure — returns placements; the caller persists them.
+ */
+export function autoSchedule(
+  backlog: Task[],
+  scheduled: Task[],
+  opts: AutoScheduleOpts
+): SchedulePlacement[] {
+  const days = opts.days ?? 7;
+  const workStart = opts.workStart ?? 9 * 60;
+  const workEnd = opts.workEnd ?? 18 * 60;
+
+  const occ = new Map<string, [number, number][]>();
+  for (const t of scheduled) {
+    if (!t.dueDate || t.startMin == null || t.endMin == null) continue;
+    const arr = occ.get(t.dueDate) ?? [];
+    arr.push([t.startMin, t.endMin]);
+    occ.set(t.dueDate, arr);
+  }
+
+  const dayKeys = Array.from({ length: days }, (_, i) => addDays(opts.fromKey, i));
+  const queue = [...backlog].sort((a, b) => {
+    const rank: Record<Priority, number> = { high: 0, medium: 1, low: 2 };
+    if (rank[a.priority] !== rank[b.priority]) return rank[a.priority] - rank[b.priority];
+    return a.createdAt - b.createdAt;
+  });
+
+  const placements: SchedulePlacement[] = [];
+  for (const task of queue) {
+    const dur = taskDurationMin(task) ?? 60;
+    for (const day of dayKeys) {
+      const arr = occ.get(day) ?? [];
+      const start = firstFreeStart(arr, dur, workStart, workEnd);
+      if (start != null) {
+        const end = start + dur;
+        arr.push([start, end]);
+        occ.set(day, arr);
+        placements.push({ taskId: task.id, dueDate: day, startMin: start, endMin: end });
+        break;
+      }
+    }
+  }
+  return placements;
+}
+
+// ---------------------------------------------------------------------------
+// Reminders — in-app "starting soon" surfacing (push rides the cron later).
+// ---------------------------------------------------------------------------
+export const REMINDER_OPTIONS: { min: number; label: string }[] = [
+  { min: 0, label: "At start" },
+  { min: 5, label: "5 min before" },
+  { min: 10, label: "10 min before" },
+  { min: 15, label: "15 min before" },
+  { min: 30, label: "30 min before" },
+  { min: 60, label: "1 hour before" },
+  { min: 1440, label: "1 day before" },
+];
+
+export function reminderLabel(min: number): string {
+  return REMINDER_OPTIONS.find((r) => r.min === min)?.label ?? `${min} min before`;
+}
+
+/**
+ * Today's tasks that are about to start, within their own reminder lead time.
+ * Returns them soonest-first with minutes remaining, for a quiet in-app banner.
+ */
+export function upcomingReminders(
+  tasks: Task[],
+  todayKey: string,
+  nowMin: number
+): { task: Task; minutesUntil: number }[] {
+  const out: { task: Task; minutesUntil: number }[] = [];
+  for (const t of tasks) {
+    if (t.status === "done") continue;
+    if (t.dueDate !== todayKey || t.startMin == null) continue;
+    if (t.reminders.length === 0) continue;
+    const minutesUntil = t.startMin - nowMin;
+    if (minutesUntil < 0) continue;
+    const maxLead = Math.max(...t.reminders);
+    if (minutesUntil <= maxLead) out.push({ task: t, minutesUntil });
+  }
+  return out.sort((a, b) => a.minutesUntil - b.minutesUntil);
 }

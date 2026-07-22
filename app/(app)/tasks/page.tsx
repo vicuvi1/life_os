@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { Bell, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
   getTasks,
@@ -11,6 +11,7 @@ import {
   updateTask,
   setTaskDone,
   deleteTask,
+  generateRecurringOccurrences,
 } from "@/lib/firebase/db";
 import { toDateKey } from "@/lib/greeting";
 import { addDays } from "@/lib/habits";
@@ -22,8 +23,11 @@ import {
 } from "@/lib/dates";
 import { minToLabel } from "@/lib/sessions";
 import {
+  autoSchedule,
+  planRecurringOccurrences,
   scheduleForLane,
   tasksByDate as buildTasksByDate,
+  upcomingReminders,
   type LaneKey,
 } from "@/lib/tasks";
 import { Button } from "@/components/ui/button";
@@ -34,18 +38,22 @@ import { TaskWeekView } from "@/components/tasks/task-week-view";
 import { TaskTodayView } from "@/components/tasks/task-today-view";
 import { TaskMonthView } from "@/components/tasks/task-month-view";
 import { TaskListView } from "@/components/tasks/task-list-view";
+import { TaskPlanView } from "@/components/tasks/task-plan-view";
 import { TaskDetailSheet } from "@/components/tasks/task-detail-sheet";
 import { TaskFormDialog } from "@/components/tasks/task-form-dialog";
 import { cn } from "@/lib/utils";
 import type { Goal, Project, Task } from "@/lib/types";
 
-type ViewMode = "today" | "week" | "month" | "list";
+type ViewMode = "today" | "week" | "month" | "plan" | "list";
 const VIEWS: { key: ViewMode; label: string }[] = [
   { key: "today", label: "Today" },
   { key: "week", label: "Week" },
   { key: "month", label: "Month" },
+  { key: "plan", label: "Plan" },
   { key: "list", label: "List" },
 ];
+
+const HORIZON_DAYS = 35; // how far ahead recurring occurrences are materialized
 
 type FormDefaults = {
   dueDate?: string | null;
@@ -74,6 +82,12 @@ export default function TasksPage() {
   const [editing, setEditing] = useState<Task | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [formDefaults, setFormDefaults] = useState<FormDefaults>({});
+  const [autoScheduling, setAutoScheduling] = useState(false);
+  const [nowMin, setNowMin] = useState(() => {
+    const d = new Date();
+    return d.getHours() * 60 + d.getMinutes();
+  });
+  const [dismissedReminders, setDismissedReminders] = useState<Set<string>>(new Set());
 
   const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<string>>(new Set());
   const deleteTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -87,17 +101,39 @@ export default function TasksPage() {
         getGoals(user.uid),
         getProjects(user.uid),
       ]);
-      setTasks(t);
       setGoals(g);
       setProjects(p);
+      // Materialize any missing recurring occurrences up to the horizon, then
+      // read back once so the calendar shows them. Idempotent: once generated
+      // they exist and subsequent loads create nothing.
+      const plan = planRecurringOccurrences(t, today, addDays(today, HORIZON_DAYS));
+      if (plan.length > 0) {
+        try {
+          await generateRecurringOccurrences(user.uid, plan);
+          setTasks(await getTasks(user.uid));
+        } catch {
+          setTasks(t);
+        }
+      } else {
+        setTasks(t);
+      }
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, today]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Keep the "starting soon" reminders honest as the clock advances.
+  useEffect(() => {
+    const id = setInterval(() => {
+      const d = new Date();
+      setNowMin(d.getHours() * 60 + d.getMinutes());
+    }, 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   // Lookups.
   const goalTitle = useMemo(() => {
@@ -114,6 +150,17 @@ export default function TasksPage() {
     [tasks, pendingDeleteIds]
   );
   const byDate = useMemo(() => buildTasksByDate(visibleTasks), [visibleTasks]);
+  const backlog = useMemo(
+    () => visibleTasks.filter((t) => !t.dueDate && t.status !== "done"),
+    [visibleTasks]
+  );
+  const reminders = useMemo(
+    () =>
+      upcomingReminders(visibleTasks, today, nowMin).filter(
+        (r) => !dismissedReminders.has(r.task.id)
+      ),
+    [visibleTasks, today, nowMin, dismissedReminders]
+  );
 
   const weekStart = startOfWeekKey(cursor);
   const weekDates = useMemo(
@@ -196,6 +243,68 @@ export default function TasksPage() {
       });
   }
 
+  function unschedule(taskId: string) {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    if (task.dueDate === null && task.startMin === null) return;
+    const revert = patch(taskId, (t) => ({
+      ...t,
+      dueDate: null,
+      startMin: null,
+      endMin: null,
+    }));
+    updateTask(taskId, { dueDate: null, startMin: null, endMin: null })
+      .then(() => toast({ title: "Moved to backlog", description: task.title }))
+      .catch(() => {
+        revert();
+        toast({ title: "Couldn't update task" });
+      });
+  }
+
+  async function handleAutoSchedule() {
+    const scheduled = visibleTasks.filter(
+      (t) => t.dueDate && t.startMin != null && t.status !== "done"
+    );
+    const placements = autoSchedule(backlog, scheduled, { fromKey: today, days: 7 });
+    if (placements.length === 0) {
+      toast({
+        title: "No free slots",
+        description: "Couldn't fit tasks in the next 7 days' work hours.",
+      });
+      return;
+    }
+    setAutoScheduling(true);
+    const byId = new Map(placements.map((p) => [p.taskId, p]));
+    let snapshot: Task[] = [];
+    setTasks((cur) => {
+      snapshot = cur;
+      return cur.map((t) => {
+        const p = byId.get(t.id);
+        return p ? { ...t, dueDate: p.dueDate, startMin: p.startMin, endMin: p.endMin } : t;
+      });
+    });
+    try {
+      await Promise.all(
+        placements.map((p) =>
+          updateTask(p.taskId, {
+            dueDate: p.dueDate,
+            startMin: p.startMin,
+            endMin: p.endMin,
+          })
+        )
+      );
+      toast({
+        title: `Scheduled ${placements.length} task${placements.length > 1 ? "s" : ""}`,
+        description: "Filled the earliest free work-hour slots by priority.",
+      });
+    } catch {
+      setTasks(snapshot);
+      toast({ title: "Couldn't auto-schedule" });
+    } finally {
+      setAutoScheduling(false);
+    }
+  }
+
   async function handleQuickAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!user || !quickTitle.trim()) return;
@@ -273,8 +382,8 @@ export default function TasksPage() {
 
   // -- Navigation ------------------------------------------------------------
   function navigate(dir: -1 | 1) {
-    if (view === "week") setCursor(addDays(weekStart, dir * 7));
-    else if (view === "month") setCursor(toDateKey(new Date(year, month + dir, 1)));
+    if (view === "month") setCursor(toDateKey(new Date(year, month + dir, 1)));
+    else setCursor(addDays(weekStart, dir * 7)); // week + plan share the week grid
   }
   function goToday() {
     setCursor(today);
@@ -282,7 +391,7 @@ export default function TasksPage() {
   }
 
   const rangeLabel =
-    view === "week"
+    view === "week" || view === "plan"
       ? formatWeekRange(weekStart)
       : view === "month"
         ? formatMonthYear(year, month)
@@ -290,7 +399,7 @@ export default function TasksPage() {
           ? formatLongDate(today)
           : "";
 
-  const showNav = view === "week" || view === "month";
+  const showNav = view === "week" || view === "month" || view === "plan";
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
@@ -357,6 +466,31 @@ export default function TasksPage() {
         <p className="font-medium">{rangeLabel}</p>
       )}
 
+      {/* Starting-soon reminders (in-app; push rides the daily run) */}
+      {reminders.length > 0 && (
+        <div className="space-y-1.5 rounded-xl border border-primary/30 bg-primary/5 p-3">
+          {reminders.slice(0, 3).map(({ task, minutesUntil }) => (
+            <div key={task.id} className="flex items-center gap-2 text-sm">
+              <Bell className="h-4 w-4 shrink-0 text-primary" />
+              <span className="min-w-0 flex-1 truncate">
+                <span className="font-medium">{task.title}</span>{" "}
+                {minutesUntil <= 0 ? "starts now" : `starts in ${minutesUntil} min`}
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  setDismissedReminders((prev) => new Set(prev).add(task.id))
+                }
+                aria-label="Dismiss reminder"
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {loading ? (
         <div className="space-y-3">
           <SkeletonCard lines={3} />
@@ -394,6 +528,21 @@ export default function TasksPage() {
           goalTitle={goalTitle}
           onOpen={(t) => setDetailId(t.id)}
           onToggleDone={toggleDone}
+        />
+      ) : view === "plan" ? (
+        <TaskPlanView
+          weekDates={weekDates}
+          today={today}
+          tasksByDate={byDate}
+          backlog={backlog}
+          goalTitle={goalTitle}
+          onOpen={(t) => setDetailId(t.id)}
+          onToggleDone={toggleDone}
+          onReschedule={reschedule}
+          onUnschedule={unschedule}
+          onAdd={onAddToCell}
+          onAutoSchedule={handleAutoSchedule}
+          autoScheduling={autoScheduling}
         />
       ) : (
         <TaskListView

@@ -2429,3 +2429,48 @@ to Month for the big picture or List to filter.
 monthly), a drag-from-backlog planning board for unscheduled tasks, "smart
 scheduling" suggestions, and time-based reminders — the same client-only /
 Vercel-cron constraints as the notification sender apply to reminders.
+
+---
+
+## 🗓️ Tasks — planner Phase 2 (recurring · planning board · auto-schedule · reminders)
+
+**Purpose.** Finish the planner: stop re-adding the same tasks, make organising
+a loose backlog effortless, and let the app do the tedious slotting.
+
+**Recurring tasks (auto-populating).**
+- The task form gained a **Repeat** control — **Daily / Weekly (pick weekdays) /
+  Monthly (day-of-month)** with an optional **Until** date. A repeating task
+  becomes a *series head*; the rule lives inline on the task (`recurrence`), so
+  **no new collection or Firestore rule**.
+- On load, a bounded generator **materializes real occurrence docs** up to a
+  35-day horizon (`planRecurringOccurrences` → `generateRecurringOccurrences`,
+  one batched write). Because they're real tasks, occurrences drag, complete,
+  and edit exactly like any other — no virtual-event special-casing anywhere.
+  It's idempotent (de-dupes by `seriesId`) and copies the head's time block,
+  priority, tags, energy and a fresh (undone) subtask checklist. Editing the
+  head changes *future* occurrences; already-generated ones stay put.
+
+**Planning board (drag-from-backlog).**
+- A new **Plan** view puts a **Backlog** of undated tasks beside the week grid.
+  **Drag a backlog task onto any day + time block** to schedule it; **drag a
+  scheduled task back onto the backlog** to unschedule it. Same native HTML5
+  drag-and-drop as the week view — the backlog is just another drop target.
+
+**Smart auto-schedule.**
+- **Auto-schedule** packs the backlog into the earliest free **work-hour**
+  slots (9am–6pm) over the next 7 days, **highest priority first**, never
+  overlapping existing time blocks and honouring each task's own duration
+  (`autoSchedule`). Deterministic and offline — no AI key needed — applied
+  optimistically with a summary toast.
+
+**Reminders.**
+- Tasks carry **reminder lead times** (At start · 5/10/15/30 min · 1 hour ·
+  1 day before), chosen in the form and shown in the detail sheet. When a task
+  is within its lead time, a quiet **"starting soon" banner** surfaces it in-app
+  (refreshed each minute). *Honest constraint:* phone push still depends on the
+  once-daily Vercel-cron notification run — the lead-time data is stored ready
+  for it, but sub-daily push isn't possible on the current plan.
+
+**Back-compatible, as before.** `recurrence`, `seriesId` and `reminders` are all
+optional on disk and defaulted by `mapTask`, so every existing task keeps
+working with no migration.

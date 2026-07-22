@@ -141,6 +141,9 @@ function mapTask(snap: QueryDocumentSnapshot<DocumentData>): Task {
     location: d.location ?? null,
     tags: d.tags ?? [],
     subtasks: d.subtasks ?? [],
+    recurrence: d.recurrence ?? null,
+    seriesId: d.seriesId ?? null,
+    reminders: d.reminders ?? [],
     completedAt: d.completedAt ? toMillis(d.completedAt) : null,
     sortOrder: d.sortOrder ?? 0,
     createdAt: toMillis(d.createdAt),
@@ -357,7 +360,15 @@ export type TaskInput = Pick<
   Partial<
     Pick<
       Task,
-      "startMin" | "endMin" | "energy" | "location" | "tags" | "subtasks"
+      | "startMin"
+      | "endMin"
+      | "energy"
+      | "location"
+      | "tags"
+      | "subtasks"
+      | "recurrence"
+      | "seriesId"
+      | "reminders"
     >
   >;
 
@@ -376,13 +387,70 @@ export async function createTask(
     location: input.location ?? null,
     tags: input.tags ?? [],
     subtasks: input.subtasks ?? [],
+    recurrence: input.recurrence ?? null,
+    seriesId: input.seriesId ?? null,
+    reminders: input.reminders ?? [],
     status: "todo",
     completedAt: null,
     sortOrder: 0,
     createdAt: serverTimestamp(),
   });
+  // A new recurring task is its own series head — anchor the series to its id
+  // so future occurrences can be de-duplicated against it.
+  if (input.recurrence && !input.seriesId) {
+    await updateDoc(ref, { seriesId: ref.id });
+  }
   if (input.goalId) await recalcGoalProgress(input.goalId);
   return ref.id;
+}
+
+/**
+ * Batch-create generated occurrences for recurring tasks. Each occurrence is a
+ * plain (non-recurring) task copied from its series head onto a future date,
+ * tagged with the head's `seriesId`. Subtasks are copied fresh (undone, new
+ * ids). Goal progress for affected goals is recomputed once at the end.
+ */
+export async function generateRecurringOccurrences(
+  userId: string,
+  occurrences: { head: Task; dueDate: string }[]
+): Promise<void> {
+  if (occurrences.length === 0) return;
+  const batch = writeBatch(db);
+  for (const { head, dueDate } of occurrences) {
+    const ref = doc(collection(db, COLLECTIONS.tasks));
+    batch.set(ref, {
+      userId,
+      title: head.title,
+      description: head.description,
+      priority: head.priority,
+      dueDate,
+      projectId: head.projectId,
+      goalId: head.goalId,
+      startMin: head.startMin,
+      endMin: head.endMin,
+      energy: head.energy,
+      location: head.location,
+      tags: head.tags,
+      subtasks: head.subtasks.map((s) => ({
+        id: `${ref.id}_${s.id}`,
+        title: s.title,
+        done: false,
+        durationMin: s.durationMin,
+      })),
+      reminders: head.reminders,
+      recurrence: null,
+      seriesId: head.seriesId ?? head.id,
+      status: "todo",
+      completedAt: null,
+      sortOrder: 0,
+      createdAt: serverTimestamp(),
+    });
+  }
+  await batch.commit();
+  const goalIds = Array.from(
+    new Set(occurrences.map((o) => o.head.goalId).filter(Boolean))
+  ) as string[];
+  await Promise.all(goalIds.map((id) => recalcGoalProgress(id)));
 }
 
 export async function updateTask(

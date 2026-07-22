@@ -114,6 +114,24 @@ export interface Subtask {
   durationMin: number | null;
 }
 
+/** How a recurring task repeats. */
+export type TaskRecurrenceFreq = "daily" | "weekly" | "monthly";
+
+/**
+ * Recurrence rule embedded on a task's "series head". A generator materializes
+ * real task docs for upcoming occurrences (so drag/complete/edit all work
+ * normally); occurrences carry `seriesId` and no recurrence of their own.
+ */
+export interface TaskRecurrence {
+  frequency: TaskRecurrenceFreq;
+  /** Weekly only: weekdays it repeats on, 0=Sun … 6=Sat. */
+  weekdays: number[];
+  /** Monthly only: day-of-month 1-31 (clamped to month length at generation). */
+  dayOfMonth: number | null;
+  /** Optional last date it repeats, "YYYY-MM-DD"; null = no end. */
+  endDate: string | null;
+}
+
 export interface Task {
   id: string;
   projectId: string | null;
@@ -140,6 +158,12 @@ export interface Task {
   tags: string[];
   /** Inline checklist that breaks the task into smaller pieces. */
   subtasks: Subtask[];
+  /** Repeat rule; set only on a series "head". null = one-off. */
+  recurrence: TaskRecurrence | null;
+  /** Groups a series head with its generated occurrences (= the head's id). */
+  seriesId: string | null;
+  /** Reminder lead times in minutes before start (e.g. [15, 1440]). */
+  reminders: number[];
   completedAt: number | null;
   sortOrder: number;
   createdAt: number;
