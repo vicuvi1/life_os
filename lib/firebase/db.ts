@@ -125,6 +125,8 @@ function mapGoal(snap: QueryDocumentSnapshot<DocumentData>): Goal {
     color: d.color ?? null,
     focus: d.focus === true,
     dependsOn: Array.isArray(d.dependsOn) ? d.dependsOn : [],
+    image: d.image ?? null,
+    subtasks: Array.isArray(d.subtasks) ? d.subtasks : [],
     createdAt: toMillis(d.createdAt),
   };
 }
@@ -259,7 +261,7 @@ export type GoalInput = Pick<
   | "color"
   | "staleDays"
   | "dependsOn"
-> & { progress?: number };
+> & { progress?: number; image?: Goal["image"]; subtasks?: Goal["subtasks"] };
 
 /** Legacy mirror so any un-migrated reader (older dashboard code) still works. */
 function legacyProgressType(m: string): "count" | "manual" | "percent" {
@@ -292,6 +294,8 @@ export async function createGoal(
     color: input.color ?? null,
     focus: false,
     dependsOn: input.dependsOn ?? [],
+    image: input.image ?? null,
+    subtasks: input.subtasks ?? [],
     createdAt: serverTimestamp(),
   });
   await recomputeGoalProgress(ref.id);
@@ -301,6 +305,15 @@ export async function createGoal(
 /** Star / unstar a goal as a current focus (feeds the Focus section + Today). */
 export async function setGoalFocus(goalId: string, focus: boolean): Promise<void> {
   await updateDoc(doc(db, COLLECTIONS.goals, goalId), { focus });
+}
+
+/** Persist a goal's quick-checklist subtasks and recompute its progress. */
+export async function updateGoalSubtasks(
+  goalId: string,
+  subtasks: Goal["subtasks"]
+): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.goals, goalId), { subtasks });
+  await recomputeGoalProgress(goalId);
 }
 
 export async function updateGoal(
@@ -581,8 +594,13 @@ export async function recomputeGoalProgress(goalId: string): Promise<number> {
       const snap = await getDocs(
         query(collection(db, COLLECTIONS.tasks), where("goalId", "==", goalId))
       );
-      const total = snap.size;
-      const done = snap.docs.filter((t) => t.data().status === "done").length;
+      // Auto progress folds in both linked task docs and the goal's own
+      // quick-checklist subtasks, so a lightweight goal broken only into
+      // subtasks still advances.
+      const total = snap.size + g.subtasks.length;
+      const done =
+        snap.docs.filter((t) => t.data().status === "done").length +
+        g.subtasks.filter((s) => s.done).length;
       progress = total === 0 ? 0 : Math.round((done / total) * 100);
       break;
     }

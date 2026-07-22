@@ -9,6 +9,7 @@ import type {
   GoalMeasurement,
   GoalMilestone,
   GoalMilestoneStep,
+  GoalSubtask,
   MilestoneMeasurement,
   Task,
 } from "@/lib/types";
@@ -120,10 +121,15 @@ export function computeGoalProgress(goal: Goal, ctx: GoalProgressCtx = {}): numb
       return milestonesProgress(goal.milestones);
     case "composite":
       return compositeProgress(goal.composite);
-    case "tasks":
-      return ctx.taskTotal && ctx.taskTotal > 0
-        ? clamp(Math.round(((ctx.taskDone ?? 0) / ctx.taskTotal) * 100), 0, 100)
+    case "tasks": {
+      const subTotal = goal.subtasks.length;
+      const subDone = goal.subtasks.filter((s) => s.done).length;
+      const total = (ctx.taskTotal ?? 0) + subTotal;
+      const done = (ctx.taskDone ?? 0) + subDone;
+      return total > 0
+        ? clamp(Math.round((done / total) * 100), 0, 100)
         : goal.progress ?? 0;
+    }
     case "linked":
       return pct((ctx.linkedMinutes ?? 0) / 60, goal.targetValue ?? 0);
     default:
@@ -146,8 +152,15 @@ export function goalProgressDetail(goal: Goal, ctx: GoalProgressCtx = {}): strin
       const curH = (ctx.linkedMinutes ?? 0) / 60;
       return `${fmt(Math.round(curH * 10) / 10)} / ${fmt(goal.targetValue ?? 0)} h`;
     }
-    case "tasks":
-      return ctx.taskTotal != null ? `${ctx.taskDone ?? 0} / ${ctx.taskTotal} tasks` : null;
+    case "tasks": {
+      const subTotal = goal.subtasks.length;
+      const subDone = goal.subtasks.filter((s) => s.done).length;
+      const taskTotal = ctx.taskTotal ?? 0;
+      const total = taskTotal + subTotal;
+      if (total === 0) return null;
+      const done = (ctx.taskDone ?? 0) + subDone;
+      return `${done} / ${total} ${taskTotal > 0 ? "items" : "subtasks"}`;
+    }
     case "composite":
       return goal.composite.length > 0
         ? `${goal.composite.length} key result${goal.composite.length > 1 ? "s" : ""}`
@@ -226,6 +239,10 @@ export function makeMilestone(order: number): GoalMilestone {
 
 export function makeMilestoneStep(title: string): GoalMilestoneStep {
   return { id: uid("s"), title, done: false };
+}
+
+export function makeSubtask(title: string): GoalSubtask {
+  return { id: uid("st"), title, done: false };
 }
 
 export const MILESTONE_MEASUREMENTS: { key: MilestoneMeasurement; label: string }[] = [
@@ -427,6 +444,7 @@ export function goalStale(
 // wish, so we always surface one clear, completable step.
 // ---------------------------------------------------------------------------
 export type NextAction =
+  | { kind: "subtask"; goalId: string; subtaskId: string; title: string }
   | { kind: "task"; taskId: string; goalId: string; title: string; dueDate: string | null }
   | { kind: "step"; milestoneId: string; stepId: string; title: string }
   | { kind: "milestone"; milestoneId: string; title: string };
@@ -439,6 +457,11 @@ export type NextAction =
  * Returns null when the goal has nothing broken out to act on yet.
  */
 export function goalNextAction(goal: Goal, tasks: Task[]): NextAction | null {
+  // Quick-checklist subtasks come first — they're the lightweight thing you
+  // actively tick off, and this wires them into Today's Momentum.
+  const sub = goal.subtasks.find((s) => !s.done);
+  if (sub) return { kind: "subtask", goalId: goal.id, subtaskId: sub.id, title: sub.title };
+
   const open = tasks
     .filter((t) => t.goalId === goal.id && t.status !== "done")
     .sort((a, b) => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { ImagePlus, Lock, Plus, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -23,9 +23,9 @@ import {
 } from "@/components/ui/select";
 import { NumberField } from "@/components/ui/number-field";
 import { Slider } from "@/components/ui/slider";
-import { Lock } from "lucide-react";
 import { createGoal, updateGoal, type GoalInput } from "@/lib/firebase/db";
 import { GOAL_TEMPLATES } from "@/lib/goal-templates";
+import { compressImageToThumbnail } from "@/lib/images";
 import {
   GOAL_STATUSES,
   GOAL_STATUS_LABEL,
@@ -83,6 +83,8 @@ export function GoalFormDialog({
   const [deadline, setDeadline] = useState("");
   const [icon, setIcon] = useState<string | null>(null);
   const [color, setColor] = useState<string | null>(null);
+  const [image, setImage] = useState<string | null>(null);
+  const [imgBusy, setImgBusy] = useState(false);
   const [staleDays, setStaleDays] = useState<number | null>(null);
 
   const [measurement, setMeasurement] = useState<GoalMeasurement>("tasks");
@@ -110,6 +112,7 @@ export function GoalFormDialog({
     setDeadline(goal?.deadline ?? "");
     setIcon(goal?.icon ?? null);
     setColor(goal?.color ?? null);
+    setImage(goal?.image ?? null);
     setStaleDays(goal?.staleDays ?? null);
     setMeasurement(goal?.measurement ?? "tasks");
     setManualProgress(goal?.progress ?? 0);
@@ -136,6 +139,21 @@ export function GoalFormDialog({
     setCurrentValue(f.measurement === "count" ? 0 : null);
     setUnit(f.unit ?? "");
     setTemplateMilestones(f.milestones);
+  }
+
+  async function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImgBusy(true);
+    setError(null);
+    try {
+      setImage(await compressImageToThumbnail(file, { size: 512, maxBytes: 120_000 }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't process the image.");
+    } finally {
+      setImgBusy(false);
+      e.target.value = "";
+    }
   }
 
   const otherGoals = allGoals.filter(
@@ -174,6 +192,7 @@ export function GoalFormDialog({
       deadline: deadline || null,
       icon,
       color,
+      image,
       staleDays,
       targetValue:
         measurement === "count" || measurement === "linked" ? targetValue : null,
@@ -262,6 +281,40 @@ export function GoalFormDialog({
               onChange={(e) => setDescription(e.target.value)}
               placeholder="What does success look like?"
             />
+          </div>
+
+          {/* Cover image */}
+          <div className="space-y-1.5">
+            <Label>
+              Cover image{" "}
+              <span className="font-normal text-muted-foreground">(optional)</span>
+            </Label>
+            {image ? (
+              <div className="relative overflow-hidden rounded-lg border">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={image} alt="" className="h-28 w-full object-cover" />
+                <button
+                  type="button"
+                  onClick={() => setImage(null)}
+                  aria-label="Remove cover"
+                  className="absolute right-2 top-2 rounded-full bg-black/60 p-1 text-white transition-colors hover:bg-black/80"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <label className="flex h-20 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed text-sm text-muted-foreground transition-colors hover:bg-accent">
+                <ImagePlus className="h-4 w-4" />
+                {imgBusy ? "Processing…" : "Upload a cover image"}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={onPickImage}
+                  disabled={imgBusy}
+                />
+              </label>
+            )}
           </div>
 
           {/* Icon + color */}

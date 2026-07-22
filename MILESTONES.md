@@ -2931,3 +2931,42 @@ by area** when the list gets long.
 
 > **Deferred.** Goal reminders/notifications (the old Milestone 5) remain out of
 > scope for now, by choice.
+
+---
+
+## 🎯 Goals — Productivity Overhaul, Phase 4: Notion-style cards, subtasks & a database table
+
+**What it is.** A big usability + polish pass to make Goals feel like Notion:
+richer cards with cover images, quick subtasks you can actually create, and a
+full editable table/database view.
+
+**How it works.**
+- **Cover images.** A goal can have a **cover image** (Notion gallery style). Upload
+  one in the goal form; it's compressed client-side to a small base64 image and
+  stored inline on the goal doc (no Storage plan needed). It renders as a banner
+  across the top of the card and as a thumbnail in the table.
+- **Quick subtasks.** Every goal card now has an inline **subtask checklist** —
+  type in the "Add subtask" row and hit enter, tick items off, delete on hover.
+  For **auto ("From tasks") goals**, subtasks fold straight into the progress %
+  (done ÷ total across linked tasks *and* subtasks), and the first open subtask
+  becomes the goal's **next action** in Today's Momentum — so a lightweight goal
+  broken only into a checklist still moves and still drives the daily list.
+- **Better cards.** The card was rebuilt (extracted to its own component):
+  cover banner, cleaner title row with the focus ☆, badges, progress, momentum
+  chip, the subtask checklist, next-step line, and quick-update — tighter and
+  more scannable.
+- **Table / database view.** A **Cards ⇄ Table** toggle in the header. The table
+  shows every goal with **inline editing** — click the title, status, category,
+  progress (for % / count goals) and deadline and edit in place. A toolbar lets
+  you **Group by** Category, Year, or Deadline (each group shows a roll-up bar),
+  **Filter** by All / Active / At risk / Blocked / Focus, and **Sort** by Title,
+  Progress, Momentum, or Deadline. Today's Momentum stays pinned above it.
+
+**How to use it.**
+1. Edit a goal → **Upload a cover image**.
+2. On any card, use **Add subtask** to break the goal down in seconds.
+3. Hit **Table** in the header for a spreadsheet-style view — group by year or
+   deadline, filter to what's at risk, and edit fields inline.
+
+> **Deferred.** Goal reminders/notifications (the old Milestone 5) remain out of
+> scope for now, by choice.

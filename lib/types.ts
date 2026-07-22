@@ -106,6 +106,13 @@ export interface GoalMilestoneStep {
   done: boolean;
 }
 
+/** A quick checklist sub-item on a goal (Notion-style to-dos). */
+export interface GoalSubtask {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
 /** One timestamped progress snapshot (daily granularity) — powers the trend. */
 export interface GoalLogEntry {
   date: string; // YYYY-MM-DD
@@ -190,6 +197,10 @@ export interface Goal {
   focus: boolean;
   /** Ids of goals that must finish first — this goal is "blocked" until they do. */
   dependsOn: string[];
+  /** Optional Notion-style cover image (compressed base64 data URL). */
+  image: string | null;
+  /** Quick checklist of sub-items — drives progress for auto ("tasks") goals. */
+  subtasks: GoalSubtask[];
   createdAt: number;
 }
 
