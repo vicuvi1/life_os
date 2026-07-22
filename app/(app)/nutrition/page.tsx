@@ -16,6 +16,7 @@ import { greetingFor, resolveFirstName, toDateKey } from "@/lib/greeting";
 import { addDays } from "@/lib/habits";
 import { formatLongDate, startOfWeekKey } from "@/lib/dates";
 import { DEFAULT_WATER_TARGET, DEFAULT_PROTEIN_TARGET, healthScore, healthMeta, mealBucket, MEAL_BUCKETS } from "@/lib/nutrition";
+import { NutritionRings } from "@/components/nutrition/nutrition-rings";
 import { dayTotals, toFoodMap, mealTotals, recipeTotals, foodToEntry, genId, stockStatus, expiryStatus, daysBetween } from "@/lib/food";
 import { resolveCurrency, formatAmount, type Currency } from "@/lib/currency";
 import { NumberField } from "@/components/ui/number-field";
@@ -279,12 +280,15 @@ export default function NutritionPage() {
                   <label className="flex items-center gap-1">Budget/wk <NumberField value={weeklyBudget ?? 0} onCommit={(n) => commit("budget", n)} min={0} aria-label="Weekly budget" inputClassName="w-14" /></label>
                 </div>
               </div>
-              <div className="flex items-center justify-center gap-4 border-t border-border/40 pt-5 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
-                <Ring value={overall} />
-                <div className="lg:hidden xl:block">
-                  <p className="text-2xl font-bold leading-none">{overall}%</p>
-                  <p className="text-xs text-muted-foreground">of today&apos;s goals</p>
-                </div>
+              <div className="flex items-center justify-center border-t border-border/40 pt-5 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
+                <NutritionRings
+                  center={{ value: `${overall}%`, label: "goals" }}
+                  rings={[
+                    { label: "Calories", pct: calorieTarget ? (totals.calories / calorieTarget) * 100 : 0, color: "#8b5cf6" },
+                    { label: "Protein", pct: proteinTarget ? (totals.protein / proteinTarget) * 100 : 0, color: "#d946ef" },
+                    { label: "Water", pct: waterTarget ? (water / waterTarget) * 100 : 0, color: "#0ea5e9" },
+                  ]}
+                />
               </div>
             </div>
           </Card>

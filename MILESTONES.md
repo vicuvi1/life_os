@@ -3177,6 +3177,17 @@ not just where you are, but where you're heading.
 
 ---
 
+## 🍎 Nutrition — macro rings
+
+**What it is.** The day's macros as three Apple-Watch-style concentric rings.
+
+**How it works.** The single "goals %" ring in Today's Progress became a
+three-ring stack — **Calories** (violet), **Protein** (fuchsia), **Water** (sky)
+— each filling toward its target, with the overall goal % in the centre and a
+small legend. Animated, and reuses the targets you already set.
+
+---
+
 ## 💬 Top-bar motivational quote ticker
 
 **What it is.** A rotating motivational quote lives in the center of the top bar,
