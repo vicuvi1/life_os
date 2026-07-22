@@ -591,26 +591,52 @@ function FocusGroupBlock({
   );
 }
 
+// Session snapshot so the landing page renders instantly on return instead of
+// re-running its ~12 queries behind a full skeleton every time.
+interface DashboardSnapshot {
+  goals: Goal[];
+  allGoals: Goal[];
+  habits: Habit[];
+  habitLogsByHabit: Record<string, HabitLog[]>;
+  tasks: Task[];
+  sessions: Session[];
+  sleepLogs: SleepLog[];
+  trackers: Tracker[];
+  trackerLogs: TrackerLog[];
+  hiddenTrackers: string[];
+  waterUnit: string;
+  water: number;
+  waterTarget: number;
+  reviewDoneThisWeek: boolean;
+}
+let dashboardCache: DashboardSnapshot | null = null;
+
 export default function DashboardPage() {
   const { user, displayName } = useAuth();
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [allGoals, setAllGoals] = useState<Goal[]>([]);
-  const [habits, setHabits] = useState<Habit[]>([]);
+  const [goals, setGoals] = useState<Goal[]>(dashboardCache?.goals ?? []);
+  const [allGoals, setAllGoals] = useState<Goal[]>(dashboardCache?.allGoals ?? []);
+  const [habits, setHabits] = useState<Habit[]>(dashboardCache?.habits ?? []);
   const [habitLogsByHabit, setHabitLogsByHabit] = useState<
     Record<string, HabitLog[]>
-  >({});
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [sleepLogs, setSleepLogs] = useState<SleepLog[]>([]);
-  const [trackers, setTrackers] = useState<Tracker[]>([]);
-  const [trackerLogs, setTrackerLogs] = useState<TrackerLog[]>([]);
-  const [hiddenTrackers, setHiddenTrackers] = useState<string[]>([]);
-  const [waterUnit, setWaterUnit] = useState<string>("glasses");
-  const [water, setWater] = useState(0);
-  const [waterTarget, setWaterTarget] = useState(DEFAULT_WATER_TARGET);
-  const [reviewDoneThisWeek, setReviewDoneThisWeek] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const waterRef = useRef(0);
+  >(dashboardCache?.habitLogsByHabit ?? {});
+  const [tasks, setTasks] = useState<Task[]>(dashboardCache?.tasks ?? []);
+  const [sessions, setSessions] = useState<Session[]>(dashboardCache?.sessions ?? []);
+  const [sleepLogs, setSleepLogs] = useState<SleepLog[]>(dashboardCache?.sleepLogs ?? []);
+  const [trackers, setTrackers] = useState<Tracker[]>(dashboardCache?.trackers ?? []);
+  const [trackerLogs, setTrackerLogs] = useState<TrackerLog[]>(dashboardCache?.trackerLogs ?? []);
+  const [hiddenTrackers, setHiddenTrackers] = useState<string[]>(
+    dashboardCache?.hiddenTrackers ?? []
+  );
+  const [waterUnit, setWaterUnit] = useState<string>(dashboardCache?.waterUnit ?? "glasses");
+  const [water, setWater] = useState(dashboardCache?.water ?? 0);
+  const [waterTarget, setWaterTarget] = useState(
+    dashboardCache?.waterTarget ?? DEFAULT_WATER_TARGET
+  );
+  const [reviewDoneThisWeek, setReviewDoneThisWeek] = useState(
+    dashboardCache?.reviewDoneThisWeek ?? false
+  );
+  const [loading, setLoading] = useState(!dashboardCache);
+  const waterRef = useRef(dashboardCache?.water ?? 0);
 
   const [stackExpanded, setStackExpanded] = useState(false);
   const [exitingRows, setExitingRows] = useState<Set<string>>(new Set());
@@ -674,6 +700,22 @@ export default function DashboardPage() {
       setTrackerLogs(trkLogs);
       setHiddenTrackers(prefs.hiddenTrackers);
       setWaterUnit(prefs.waterUnit);
+      dashboardCache = {
+        goals: g,
+        allGoals: ag,
+        habits: h,
+        habitLogsByHabit: byHabit,
+        tasks: t,
+        sessions: sess,
+        sleepLogs: sleep,
+        trackers: trk,
+        trackerLogs: trkLogs,
+        hiddenTrackers: prefs.hiddenTrackers,
+        waterUnit: prefs.waterUnit,
+        water: nutrition?.water ?? 0,
+        waterTarget: nutrition?.waterTarget ?? DEFAULT_WATER_TARGET,
+        reviewDoneThisWeek: review != null,
+      };
     } finally {
       setLoading(false);
     }
@@ -1435,7 +1477,7 @@ export default function DashboardPage() {
                       <Icon className="h-3.5 w-3.5 shrink-0 text-primary" />
                       <span className="flex-1 truncate">{g.title}</span>
                       <span className="text-muted-foreground">
-                        {g.progressType === "count" && g.targetValue
+                        {g.measurement === "count" && g.targetValue
                           ? `${g.currentValue ?? 0}/${g.targetValue}${g.unit ? ` ${g.unit}` : ""}`
                           : `${g.progress}%`}
                       </span>
@@ -1657,7 +1699,7 @@ export default function DashboardPage() {
                       </div>
                       <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
                         <span>
-                          {goal.progressType === "count" && goal.targetValue
+                          {goal.measurement === "count" && goal.targetValue
                             ? `${goal.currentValue ?? 0}/${goal.targetValue}${goal.unit ? ` ${goal.unit}` : ""}`
                             : "Progress"}
                         </span>

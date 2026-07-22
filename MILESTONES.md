@@ -2981,6 +2981,32 @@ greet you on the dashboard every morning, alongside your logging nudges.
 
 ---
 
+## 🧰 Quality pass (c) — offline badge, shared primitives, dashboard speed & tests
+
+**What it is.** A grab-bag of foundation wins from the honest app review.
+
+**How it works.**
+- **Offline badge.** When you lose connectivity an **"Offline"** pill appears in
+  the top bar; paired with the persistent cache, reads still work and writes queue
+  and sync when you reconnect.
+- **Shared UI primitives.** Added `PageHeader` and `EmptyState` alongside the
+  shared `StatTile`, and adopted them on the Goals page — the start of replacing
+  each page's bespoke header/empty-state with one consistent vocabulary.
+- **Instant dashboard.** The dashboard (the landing page) was the worst offender:
+  ~12 queries with no cache, a full skeleton on every visit. It now keeps a
+  session snapshot and renders instantly on return, revalidating in the
+  background — matching Goals and Finance.
+- **Legacy cleanup.** The dashboard no longer reads the deprecated `progressType`
+  goal field (it uses `measurement`), keeping goal-progress logic consistent
+  app-wide.
+- **A test suite.** Added **Vitest** with **31 unit tests** covering the pure
+  logic that matters most — the goal engine (progress, momentum, next-action,
+  stale, blockers, milestones), the dashboard priority stack, and the money math
+  (income/expense totals excluding transfers, account balances, cash counter).
+  Run with `npm test`. Test files are excluded from the production build.
+
+---
+
 ## 💬 Top-bar motivational quote ticker
 
 **What it is.** A rotating motivational quote lives in the center of the top bar,

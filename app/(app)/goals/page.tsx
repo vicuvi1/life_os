@@ -50,6 +50,8 @@ import { GoalFormDialog } from "@/components/goals/goal-form-dialog";
 import { GoalCard } from "@/components/goals/goal-card";
 import { GoalsTable } from "@/components/goals/goals-table";
 import { StatTile } from "@/components/ui/stat-tile";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { Goal, GoalSubtask, Task } from "@/lib/types";
 
@@ -255,17 +257,17 @@ export default function GoalsPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold md:text-3xl">Goals</h1>
-          <p className="text-muted-foreground">
+      <PageHeader
+        title="Goals"
+        description={
+          <>
             Focus on what matters, then do the next thing.
             {activeCount > 0 && ` · ${activeCount} active`}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {!loading && goals.length > 0 && (
-            <div className="flex items-center gap-0.5 rounded-lg border p-0.5">
+          </>
+        }
+      >
+        {!loading && goals.length > 0 && (
+          <div className="flex items-center gap-0.5 rounded-lg border p-0.5">
               <button
                 type="button"
                 onClick={() => setView("cards")}
@@ -294,13 +296,12 @@ export default function GoalsPage() {
               </button>
             </div>
           )}
-          {user && (
-            <Button onClick={openCreate}>
-              <Plus className="h-4 w-4" /> New goal
-            </Button>
-          )}
-        </div>
-      </div>
+        {user && (
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4" /> New goal
+          </Button>
+        )}
+      </PageHeader>
 
       {loading ? (
         <div className="space-y-3">
@@ -308,18 +309,16 @@ export default function GoalsPage() {
           <SkeletonCard lines={3} />
         </div>
       ) : goals.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center gap-3 p-12 text-center">
-            <Target className="h-8 w-8 text-muted-foreground" />
-            <p className="font-medium">No goals yet</p>
-            <p className="max-w-sm text-sm text-muted-foreground">
-              Add your first goal, then break it into projects and daily tasks.
-            </p>
+        <EmptyState
+          icon={Target}
+          title="No goals yet"
+          description="Add your first goal, then break it into projects and daily tasks."
+          action={
             <Button onClick={openCreate}>
               <Plus className="h-4 w-4" /> Add a goal
             </Button>
-          </CardContent>
-        </Card>
+          }
+        />
       ) : (
         <div className="space-y-8">
           {/* Health stat row */}

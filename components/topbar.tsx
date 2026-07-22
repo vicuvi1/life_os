@@ -6,6 +6,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { MobileNav } from "@/components/mobile-nav";
 import { QuoteTicker } from "@/components/quote-ticker";
+import { OfflineIndicator } from "@/components/offline-indicator";
 import { useAuth } from "@/components/auth-provider";
 
 export function Topbar({ email }: { email?: string | null }) {
@@ -22,6 +23,7 @@ export function Topbar({ email }: { email?: string | null }) {
       <div className="flex shrink-0 items-center gap-2 text-sm text-muted-foreground">
         <MobileNav />
         {email ? <span className="hidden lg:inline">{email}</span> : null}
+        <OfflineIndicator />
       </div>
       <QuoteTicker />
       <div className="flex shrink-0 items-center gap-1">
