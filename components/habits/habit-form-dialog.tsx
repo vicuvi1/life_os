@@ -172,7 +172,7 @@ export function HabitFormDialog({
                 className="flex-1"
               />
             </div>
-            <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto rounded-lg border bg-muted/20 p-1.5">
+            <div className="flex max-h-44 flex-wrap gap-1 overflow-y-auto rounded-lg border bg-muted/20 p-1.5">
               {EMOJI_PRESETS.map((e) => (
                 <button
                   key={e}

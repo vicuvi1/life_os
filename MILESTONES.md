@@ -2793,4 +2793,7 @@ Refinements that make the Accounts system feel finished.
 The Habits **Table** view now lets you **drag a habit row into any position** (a
 grip handle appears on hover). The new order persists via `reorderHabits` and is
 used everywhere habits are listed. Cell toggles and the emoji/colour button keep
-working — only the left cell initiates a drag.
+working — only the left cell initiates a drag. The emoji picker (both the quick
+icon/colour editor and the create form) also gained a **much larger set** —
+health, food & drink, learning, work, creative, home, nature, feelings & symbols
+— in a taller, scrollable grid.

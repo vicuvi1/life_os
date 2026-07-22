@@ -55,7 +55,7 @@ export function IconColorDialog({ open, onOpenChange, habit, onApply }: Props) {
                 No emoji (color dot)
               </Button>
             </div>
-            <div className="flex max-h-28 flex-wrap gap-1 overflow-y-auto rounded-lg border bg-muted/20 p-1.5">
+            <div className="flex max-h-52 flex-wrap gap-1 overflow-y-auto rounded-lg border bg-muted/20 p-1.5">
               {EMOJI_PRESETS.map((e) => (
                 <button
                   key={e}
