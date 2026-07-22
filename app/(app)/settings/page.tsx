@@ -10,6 +10,7 @@ import { NotificationsCard } from "@/components/settings/notifications-card";
 import { TelegramCard } from "@/components/settings/telegram-card";
 import { AIProvidersCard } from "@/components/settings/ai-providers-card";
 import { CurrencyCard } from "@/components/settings/currency-card";
+import { AccentCard } from "@/components/settings/accent-card";
 import { ProfileNameField } from "@/components/settings/profile-name";
 import { useAuth } from "@/components/auth-provider";
 
@@ -61,6 +62,8 @@ export default function SettingsPage() {
           <ThemeToggle />
         </CardContent>
       </Card>
+
+      <AccentCard />
 
       <CurrencyCard />
 

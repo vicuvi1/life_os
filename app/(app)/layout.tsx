@@ -8,6 +8,7 @@ import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { FloatingCalculator } from "@/components/calculator/floating-calculator";
 import { CommandProvider } from "@/components/command/command-center";
+import { AccentProvider } from "@/components/accent-provider";
 
 export default function AppLayout({
   children,
@@ -38,6 +39,7 @@ export default function AppLayout({
           <main className="flex-1 overflow-y-auto p-4 md:p-8">{children}</main>
         </div>
         <FloatingCalculator />
+        <AccentProvider />
       </div>
     </CommandProvider>
   );

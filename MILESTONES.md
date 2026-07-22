@@ -3064,6 +3064,22 @@ bespoke caches.
 
 ---
 
+## 🎨 Accent colour — make it yours
+
+**What it is.** Personalise the whole app's accent colour.
+
+**How it works.**
+- **Settings → Appearance → Accent colour** offers a row of swatches (Violet,
+  Blue, Sky, Emerald, Amber, Orange, Rose, Pink). Pick one and it instantly
+  re-themes every button, link, highlight, and focus ring across the app, in both
+  light and dark mode.
+- It works by overriding the theme's `--primary` / `--ring` CSS variables on the
+  root element and saving your choice locally, so it's applied on every visit.
+
+**How to use it.** Settings → Appearance → tap a colour.
+
+---
+
 ## 💬 Top-bar motivational quote ticker
 
 **What it is.** A rotating motivational quote lives in the center of the top bar,
