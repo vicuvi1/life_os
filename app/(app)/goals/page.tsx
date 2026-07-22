@@ -4,6 +4,7 @@ import { SkeletonCard } from "@/components/ui/skeleton";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Target,
   Plus,
@@ -13,6 +14,7 @@ import {
   Flag,
   Circle,
   CheckCircle2,
+  CalendarPlus,
   Activity,
   Trophy,
   TrendingUp,
@@ -31,7 +33,11 @@ import {
   setGoalFocus,
   updateGoalSubtasks,
 } from "@/lib/firebase/db";
-import { completeGoalNextAction, uncompleteGoalNextAction } from "@/lib/goal-actions";
+import {
+  completeGoalNextAction,
+  uncompleteGoalNextAction,
+  scheduleGoalAction,
+} from "@/lib/goal-actions";
 import { celebrate } from "@/lib/confetti";
 import { useToast } from "@/components/toast/toast-provider";
 import {
@@ -71,6 +77,7 @@ let goalsCache: { goals: Goal[]; tasks: Task[] } | null = null;
 export default function GoalsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const router = useRouter();
   const today = toDateKey(new Date());
   const [goals, setGoals] = useState<Goal[]>(goalsCache?.goals ?? []);
   const [tasks, setTasks] = useState<Task[]>(goalsCache?.tasks ?? []);
@@ -252,6 +259,15 @@ export default function GoalsPage() {
     } finally {
       setCompleting(null);
     }
+  }
+
+  async function scheduleAction(goal: Goal, action: NextAction) {
+    await scheduleGoalAction(goal, action, today);
+    toast({
+      message: "Scheduled for tomorrow, 9:00",
+      tone: "success",
+      action: { label: "Sessions", onClick: () => router.push("/sessions") },
+    });
   }
 
   // Delete with a grace period + Undo instead of a scary confirm dialog.
@@ -453,6 +469,15 @@ export default function GoalsPage() {
                             <span className="truncate">{goal.title}</span>
                           </Link>
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => scheduleAction(goal, action)}
+                          aria-label="Schedule for tomorrow"
+                          title="Schedule for tomorrow, 9:00"
+                          className="shrink-0 text-muted-foreground/50 transition-colors hover:text-primary"
+                        >
+                          <CalendarPlus className="h-4 w-4" />
+                        </button>
                         <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                           {actionKindLabel[action.kind]}
                         </span>

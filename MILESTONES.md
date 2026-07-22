@@ -3123,6 +3123,25 @@ it matters.
 
 ---
 
+## 🗓️ Time-blocking + reminders
+
+**What it is.** Turn intentions into scheduled time, and get nudged about what's
+slipping.
+
+**How it works.**
+- **Schedule the next action.** Every row in **Today's Momentum** (on the Goals
+  page *and* the dashboard) now has a **📅 schedule** button that creates a
+  planned **Session** for that action — tomorrow, 9–10am, linked to the goal —
+  with a toast that jumps you to Sessions. Closes the plan→do loop.
+- **Reminder nudge.** The dashboard surfaces the one goal that most needs
+  attention today (stale → behind pace → nearest deadline) as a tappable amber
+  banner, instead of burying it.
+
+**How to use it.** On a focus goal's next step, hit 📅 to block time for it; watch
+the dashboard banner for whatever's slipping.
+
+---
+
 ## 💬 Top-bar motivational quote ticker
 
 **What it is.** A rotating motivational quote lives in the center of the top bar,

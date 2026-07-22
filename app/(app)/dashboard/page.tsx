@@ -9,8 +9,10 @@ import {
   type ReactNode,
 } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Plus,
+  CalendarPlus,
   Minus,
   Bell,
   ChevronRight,
@@ -88,8 +90,9 @@ import {
   goalMomentum,
   type NextAction,
 } from "@/lib/goals";
-import { completeGoalNextAction } from "@/lib/goal-actions";
+import { completeGoalNextAction, scheduleGoalAction } from "@/lib/goal-actions";
 import { celebrate } from "@/lib/confetti";
+import { useToast } from "@/components/toast/toast-provider";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -614,6 +617,8 @@ let dashboardCache: DashboardSnapshot | null = null;
 
 export default function DashboardPage() {
   const { user, displayName } = useAuth();
+  const { toast } = useToast();
+  const router = useRouter();
   const [goals, setGoals] = useState<Goal[]>(dashboardCache?.goals ?? []);
   const [allGoals, setAllGoals] = useState<Goal[]>(dashboardCache?.allGoals ?? []);
   const [habits, setHabits] = useState<Habit[]>(dashboardCache?.habits ?? []);
@@ -854,6 +859,15 @@ export default function DashboardPage() {
     } finally {
       setCompletingGoal(null);
     }
+  }
+
+  async function handleScheduleGoalAction(goal: Goal, action: NextAction) {
+    await scheduleGoalAction(goal, action, today);
+    toast({
+      message: "Scheduled for tomorrow, 9:00",
+      tone: "success",
+      action: { label: "Sessions", onClick: () => router.push("/sessions") },
+    });
   }
 
   const greeting = greetingFor(new Date().getHours());
@@ -1357,6 +1371,21 @@ export default function DashboardPage() {
         </Card>
       )}
 
+      {/* Reminder nudge — the one goal most needing attention today */}
+      {urgentGoal && (
+        <Link
+          href={`/goals/${urgentGoal.id}`}
+          className="flex items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.07] px-4 py-3 transition-colors hover:bg-amber-500/[0.12]"
+        >
+          <Bell className="h-4 w-4 shrink-0 text-amber-500" />
+          <p className="min-w-0 flex-1 truncate text-sm">
+            <span className="font-medium">{urgentGoal.title}</span>
+            <span className="text-muted-foreground"> — {urgentGoal.reason}</span>
+          </p>
+          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+        </Link>
+      )}
+
       {/* Momentum — the next step on each focus goal (from the Goals module) */}
       {focusMomentum.length > 0 && (
         <Card>
@@ -1397,6 +1426,15 @@ export default function DashboardPage() {
                         <span className="truncate">{goal.title}</span>
                       </Link>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => handleScheduleGoalAction(goal, action)}
+                      aria-label="Schedule for tomorrow"
+                      title="Schedule for tomorrow, 9:00"
+                      className="shrink-0 text-muted-foreground/50 transition-colors hover:text-primary"
+                    >
+                      <CalendarPlus className="h-4 w-4" />
+                    </button>
                     <div className="hidden shrink-0 sm:block">
                       <MomentumChip m={m} />
                     </div>

@@ -5,8 +5,10 @@ import {
   setTaskDone,
   updateGoalMilestones,
   updateGoalSubtasks,
+  createSession,
 } from "@/lib/firebase/db";
 import { toDateKey } from "@/lib/greeting";
+import { addDays } from "@/lib/habits";
 import type { NextAction } from "@/lib/goals";
 import type { Goal } from "@/lib/types";
 
@@ -40,6 +42,31 @@ export async function completeGoalNextAction(
       )
     );
   }
+}
+
+/**
+ * Time-block a goal's next action: create a planned Session (tomorrow, 9–10am)
+ * titled by the action and linked to the goal. Returns the session date key.
+ */
+export async function scheduleGoalAction(
+  goal: Goal,
+  action: NextAction,
+  today: string
+): Promise<string> {
+  const date = addDays(today, 1);
+  await createSession(goal.userId, {
+    title: action.title,
+    category: "study",
+    goalId: goal.id,
+    date,
+    startMin: 9 * 60,
+    endMin: 10 * 60,
+    status: "planned",
+    quality: null,
+    notes: null,
+    color: goal.color ?? null,
+  });
+  return date;
 }
 
 /**
