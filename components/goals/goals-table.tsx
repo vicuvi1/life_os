@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Star, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { Star, MoreVertical, Pencil, Trash2, Archive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NumberField } from "@/components/ui/number-field";
 import {
@@ -12,10 +12,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MomentumChip } from "@/components/goals/goal-card";
+import { useToast } from "@/components/toast/toast-provider";
 import {
   updateGoal,
   setGoalManualProgress,
   setGoalCurrentValue,
+  setGoalFocus,
+  deleteGoal,
 } from "@/lib/firebase/db";
 import {
   goalMomentum,
@@ -56,9 +59,20 @@ export function GoalsTable({
   onToggleFocus,
   onChanged,
 }: GoalsTableProps) {
+  const { toast } = useToast();
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const [filterBy, setFilterBy] = useState<FilterBy>("all");
   const [sortBy, setSortBy] = useState<SortBy>("title");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const toggleSel = (id: string) =>
+    setSelected((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  const clearSel = () => setSelected(new Set());
 
   const rows = useMemo(() => {
     const match = (g: Goal): boolean => {
@@ -130,6 +144,20 @@ export function GoalsTable({
     return entries.map(([label, items]) => ({ label, items }));
   }, [rows, groupBy]);
 
+  const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
+  const toggleAll = () =>
+    setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)));
+
+  async function bulk(fn: (g: Goal) => Promise<void>, verb: string) {
+    const gs = goals.filter((g) => selected.has(g.id));
+    if (gs.length === 0) return;
+    const n = gs.length;
+    await Promise.all(gs.map(fn));
+    clearSel();
+    onChanged();
+    toast({ message: `${n} goal${n > 1 ? "s" : ""} ${verb}`, tone: "success" });
+  }
+
   const selectCls =
     "rounded-md border bg-card px-2 py-1 text-xs focus:border-primary focus:outline-none";
 
@@ -180,11 +208,49 @@ export function GoalsTable({
         <span className="ml-auto">{rows.length} shown</span>
       </div>
 
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/[0.06] px-3 py-2 text-sm">
+          <span className="font-medium">{selected.size} selected</span>
+          <div className="ml-auto flex flex-wrap gap-1.5">
+            <Button size="sm" variant="outline" onClick={() => bulk((g) => setGoalFocus(g.id, true), "starred")}>
+              <Star className="h-3.5 w-3.5" /> Focus
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => bulk((g) => setGoalFocus(g.id, false), "unfocused")}>
+              Unfocus
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => bulk((g) => updateGoal(g.id, { status: "archived" }), "archived")}>
+              <Archive className="h-3.5 w-3.5" /> Archive
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-destructive hover:text-destructive"
+              onClick={() => bulk((g) => deleteGoal(g.id), "deleted")}
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Delete
+            </Button>
+            <Button size="sm" variant="ghost" onClick={clearSel}>
+              Clear
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <div className="overflow-x-auto rounded-xl border">
-        <table className="w-full min-w-[720px] border-collapse text-sm">
+        <table className="w-full min-w-[760px] border-collapse text-sm">
           <thead>
             <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
+              <th className="w-8 px-2 py-2">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleAll}
+                  aria-label="Select all"
+                  className="h-3.5 w-3.5 cursor-pointer accent-primary"
+                />
+              </th>
               <th className="w-8 px-2 py-2" />
               <th className="px-2 py-2 font-medium">Goal</th>
               <th className="px-2 py-2 font-medium">Status</th>
@@ -198,7 +264,7 @@ export function GoalsTable({
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={9} className="px-3 py-8 text-center text-sm text-muted-foreground">
                   No goals match this filter.
                 </td>
               </tr>
@@ -218,6 +284,8 @@ export function GoalsTable({
                       goal={g}
                       today={today}
                       blockers={goalBlockers(g, goalsById)}
+                      selected={selected.has(g.id)}
+                      onToggleSelect={() => toggleSel(g.id)}
                       onEdit={onEdit}
                       onDelete={onDelete}
                       onToggleFocus={onToggleFocus}
@@ -249,7 +317,7 @@ function GroupBlock({
     <>
       {label && (
         <tr className="border-b bg-muted/20">
-          <td colSpan={8} className="px-3 py-2">
+          <td colSpan={9} className="px-3 py-2">
             <div className="flex items-center gap-3">
               <span className="text-xs font-semibold">{label}</span>
               <span className="text-xs text-muted-foreground">{count}</span>
@@ -270,6 +338,8 @@ function GoalRow({
   goal,
   today,
   blockers,
+  selected,
+  onToggleSelect,
   onEdit,
   onDelete,
   onToggleFocus,
@@ -278,6 +348,8 @@ function GoalRow({
   goal: Goal;
   today: string;
   blockers: Goal[];
+  selected: boolean;
+  onToggleSelect: () => void;
   onEdit: (goal: Goal) => void;
   onDelete: (goal: Goal) => void;
   onToggleFocus: (goal: Goal) => void;
@@ -307,7 +379,16 @@ function GoalRow({
   };
 
   return (
-    <tr className="border-b last:border-0 hover:bg-accent/40">
+    <tr className={cn("border-b last:border-0 hover:bg-accent/40", selected && "bg-primary/[0.06]")}>
+      <td className="px-2 py-1.5 align-middle">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          aria-label={`Select ${goal.title}`}
+          className="h-3.5 w-3.5 cursor-pointer accent-primary"
+        />
+      </td>
       <td className="px-2 py-1.5 align-middle">
         <button
           type="button"

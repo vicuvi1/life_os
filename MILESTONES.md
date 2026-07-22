@@ -3177,6 +3177,20 @@ not just where you are, but where you're heading.
 
 ---
 
+## ✅ Goals — bulk actions & multi-select
+
+**What it is.** Act on many goals at once instead of one-by-one.
+
+**How it works.** In the Goals **Table** view, each row has a checkbox (plus a
+select-all in the header). Selecting one or more reveals a **bulk action bar**:
+**Focus**, **Unfocus**, **Archive**, or **Delete** the whole selection in a
+single click, each with a confirmation toast. Selected rows are highlighted.
+
+**How to use it.** Switch Goals to **Table**, tick the goals you want, and hit an
+action — a big time-saver when tidying up.
+
+---
+
 ## 🍎 Nutrition — macro rings
 
 **What it is.** The day's macros as three Apple-Watch-style concentric rings.
