@@ -3147,13 +3147,15 @@ the dashboard banner for whatever's slipping.
 **What it is.** The first, safe step of splitting the 2245-line Finance page.
 
 **How it works.**
-- Extracted nine self-contained presentational + inline-edit widgets (Panel,
-  Delta, StatCard, Sparkline, QuickAdd, IncomeExpenseBars, AmountInput, NoteInput,
-  CategorySelect) into `components/expenses/finance-widgets.tsx`. They're pure,
-  prop-driven leaf components, so the move is behaviour-neutral and the page
-  imports them back.
-- The Finance page shrinks by ~200 lines and gains a reusable widget library;
-  Donut/Heatmap stay for now (they lean on page-local icon/label helpers).
+- Extracted **11** self-contained presentational + inline-edit widgets (Panel,
+  Delta, StatCard, Sparkline, QuickAdd, Donut, Heatmap, IncomeExpenseBars,
+  AmountInput, NoteInput, CategorySelect) into
+  `components/expenses/finance-widgets.tsx`. They're pure, prop-driven leaf
+  components, so the move is behaviour-neutral and the page imports them back.
+  Donut/Heatmap take their page-local helpers (`iconFor`, `formatDayLabel`) as
+  props — no risky relocation.
+- The Finance page dropped from **2245 → 1940 lines** and gained a reusable
+  widget library.
 
 > **Next.** Continue the split (transactions table, accounts grid, charts
 > section) and the same treatment for the habits/dashboard monoliths.

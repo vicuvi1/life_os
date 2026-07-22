@@ -126,6 +126,8 @@ import {
   Delta,
   StatCard,
   QuickAdd,
+  Donut,
+  Heatmap,
   IncomeExpenseBars,
   AmountInput,
   NoteInput,
@@ -140,7 +142,6 @@ const MONTHS_SHORT = [
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 const WEEKDAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const WEEK_HEADS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const DEFAULT_CATEGORY: Record<EntryKind, string> = { income: "salary", expense: "food" };
 
 const CATEGORY_ICON: Record<string, LucideIcon> = {
@@ -1318,7 +1319,7 @@ export default function FinancePage() {
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.5fr_1fr_1fr]">
                 {visibleWidgets.spendingOverview && (
                   <Panel title="Spending overview">
-                    <Donut data={byCategory} currency={currency} total={spent} formatAmountDisplay={formatDisplayAmount} />
+                    <Donut data={byCategory} total={spent} formatAmountDisplay={formatDisplayAmount} iconFor={iconFor} />
                   </Panel>
                 )}
                 {visibleWidgets.incomeExpense && (
@@ -1328,7 +1329,7 @@ export default function FinancePage() {
                 )}
                 {visibleWidgets.calendarHeatmap && (
                   <Panel title="Calendar heatmap" action={<span className="text-xs text-muted-foreground">{displayDays.length} days</span>}>
-                    <Heatmap year={year} month={month} byDay={byDay} todayKey={todayKey} renewals={renewalMarks} />
+                    <Heatmap year={year} month={month} byDay={byDay} todayKey={todayKey} renewals={renewalMarks} formatDayLabel={formatDayLabel} />
                   </Panel>
                 )}
               </div>
@@ -1605,7 +1606,7 @@ export default function FinancePage() {
                             <span className="text-xs text-muted-foreground">green = saved · red = spent · ● renewal</span>
                           </div>
                           <div className="mt-4">
-                            <Heatmap year={year} month={month} byDay={byDay} todayKey={todayKey} renewals={renewalMarks} />
+                            <Heatmap year={year} month={month} byDay={byDay} todayKey={todayKey} renewals={renewalMarks} formatDayLabel={formatDayLabel} />
                           </div>
                         </div>
                       )}
@@ -1936,106 +1937,4 @@ export default function FinancePage() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Presentational
-// ---------------------------------------------------------------------------
-function Donut({ data, currency, total, formatAmountDisplay }: { data: { category: string; amount: number }[]; currency: ReturnType<typeof resolveCurrency>; total: number; formatAmountDisplay: (amount: number) => string }) {
-  if (total <= 0) {
-    return <div className="flex h-52 items-center justify-center text-sm text-muted-foreground">No expenses yet</div>;
-  }
-  const r = 62, c = 2 * Math.PI * r;
-  let offset = 0;
-  return (
-    <div className="flex flex-col items-center gap-5 sm:flex-row">
-      <svg viewBox="0 0 170 170" className="h-52 w-52 shrink-0">
-        {data.map((d) => {
-          const len = (d.amount / total) * c;
-          const el = (
-            <circle key={d.category} cx={85} cy={85} r={r} fill="none" stroke={categoryColor(d.category)} strokeWidth={22}
-              strokeDasharray={`${len} ${c - len}`} strokeDashoffset={-offset} transform="rotate(-90 85 85)" />
-          );
-          offset += len;
-          return el;
-        })}
-        <text x={85} y={80} textAnchor="middle" className="fill-muted-foreground text-[11px] uppercase tracking-wide">Total spent</text>
-        <text x={85} y={100} textAnchor="middle" className="fill-foreground text-[19px] font-bold">{formatAmountDisplay(total)}</text>
-      </svg>
-      <ul className="w-full min-w-0 flex-1 space-y-2.5 text-[15px]">
-        {data.slice(0, 6).map((d) => {
-          const Icon = iconFor(d.category);
-          return (
-            <li key={d.category} className="flex items-center gap-2.5">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: `${categoryColor(d.category)}22`, color: categoryColor(d.category) }}>
-                <Icon className="h-4 w-4" />
-              </span>
-              <span className="min-w-0 flex-1 truncate font-medium">{categoryLabel(d.category)}</span>
-              <span className="shrink-0 tabular-nums">{formatAmountDisplay(d.amount)}</span>
-              <span className="w-11 shrink-0 text-right tabular-nums text-sm text-muted-foreground">{Math.round((d.amount / total) * 100)}%</span>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
-
-function Heatmap({ year, month, byDay, todayKey, renewals }: {
-  year: number; month: number; byDay: Map<string, { income: Expense[]; expense: Expense[]; net: number }>; todayKey: string;
-  renewals?: Map<number, string[]>;
-}) {
-  const dim = daysInMonth(year, month);
-  const offset = (new Date(year, month, 1).getDay() + 6) % 7; // Mon-first
-  let maxAbs = 1;
-  for (let d = 1; d <= dim; d++) {
-    const b = byDay.get(`${monthKey(year, month)}-${String(d).padStart(2, "0")}`);
-    if (b) maxAbs = Math.max(maxAbs, Math.abs(b.net));
-  }
-  const cells: (number | null)[] = [...Array(offset).fill(null), ...Array.from({ length: dim }, (_, i) => i + 1)];
-  const hasRenewals = renewals != null && renewals.size > 0;
-  return (
-    <div>
-      <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-muted-foreground">
-        {WEEK_HEADS.map((d) => <span key={d}>{d}</span>)}
-      </div>
-      <div className="mt-1 grid grid-cols-7 gap-1">
-        {cells.map((day, i) => {
-          if (day == null) return <span key={`b${i}`} />;
-          const key = `${monthKey(year, month)}-${String(day).padStart(2, "0")}`;
-          const b = byDay.get(key);
-          const n = b?.net ?? 0;
-          const intensity = Math.min(1, 0.25 + (Math.abs(n) / maxAbs) * 0.75);
-          const bg = n > 0 ? `rgba(16,185,129,${intensity})` : n < 0 ? `rgba(244,63,94,${intensity})` : undefined;
-          const isToday = key === todayKey;
-          const dayRenewals = renewals?.get(day);
-          const title =
-            (n !== 0 ? `${formatDayLabel(key)}: ${n > 0 ? "+" : ""}${n}` : formatDayLabel(key)) +
-            (dayRenewals ? ` · Renews: ${dayRenewals.join(", ")}` : "");
-          return (
-            <div
-              key={key}
-              title={title}
-              className={cn(
-                "relative flex aspect-square items-center justify-center rounded text-[11px] tabular-nums",
-                !bg && "bg-muted/40 text-muted-foreground",
-                bg && "font-medium text-white",
-                isToday && "ring-2 ring-primary"
-              )}
-              style={bg ? { backgroundColor: bg } : undefined}
-            >
-              {day}
-              {dayRenewals && (
-                <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-sky-400 ring-1 ring-background" />
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" /> Saved more</span>
-        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-rose-500" /> Spent more</span>
-        {hasRenewals && <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-sky-400" /> Renewal</span>}
-      </div>
-    </div>
-  );
-}
 
