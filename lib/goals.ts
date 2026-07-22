@@ -10,6 +10,7 @@ import type {
   GoalMilestone,
   GoalMilestoneStep,
   MilestoneMeasurement,
+  Task,
 } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -416,6 +417,47 @@ export function goalStale(
         ? keyOf(new Date(goal.createdAt))
         : today;
   return daysBetween(ref, today) >= days;
+}
+
+// ---------------------------------------------------------------------------
+// Next action — the single most concrete thing to do for a goal. Powers the
+// Focus section and the Today's Momentum strip: a goal you can't act on is a
+// wish, so we always surface one clear, completable step.
+// ---------------------------------------------------------------------------
+export type NextAction =
+  | { kind: "task"; taskId: string; goalId: string; title: string; dueDate: string | null }
+  | { kind: "step"; milestoneId: string; stepId: string; title: string }
+  | { kind: "milestone"; milestoneId: string; title: string };
+
+/**
+ * The next action for a goal, preferring the most concrete unit available:
+ *   1. the earliest open linked task (by due date, then sort order),
+ *   2. else the first unchecked step inside the first open milestone,
+ *   3. else the first open milestone itself.
+ * Returns null when the goal has nothing broken out to act on yet.
+ */
+export function goalNextAction(goal: Goal, tasks: Task[]): NextAction | null {
+  const open = tasks
+    .filter((t) => t.goalId === goal.id && t.status !== "done")
+    .sort((a, b) => {
+      const ad = a.dueDate ?? "9999-12-31";
+      const bd = b.dueDate ?? "9999-12-31";
+      if (ad !== bd) return ad < bd ? -1 : 1;
+      return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+    });
+  if (open.length > 0) {
+    const t = open[0];
+    return { kind: "task", taskId: t.id, goalId: goal.id, title: t.title, dueDate: t.dueDate };
+  }
+  const ms = sortMilestones(goal.milestones);
+  for (const m of ms) {
+    if (m.done) continue;
+    const step = m.steps.find((s) => !s.done);
+    if (step) return { kind: "step", milestoneId: m.id, stepId: step.id, title: step.title };
+  }
+  const nextM = ms.find((m) => !m.done);
+  if (nextM) return { kind: "milestone", milestoneId: nextM.id, title: nextM.title };
+  return null;
 }
 
 /** Compact "Jul 14"-style label for a date key (for the trend chart axis). */

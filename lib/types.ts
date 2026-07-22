@@ -186,6 +186,8 @@ export interface Goal {
   /** Optional emoji + hex accent for visual distinction. */
   icon: string | null;
   color: string | null;
+  /** Starred as a current focus — rises to the top and feeds Today's Momentum. */
+  focus: boolean;
   createdAt: number;
 }
 

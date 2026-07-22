@@ -2824,3 +2824,42 @@ Two fixes so opening Finance feels instant:
   small — faster to download on each load and safely clear of Firestore's 1 MB
   document limit (which large logos could otherwise blow past, causing save
   errors).
+
+---
+
+## 🎯 Goals — Productivity Overhaul, Phase 1: Focus & Today
+
+**What it is.** The first phase of turning Goals from a list you *look at* into a
+system you *act on*. Instead of showing every goal as an equal row, the page now
+answers two questions first: **which goals matter right now**, and **what's the
+next thing to do**.
+
+**How it works.**
+- **Focus goals.** Every goal card has a **☆ star**. Star your 1–3 most
+  important goals and they rise into a dedicated **Focus** section at the top
+  (subtly ringed), while everything else drops to a **More goals** section
+  below. Toggling is instant (optimistic) and persists on the goal doc via a new
+  `focus` flag — no new collection needed. There's also an "Unfocus/Focus" item
+  in each card's ⋯ menu.
+- **Next action, everywhere.** A new engine (`goalNextAction`) computes the single
+  most concrete next step for each goal, preferring the most actionable unit
+  available: the earliest open **task** (by due date), else the first unchecked
+  **step** inside the first open milestone, else the first open **milestone**.
+  Each card shows a muted "Next: …" line so you always know the immediate move.
+- **Today's Momentum.** A highlighted strip at the very top lists the next action
+  for each focus goal with a **one-click complete** — check it off and the goal's
+  progress recomputes and the next action rolls forward automatically. This is
+  the daily driver: open Goals, knock out the momentum list, done.
+- **Focus nudge.** On an account with many active goals and none starred yet, a
+  gentle banner explains that focus compounds and to star your top 1–3. The Focus
+  header also hints when you've starred more than 3.
+
+**How to use it.**
+1. Open **Goals**. Click the ☆ on your 1–3 most important goals.
+2. Each morning, work the **Today's Momentum** strip — tick off the next step on
+   each focus goal.
+3. Everything else stays available under **More goals**; promote/demote focus any
+   time with the star.
+
+> **Next.** Phase 2 (Momentum & health): a real momentum score, on-track/at-risk
+> pacing, streaks, a stall radar, and a wins log.

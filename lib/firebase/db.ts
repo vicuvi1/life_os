@@ -123,6 +123,7 @@ function mapGoal(snap: QueryDocumentSnapshot<DocumentData>): Goal {
     category: d.category ?? null,
     icon: d.icon ?? null,
     color: d.color ?? null,
+    focus: d.focus === true,
     createdAt: toMillis(d.createdAt),
   };
 }
@@ -287,10 +288,16 @@ export async function createGoal(
     category: input.category ?? null,
     icon: input.icon ?? null,
     color: input.color ?? null,
+    focus: false,
     createdAt: serverTimestamp(),
   });
   await recomputeGoalProgress(ref.id);
   return ref.id;
+}
+
+/** Star / unstar a goal as a current focus (feeds the Focus section + Today). */
+export async function setGoalFocus(goalId: string, focus: boolean): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.goals, goalId), { focus });
 }
 
 export async function updateGoal(
