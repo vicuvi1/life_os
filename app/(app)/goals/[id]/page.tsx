@@ -26,7 +26,6 @@ import {
   getProjectsForGoal,
   getTasksForGoal,
   getSessions,
-  recomputeGoalProgress,
   updateGoalJournal,
   deleteGoal,
   deleteProject,
@@ -116,9 +115,9 @@ export default function GoalDetailPage() {
     if (!user || !goalId) return;
     setLoading(true);
     try {
-      // Snapshot today's progress so the history/pace reflect the latest state
-      // (idempotent — one daily entry, deduped).
-      await recomputeGoalProgress(goalId).catch(() => {});
+      // Progress is recomputed on every real mutation (task/subtask/milestone/
+      // count edits), so we no longer write a snapshot just for opening the page
+      // — that avoided a Firestore write on every visit.
       const [g, all, p, t, se] = await Promise.all([
         getGoal(goalId),
         getGoals(user.uid),

@@ -20,7 +20,6 @@ import {
   LayoutGrid,
   Rows3,
   Table as TableIcon,
-  type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -51,6 +50,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { GoalFormDialog } from "@/components/goals/goal-form-dialog";
 import { GoalCard } from "@/components/goals/goal-card";
 import { GoalsTable } from "@/components/goals/goals-table";
+import { StatTile } from "@/components/ui/stat-tile";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { Goal, GoalSubtask, Task } from "@/lib/types";
 
@@ -61,41 +61,16 @@ const actionKindLabel: Record<NextAction["kind"], string> = {
   milestone: "milestone",
 };
 
-function StatTile({
-  icon: Icon,
-  label,
-  value,
-  tone = "default",
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-  tone?: "default" | "amber" | "emerald";
-}) {
-  return (
-    <div className="rounded-xl border bg-card p-3">
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Icon className="h-3.5 w-3.5" /> {label}
-      </div>
-      <p
-        className={cn(
-          "mt-1 text-xl font-bold tabular-nums",
-          tone === "amber" && "text-amber-500",
-          tone === "emerald" && "text-emerald-500"
-        )}
-      >
-        {value}
-      </p>
-    </div>
-  );
-}
+// Session cache so re-opening Goals renders the last snapshot instantly instead
+// of a skeleton, then revalidates in the background.
+let goalsCache: { goals: Goal[]; tasks: Task[] } | null = null;
 
 export default function GoalsPage() {
   const { user } = useAuth();
   const today = toDateKey(new Date());
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [goals, setGoals] = useState<Goal[]>(goalsCache?.goals ?? []);
+  const [tasks, setTasks] = useState<Task[]>(goalsCache?.tasks ?? []);
+  const [loading, setLoading] = useState(!goalsCache);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Goal | null>(null);
@@ -107,11 +82,12 @@ export default function GoalsPage() {
   const load = useCallback(
     async (silent = false) => {
       if (!user) return;
-      if (!silent) setLoading(true);
+      if (!silent && !goalsCache) setLoading(true);
       try {
         const [g, t] = await Promise.all([getGoals(user.uid), getTasks(user.uid)]);
         setGoals(g);
         setTasks(t);
+        goalsCache = { goals: g, tasks: t };
       } finally {
         if (!silent) setLoading(false);
       }

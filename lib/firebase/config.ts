@@ -1,6 +1,12 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
-import { getFirestore, type Firestore } from "firebase/firestore";
+import {
+  initializeFirestore,
+  getFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  type Firestore,
+} from "firebase/firestore";
 
 // Firebase web config. These values are public by design — access is controlled
 // by Firebase Auth + Firestore Security Rules, not by hiding the config.
@@ -18,5 +24,21 @@ const firebaseConfig = {
 const app: FirebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
 export const auth: Auth = getAuth(app);
-export const db: Firestore = getFirestore(app);
+
+// Persistent IndexedDB cache: reads are served from local storage first (so
+// revisiting a page is instant), the SDK revalidates in the background, and the
+// app keeps working offline. On the server there's no IndexedDB, and a hot-reload
+// re-import would re-init — both fall back to the already-started instance.
+function initDb(): Firestore {
+  if (typeof window === "undefined") return getFirestore(app);
+  try {
+    return initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    });
+  } catch {
+    return getFirestore(app);
+  }
+}
+
+export const db: Firestore = initDb();
 export default app;

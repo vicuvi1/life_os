@@ -2934,6 +2934,28 @@ by area** when the list gets long.
 
 ---
 
+## ⚡ Quality pass (a) — speed & shared foundations
+
+**What it is.** The first step of an app-wide quality pass: make the whole thing
+feel instant and start sharing UI primitives instead of re-inventing them.
+
+**How it works.**
+- **Persistent offline cache.** Firestore now uses a **persistent IndexedDB cache**
+  (multi-tab). Reads are served from local storage first — so re-opening any page
+  is instant — while the SDK revalidates in the background, and the app keeps
+  working **offline**. One change in the Firebase config; every page benefits.
+- **No more write-on-read.** Opening a goal's detail page used to write a progress
+  snapshot to Firestore *every visit*. Progress is already recomputed on every
+  real change (task/subtask/milestone/count edits), so that wasteful write is
+  gone.
+- **Instant Goals list.** The Goals page keeps a session snapshot and renders it
+  immediately on return (no skeleton), revalidating in the background — the same
+  trick the Finance tab uses.
+- **Shared `StatTile`.** The metric tile is now a reusable primitive
+  (`components/ui/stat-tile.tsx`) instead of a one-off, ready for the dashboards.
+
+---
+
 ## 💬 Top-bar motivational quote ticker
 
 **What it is.** A rotating motivational quote lives in the center of the top bar,
