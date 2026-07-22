@@ -41,3 +41,20 @@ export async function completeGoalNextAction(
     );
   }
 }
+
+/**
+ * Undo a completion. `goal` must be the pre-completion snapshot — for
+ * subtask/step/milestone actions we simply restore its embedded arrays.
+ */
+export async function uncompleteGoalNextAction(
+  goal: Goal,
+  action: NextAction
+): Promise<void> {
+  if (action.kind === "task") {
+    await setTaskDone({ id: action.taskId, goalId: goal.id }, false);
+  } else if (action.kind === "subtask") {
+    await updateGoalSubtasks(goal.id, goal.subtasks);
+  } else {
+    await updateGoalMilestones(goal.id, goal.milestones);
+  }
+}

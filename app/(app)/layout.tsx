@@ -9,6 +9,7 @@ import { Topbar } from "@/components/topbar";
 import { FloatingCalculator } from "@/components/calculator/floating-calculator";
 import { CommandProvider } from "@/components/command/command-center";
 import { AccentProvider } from "@/components/accent-provider";
+import { ToastProvider } from "@/components/toast/toast-provider";
 
 export default function AppLayout({
   children,
@@ -31,16 +32,18 @@ export default function AppLayout({
   }
 
   return (
-    <CommandProvider>
-      <div className="flex h-screen overflow-hidden">
+    <ToastProvider>
+      <CommandProvider>
+        <div className="flex h-screen overflow-hidden">
         <Sidebar />
         <div className="flex flex-1 flex-col overflow-hidden">
           <Topbar email={user.email} />
           <main className="flex-1 overflow-y-auto p-4 md:p-8">{children}</main>
         </div>
-        <FloatingCalculator />
-        <AccentProvider />
-      </div>
-    </CommandProvider>
+          <FloatingCalculator />
+          <AccentProvider />
+        </div>
+      </CommandProvider>
+    </ToastProvider>
   );
 }

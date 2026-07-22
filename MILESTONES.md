@@ -3100,6 +3100,26 @@ benefits at once.
 
 ---
 
+## 🔔 Toasts & Undo
+
+**What it is.** Actions now give feedback, and destructive ones are forgiving.
+
+**How it works.**
+- **Toast system.** A global, bottom-centre toast (dismissible, auto-hiding) with
+  an optional inline action button. Available anywhere via `useToast()`.
+- **Create confirmations.** Creating a task/goal/habit from ⌘K or the ＋ quick-add
+  shows a "… created" toast.
+- **Undo on completion.** Completing a goal's next action from Today's Momentum
+  shows "Nice — marked done" with **Undo** that reverts it.
+- **Forgiving delete.** Deleting a goal no longer needs a scary confirm — it
+  disappears with a **"Deleted … · Undo"** toast and is only really removed after
+  a short grace period; Undo brings it straight back.
+
+**How to use it.** Just act — the toast tells you it worked, and offers Undo when
+it matters.
+
+---
+
 ## 💬 Top-bar motivational quote ticker
 
 **What it is.** A rotating motivational quote lives in the center of the top bar,

@@ -31,8 +31,9 @@ import {
   setGoalFocus,
   updateGoalSubtasks,
 } from "@/lib/firebase/db";
-import { completeGoalNextAction } from "@/lib/goal-actions";
+import { completeGoalNextAction, uncompleteGoalNextAction } from "@/lib/goal-actions";
 import { celebrate } from "@/lib/confetti";
+import { useToast } from "@/components/toast/toast-provider";
 import {
   goalStale,
   goalNextAction,
@@ -54,7 +55,6 @@ import { StatTile } from "@/components/ui/stat-tile";
 import { AnimatedNumber } from "@/components/ui/animated-number";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { Goal, GoalSubtask, Task } from "@/lib/types";
 
 const actionKindLabel: Record<NextAction["kind"], string> = {
@@ -70,6 +70,7 @@ let goalsCache: { goals: Goal[]; tasks: Task[] } | null = null;
 
 export default function GoalsPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const today = toDateKey(new Date());
   const [goals, setGoals] = useState<Goal[]>(goalsCache?.goals ?? []);
   const [tasks, setTasks] = useState<Task[]>(goalsCache?.tasks ?? []);
@@ -77,7 +78,6 @@ export default function GoalsPage() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Goal | null>(null);
-  const [deleting, setDeleting] = useState<Goal | null>(null);
   const [completing, setCompleting] = useState<string | null>(null);
   const [groupByArea, setGroupByArea] = useState(false);
   const [view, setView] = useState<"cards" | "table">("cards");
@@ -238,9 +238,44 @@ export default function GoalsPage() {
     try {
       await completeGoalNextAction(goal, action);
       await load(true);
+      toast({
+        message: "Nice — marked done",
+        tone: "success",
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            await uncompleteGoalNextAction(goal, action);
+            await load(true);
+          },
+        },
+      });
     } finally {
       setCompleting(null);
     }
+  }
+
+  // Delete with a grace period + Undo instead of a scary confirm dialog.
+  function requestDelete(goal: Goal) {
+    setGoals((prev) => prev.filter((g) => g.id !== goal.id));
+    let undone = false;
+    toast({
+      message: `Deleted “${goal.title}”`,
+      duration: 5000,
+      action: {
+        label: "Undo",
+        onClick: () => {
+          undone = true;
+          void load(true);
+        },
+      },
+    });
+    window.setTimeout(() => {
+      if (!undone) {
+        void deleteGoal(goal.id).then(() => {
+          goalsCache = null;
+        });
+      }
+    }, 5200);
   }
 
   const showFocusPrompt = !loading && focusGoals.length === 0 && goals.length > 0;
@@ -252,7 +287,7 @@ export default function GoalsPage() {
     nextAction: nextActions.get(goal.id) ?? null,
     onToggleFocus: toggleFocus,
     onEdit: openEdit,
-    onDelete: (g: Goal) => setDeleting(g),
+    onDelete: requestDelete,
     onQuickPercent: quickPercent,
     onQuickCount: quickCount,
     onSubtasksChange: handleSubtasksChange,
@@ -435,7 +470,7 @@ export default function GoalsPage() {
               goalsById={goalsById}
               today={today}
               onEdit={openEdit}
-              onDelete={(g) => setDeleting(g)}
+              onDelete={requestDelete}
               onToggleFocus={toggleFocus}
               onChanged={() => load(true)}
             />
@@ -609,20 +644,6 @@ export default function GoalsPage() {
           onSaved={() => load(true)}
         />
       )}
-
-      <ConfirmDialog
-        open={Boolean(deleting)}
-        onOpenChange={(o) => !o && setDeleting(null)}
-        title="Delete this goal?"
-        description="This permanently deletes the goal and all its projects and tasks."
-        onConfirm={async () => {
-          if (deleting) {
-            await deleteGoal(deleting.id);
-            setDeleting(null);
-            await load(true);
-          }
-        }}
-      />
     </div>
   );
 }

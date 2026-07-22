@@ -16,6 +16,7 @@ import { useAuth } from "@/components/auth-provider";
 import { NAV } from "@/lib/nav";
 import { getGoals, getTasks } from "@/lib/firebase/db";
 import { invalidateCache } from "@/lib/use-cached-resource";
+import { useToast } from "@/components/toast/toast-provider";
 import { TaskFormDialog } from "@/components/tasks/task-form-dialog";
 import { GoalFormDialog } from "@/components/goals/goal-form-dialog";
 import { HabitFormDialog } from "@/components/habits/habit-form-dialog";
@@ -51,6 +52,7 @@ const GROUP_ORDER = ["Create", "Goals", "Tasks", "Go to"];
 
 export function CommandProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const { toast } = useToast();
   const router = useRouter();
 
   const [open, setOpen] = useState(false);
@@ -177,7 +179,13 @@ export function CommandProvider({ children }: { children: ReactNode }) {
   }
 
   const ctxValue = useMemo(() => ({ openPalette, openCreate }), [openPalette, openCreate]);
-  const onSaved = useCallback(() => invalidateCache(), []);
+  const onCreated = useCallback(
+    (label: string) => {
+      invalidateCache();
+      toast({ message: `${label} created`, tone: "success" });
+    },
+    [toast]
+  );
 
   return (
     <Ctx.Provider value={ctxValue}>
@@ -266,19 +274,19 @@ export function CommandProvider({ children }: { children: ReactNode }) {
             userId={user.uid}
             goalId={null}
             projectId={null}
-            onSaved={onSaved}
+            onSaved={() => onCreated("Task")}
           />
           <GoalFormDialog
             open={createType === "goal"}
             onOpenChange={(o) => !o && setCreateType(null)}
             userId={user.uid}
-            onSaved={onSaved}
+            onSaved={() => onCreated("Goal")}
           />
           <HabitFormDialog
             open={createType === "habit"}
             onOpenChange={(o) => !o && setCreateType(null)}
             userId={user.uid}
-            onSaved={onSaved}
+            onSaved={() => onCreated("Habit")}
           />
         </>
       )}
