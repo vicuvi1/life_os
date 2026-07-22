@@ -2956,6 +2956,31 @@ feel instant and start sharing UI primitives instead of re-inventing them.
 
 ---
 
+## 🧭 Quality pass (b) — Goals meet the dashboard
+
+**What it is.** The dashboard already unifies your day (the Priority Stack merges
+sleep, habits, water, trackers, tasks and sessions into one ranked list) — but it
+ignored the whole Goals module. This connects them so the daily driver actually
+includes your goals.
+
+**How it works.**
+- **Momentum on the dashboard.** A new **Momentum** card surfaces the *next
+  action* on each of your **focus goals** — the same one-click-complete strip
+  from the Goals page, now front-and-center on the dashboard (above the Priority
+  Stack), each with its momentum chip. Ticking one off updates the goal and rolls
+  its next step forward, everywhere.
+- **Shared completion.** Both the Goals page and the dashboard now complete a
+  goal's next action through one shared helper (`completeGoalNextAction`) — no
+  duplicated logic, so the two surfaces always behave identically. (It also shed
+  weight from the Goals page.)
+- **No extra fetches.** The dashboard already loaded your goals and tasks, so the
+  Momentum card is pure derived data.
+
+**How to use it.** Star 1–3 focus goals on the Goals page; their next steps now
+greet you on the dashboard every morning, alongside your logging nudges.
+
+---
+
 ## 💬 Top-bar motivational quote ticker
 
 **What it is.** A rotating motivational quote lives in the center of the top bar,

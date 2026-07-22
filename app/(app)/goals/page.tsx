@@ -29,10 +29,9 @@ import {
   setGoalCurrentValue,
   setGoalManualProgress,
   setGoalFocus,
-  setTaskDone,
-  updateGoalMilestones,
   updateGoalSubtasks,
 } from "@/lib/firebase/db";
+import { completeGoalNextAction } from "@/lib/goal-actions";
 import {
   goalStale,
   goalNextAction,
@@ -232,35 +231,7 @@ export default function GoalsPage() {
   async function completeAction(goal: Goal, action: NextAction) {
     setCompleting(actionKey(goal.id, action));
     try {
-      if (action.kind === "subtask") {
-        await updateGoalSubtasks(
-          goal.id,
-          goal.subtasks.map((s) => (s.id === action.subtaskId ? { ...s, done: true } : s))
-        );
-      } else if (action.kind === "task") {
-        await setTaskDone({ id: action.taskId, goalId: goal.id }, true);
-      } else if (action.kind === "step") {
-        await updateGoalMilestones(
-          goal.id,
-          goal.milestones.map((m) =>
-            m.id === action.milestoneId
-              ? {
-                  ...m,
-                  steps: m.steps.map((s) =>
-                    s.id === action.stepId ? { ...s, done: true } : s
-                  ),
-                }
-              : m
-          )
-        );
-      } else {
-        await updateGoalMilestones(
-          goal.id,
-          goal.milestones.map((m) =>
-            m.id === action.milestoneId ? { ...m, done: true, completedDate: today } : m
-          )
-        );
-      }
+      await completeGoalNextAction(goal, action);
       await load(true);
     } finally {
       setCompleting(null);

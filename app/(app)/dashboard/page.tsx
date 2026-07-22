@@ -19,6 +19,7 @@ import {
   CalendarClock,
   ClipboardList,
   CheckCircle2,
+  Circle,
   CheckSquare,
   HelpCircle,
   Moon,
@@ -79,7 +80,15 @@ import { buildPriorityStack, type PriorityItem } from "@/lib/priority";
 import { trackerIcon, formatTrackerValue, trackerValueMeetsTarget } from "@/lib/trackers";
 import { currentPermission, showNotification } from "@/lib/notify";
 import { CATEGORY_LABEL } from "@/lib/labels";
-import { daysToDeadline, goalPace, goalStale } from "@/lib/goals";
+import {
+  daysToDeadline,
+  goalPace,
+  goalStale,
+  goalNextAction,
+  goalMomentum,
+  type NextAction,
+} from "@/lib/goals";
+import { completeGoalNextAction } from "@/lib/goal-actions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -103,6 +112,7 @@ import { HabitFormDialog } from "@/components/habits/habit-form-dialog";
 import { TrackerFormDialog } from "@/components/trackers/tracker-form-dialog";
 import { TaskRow } from "@/components/tasks/task-row";
 import { HabitRow } from "@/components/habits/habit-row";
+import { MomentumChip } from "@/components/goals/goal-card";
 import { cn } from "@/lib/utils";
 import type {
   Goal,
@@ -611,6 +621,7 @@ export default function DashboardPage() {
   const [trackerFormOpen, setTrackerFormOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  const [completingGoal, setCompletingGoal] = useState<string | null>(null);
 
   const today = toDateKey(new Date());
   const thisWeekStart = startOfWeekKey(today);
@@ -791,6 +802,16 @@ export default function DashboardPage() {
     await load();
   }
 
+  async function handleCompleteGoalAction(goal: Goal, action: NextAction) {
+    setCompletingGoal(goal.id);
+    try {
+      await completeGoalNextAction(goal, action);
+      await load();
+    } finally {
+      setCompletingGoal(null);
+    }
+  }
+
   const greeting = greetingFor(new Date().getHours());
   const GreetingIcon = greetingIconFor(new Date().getHours());
   const name = resolveFirstName(displayName, user?.email);
@@ -828,6 +849,17 @@ export default function DashboardPage() {
     }
     return best;
   }, [allGoals, today]);
+
+  // Focus goals + their next action — the Goals module's "Today's Momentum",
+  // surfaced on the dashboard so the daily driver actually includes your goals.
+  const focusMomentum = useMemo(
+    () =>
+      allGoals
+        .filter((g) => g.focus && g.status === "active")
+        .map((g) => ({ goal: g, action: goalNextAction(g, tasks) }))
+        .filter((x): x is { goal: Goal; action: NextAction } => Boolean(x.action)),
+    [allGoals, tasks]
+  );
 
   const lastNight = sleepLogs[0];
 
@@ -1268,6 +1300,57 @@ export default function DashboardPage() {
               <Button size="sm" variant="outline" onClick={() => setHabitFormOpen(true)}>
                 <Flame className="h-4 w-4" /> Add a habit
               </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Momentum — the next step on each focus goal (from the Goals module) */}
+      {focusMomentum.length > 0 && (
+        <Card>
+          <CardContent className="p-0">
+            <div className="flex items-center gap-2 border-b px-4 py-3">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold">Momentum</span>
+              <span className="text-xs text-muted-foreground">· your focus goals</span>
+              <Button asChild variant="ghost" size="sm" className="ml-auto">
+                <Link href="/goals">Goals</Link>
+              </Button>
+            </div>
+            <div className="divide-y">
+              {focusMomentum.map(({ goal, action }) => {
+                const busy = completingGoal === goal.id;
+                const m = goalMomentum(goal, today);
+                return (
+                  <div key={goal.id} className="flex items-center gap-3 px-4 py-3">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => handleCompleteGoalAction(goal, action)}
+                      aria-label="Mark done"
+                      className="group shrink-0 transition-colors disabled:opacity-50"
+                    >
+                      <Circle className="h-5 w-5 text-muted-foreground/50 group-hover:hidden" />
+                      <CheckCircle2 className="hidden h-5 w-5 text-emerald-500 group-hover:block" />
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <p className={cn("truncate text-sm font-medium", busy && "opacity-50")}>
+                        {action.title}
+                      </p>
+                      <Link
+                        href={`/goals/${goal.id}`}
+                        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
+                      >
+                        {goal.icon && <span aria-hidden>{goal.icon}</span>}
+                        <span className="truncate">{goal.title}</span>
+                      </Link>
+                    </div>
+                    <div className="hidden shrink-0 sm:block">
+                      <MomentumChip m={m} />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
