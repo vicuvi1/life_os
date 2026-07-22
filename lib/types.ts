@@ -188,6 +188,8 @@ export interface Goal {
   color: string | null;
   /** Starred as a current focus — rises to the top and feeds Today's Momentum. */
   focus: boolean;
+  /** Ids of goals that must finish first — this goal is "blocked" until they do. */
+  dependsOn: string[];
   createdAt: number;
 }
 

@@ -124,6 +124,7 @@ function mapGoal(snap: QueryDocumentSnapshot<DocumentData>): Goal {
     icon: d.icon ?? null,
     color: d.color ?? null,
     focus: d.focus === true,
+    dependsOn: Array.isArray(d.dependsOn) ? d.dependsOn : [],
     createdAt: toMillis(d.createdAt),
   };
 }
@@ -257,6 +258,7 @@ export type GoalInput = Pick<
   | "icon"
   | "color"
   | "staleDays"
+  | "dependsOn"
 > & { progress?: number };
 
 /** Legacy mirror so any un-migrated reader (older dashboard code) still works. */
@@ -289,6 +291,7 @@ export async function createGoal(
     icon: input.icon ?? null,
     color: input.color ?? null,
     focus: false,
+    dependsOn: input.dependsOn ?? [],
     createdAt: serverTimestamp(),
   });
   await recomputeGoalProgress(ref.id);

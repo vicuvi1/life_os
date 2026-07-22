@@ -16,10 +16,13 @@ import {
   ListTodo,
   TrendingUp,
   TrendingDown,
+  Lock,
+  Gauge,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
   getGoal,
+  getGoals,
   getProjectsForGoal,
   getTasksForGoal,
   getSessions,
@@ -38,6 +41,7 @@ import {
   goalPace,
   goalProgressDetail,
   goalTrend,
+  goalBlockers,
   shortDate,
   type PaceInfo,
 } from "@/lib/goals";
@@ -85,6 +89,7 @@ export default function GoalDetailPage() {
   const today = toDateKey(new Date());
 
   const [goal, setGoal] = useState<Goal | null>(null);
+  const [allGoals, setAllGoals] = useState<Goal[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -114,13 +119,15 @@ export default function GoalDetailPage() {
       // Snapshot today's progress so the history/pace reflect the latest state
       // (idempotent — one daily entry, deduped).
       await recomputeGoalProgress(goalId).catch(() => {});
-      const [g, p, t, se] = await Promise.all([
+      const [g, all, p, t, se] = await Promise.all([
         getGoal(goalId),
+        getGoals(user.uid),
         getProjectsForGoal(goalId),
         getTasksForGoal(goalId),
         getSessions(user.uid),
       ]);
       setGoal(g);
+      setAllGoals(all);
       setProjects(p);
       setTasks(t);
       setSessions(se);
@@ -185,6 +192,7 @@ export default function GoalDetailPage() {
   const goalSessions = sessions
     .filter((s) => s.goalId === goal.id)
     .sort((a, b) => (a.date < b.date ? 1 : -1));
+  const blockers = goalBlockers(goal, new Map(allGoals.map((g) => [g.id, g])));
 
   async function addJournal() {
     if (!goal || !journalDraft.trim()) return;
@@ -270,6 +278,64 @@ export default function GoalDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Blocked-by banner */}
+      {blockers.length > 0 && (
+        <div className="flex items-start gap-3 rounded-xl border border-rose-500/30 bg-rose-500/[0.07] p-4">
+          <Lock className="mt-0.5 h-5 w-5 shrink-0 text-rose-500" />
+          <div className="text-sm">
+            <p className="font-medium">Blocked</p>
+            <p className="text-muted-foreground">
+              Waiting on{" "}
+              {blockers.map((b, i) => (
+                <span key={b.id}>
+                  {i > 0 && ", "}
+                  <Link href={`/goals/${b.id}`} className="text-foreground hover:underline">
+                    {b.title}
+                  </Link>
+                </span>
+              ))}
+              .
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Key Results (OKR) */}
+      {goal.measurement === "composite" && goal.composite.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <Gauge className="h-4 w-4 text-primary" /> Key Results
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {goal.composite.map((c) => {
+              const pctv =
+                c.target > 0
+                  ? Math.max(0, Math.min(100, Math.round((c.current / c.target) * 100)))
+                  : 0;
+              return (
+                <div key={c.id} className="space-y-1">
+                  <div className="flex items-center justify-between gap-2 text-sm">
+                    <span className="min-w-0 truncate">{c.label || "Untitled key result"}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {c.current} / {c.target}
+                      {c.unit ? ` ${c.unit}` : ""} · {pctv}%
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-primary transition-[width] duration-300"
+                      style={{ width: `${pctv}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Progress over time (M3) */}
       <Card>
@@ -557,6 +623,7 @@ export default function GoalDetailPage() {
             onOpenChange={setGoalFormOpen}
             userId={user.uid}
             goal={goal}
+            allGoals={allGoals}
             onSaved={load}
           />
           <ProjectFormDialog

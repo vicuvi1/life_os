@@ -22,6 +22,9 @@ import {
   Activity,
   Trophy,
   TrendingUp,
+  Lock,
+  LayoutGrid,
+  Rows3,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
@@ -41,6 +44,8 @@ import {
   goalNextAction,
   goalMomentum,
   goalPace,
+  goalBlockers,
+  categoryLabel,
   shortDate,
   type NextAction,
   type MomentumInfo,
@@ -132,6 +137,7 @@ export default function GoalsPage() {
   const [editing, setEditing] = useState<Goal | null>(null);
   const [deleting, setDeleting] = useState<Goal | null>(null);
   const [completing, setCompleting] = useState<string | null>(null);
+  const [groupByArea, setGroupByArea] = useState(false);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -155,6 +161,19 @@ export default function GoalsPage() {
     () => goals.filter((g) => g.status === "active").length,
     [goals]
   );
+  const goalsById = useMemo(() => new Map(goals.map((g) => [g.id, g])), [goals]);
+
+  // Non-focus goals grouped by life area (for the "group by area" toggle).
+  const groupedOther = useMemo(() => {
+    const map = new Map<string, Goal[]>();
+    for (const g of otherGoals) {
+      const key = categoryLabel(g.category) ?? "Uncategorized";
+      const arr = map.get(key) ?? [];
+      arr.push(g);
+      map.set(key, arr);
+    }
+    return Array.from(map.entries()).sort((a, b) => b[1].length - a[1].length);
+  }, [otherGoals]);
 
   // Health stats for the header row.
   const stats = useMemo(() => {
@@ -178,7 +197,9 @@ export default function GoalsPage() {
     const winsThisWeek = goals
       .flatMap((g) => g.milestones)
       .filter((m) => m.done && m.completedDate && m.completedDate >= weekAgo).length;
-    return { active: active.length, atRisk, avgVelocity, winsThisWeek };
+    const byId = new Map(goals.map((g) => [g.id, g]));
+    const blocked = active.filter((g) => goalBlockers(g, byId).length > 0).length;
+    return { active: active.length, atRisk, avgVelocity, winsThisWeek, blocked };
   }, [goals, today]);
 
   // Goals that have gone quiet — the stall radar.
@@ -288,6 +309,7 @@ export default function GoalsPage() {
   function GoalCard({ goal, prominent }: { goal: Goal; prominent: boolean }) {
     const action = nextActions.get(goal.id) ?? null;
     const momentum = goalMomentum(goal, today);
+    const blockers = goalBlockers(goal, goalsById);
     return (
       <Card
         className={cn(
@@ -354,6 +376,15 @@ export default function GoalsPage() {
             {goalStale(goal, today) && (
               <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-300">
                 <AlertTriangle className="h-3 w-3" /> Needs attention
+              </span>
+            )}
+            {blockers.length > 0 && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-600 dark:text-rose-300"
+                title={`Blocked by: ${blockers.map((b) => b.title).join(", ")}`}
+              >
+                <Lock className="h-3 w-3" /> Blocked by {blockers[0].title}
+                {blockers.length > 1 ? ` +${blockers.length - 1}` : ""}
               </span>
             )}
           </div>
@@ -474,7 +505,12 @@ export default function GoalsPage() {
       ) : (
         <div className="space-y-8">
           {/* Health stat row */}
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div
+            className={cn(
+              "grid grid-cols-2 gap-3",
+              stats.blocked > 0 ? "md:grid-cols-5" : "md:grid-cols-4"
+            )}
+          >
             <StatTile icon={Activity} label="Active" value={String(stats.active)} />
             <StatTile
               icon={AlertTriangle}
@@ -497,6 +533,14 @@ export default function GoalsPage() {
               value={String(stats.winsThisWeek)}
               tone={stats.winsThisWeek > 0 ? "emerald" : "default"}
             />
+            {stats.blocked > 0 && (
+              <StatTile
+                icon={Lock}
+                label="Blocked"
+                value={String(stats.blocked)}
+                tone="amber"
+              />
+            )}
           </div>
 
           {/* Focus prompt / WIP nudge */}
@@ -655,18 +699,68 @@ export default function GoalsPage() {
           {/* Everything else */}
           {otherGoals.length > 0 && (
             <section className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Flag className="h-4 w-4 text-muted-foreground" />
-                <h2 className="text-sm font-semibold">
-                  {focusGoals.length > 0 ? "More goals" : "Your goals"}
-                </h2>
-                <span className="text-xs text-muted-foreground">· {otherGoals.length}</span>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Flag className="h-4 w-4 text-muted-foreground" />
+                  <h2 className="text-sm font-semibold">
+                    {focusGoals.length > 0 ? "More goals" : "Your goals"}
+                  </h2>
+                  <span className="text-xs text-muted-foreground">· {otherGoals.length}</span>
+                </div>
+                {groupedOther.length > 1 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 gap-1.5 text-xs text-muted-foreground"
+                    onClick={() => setGroupByArea((v) => !v)}
+                  >
+                    {groupByArea ? (
+                      <LayoutGrid className="h-3.5 w-3.5" />
+                    ) : (
+                      <Rows3 className="h-3.5 w-3.5" />
+                    )}
+                    {groupByArea ? "Ungroup" : "Group by area"}
+                  </Button>
+                )}
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                {otherGoals.map((goal) => (
-                  <GoalCard key={goal.id} goal={goal} prominent={false} />
-                ))}
-              </div>
+
+              {groupByArea ? (
+                <div className="space-y-6">
+                  {groupedOther.map(([area, list]) => {
+                    const avg = Math.round(
+                      list.reduce((s, g) => s + g.progress, 0) / list.length
+                    );
+                    return (
+                      <div key={area} className="space-y-3">
+                        <div className="flex items-center gap-3">
+                          <h3 className="shrink-0 text-sm font-medium">{area}</h3>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {list.length}
+                          </span>
+                          <div className="h-1.5 w-full max-w-[160px] overflow-hidden rounded-full bg-muted">
+                            <div
+                              className="h-full rounded-full bg-primary"
+                              style={{ width: `${avg}%` }}
+                            />
+                          </div>
+                          <span className="shrink-0 text-xs text-muted-foreground">{avg}%</span>
+                        </div>
+                        <div className="grid gap-4 md:grid-cols-2">
+                          {list.map((goal) => (
+                            <GoalCard key={goal.id} goal={goal} prominent={false} />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2">
+                  {otherGoals.map((goal) => (
+                    <GoalCard key={goal.id} goal={goal} prominent={false} />
+                  ))}
+                </div>
+              )}
             </section>
           )}
         </div>
@@ -678,6 +772,7 @@ export default function GoalsPage() {
           onOpenChange={setFormOpen}
           userId={user.uid}
           goal={editing}
+          allGoals={goals}
           onSaved={load}
         />
       )}

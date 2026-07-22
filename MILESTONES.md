@@ -2895,3 +2895,39 @@ wins**. No data entry — it's all derived from the progress you already log.
 
 > **Next.** Phase 3 (Structure & breakdown): Key Results (OKR), goal templates,
 > dependencies/blocking, and life-area grouping.
+
+---
+
+## 🎯 Goals — Productivity Overhaul, Phase 3: Structure & breakdown
+
+**What it is.** Better goal *architecture* — faster ways to create well-formed
+goals, a clearer measurement model, and tools to organise and sequence a long
+list.
+
+**How it works.**
+- **Goal templates.** The "New goal" dialog opens with a row of one-click
+  templates — **Learn a language** (A1→C1 milestones), **Get certified**,
+  **Save money** (count), **Land a job**, **Get fit**, **Read more** — each
+  pre-fills the title, icon, colour, category, measurement type, and a starter
+  **milestone tree**, so a new goal arrives already broken into steps that the
+  Focus/Momentum engines light up.
+- **Key Results (OKR).** The "Composite" measurement is now presented as proper
+  **Key Results**: an objective measured by 2–4 weighted key results, each with
+  its own current/target/unit. The goal's detail page renders a **Key Results
+  card** with a progress bar per KR; overall progress is the weighted blend.
+- **Dependencies / blocking.** A goal can be marked **Blocked by** one or more
+  other goals (a picker in the form). Until those finish, the goal shows a 🔒
+  **Blocked** badge (naming the blocker), a red banner on its detail page, and
+  counts toward a new **Blocked** tile in the header stat row. Stored as a
+  `dependsOn` array on the goal doc — no new collection.
+- **Life-area grouping.** A **Group by area** toggle on the goal list reorganises
+  everything below Focus into **area sections** (Career, Health, Finance,
+  Education…) — each with a count and a **roll-up progress bar** — so a list of
+  18+ goals stays scannable. Toggle back to the flat grid any time.
+
+**How to use it.** Create goals fast from a **template**; for outcome-style goals
+pick **Key Results (OKR)**; wire up **Blocked by** to sequence work; hit **Group
+by area** when the list gets long.
+
+> **Deferred.** Goal reminders/notifications (the old Milestone 5) remain out of
+> scope for now, by choice.

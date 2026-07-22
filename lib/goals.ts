@@ -22,7 +22,7 @@ export const MEASUREMENTS: { key: GoalMeasurement; label: string; hint: string }
   { key: "milestones", label: "Milestone checklist", hint: "Weighted completion of this goal's milestones." },
   { key: "tasks", label: "From tasks (auto)", hint: "Auto from completed linked tasks & projects." },
   { key: "linked", label: "Linked time", hint: "Hours logged in Sessions tagged to this goal." },
-  { key: "composite", label: "Composite", hint: "Weighted blend of several sub-metrics." },
+  { key: "composite", label: "Key Results (OKR)", hint: "An objective measured by 2–4 weighted key results." },
 ];
 
 export const MEASUREMENT_LABEL = MEASUREMENTS.reduce(
@@ -149,7 +149,9 @@ export function goalProgressDetail(goal: Goal, ctx: GoalProgressCtx = {}): strin
     case "tasks":
       return ctx.taskTotal != null ? `${ctx.taskDone ?? 0} / ${ctx.taskTotal} tasks` : null;
     case "composite":
-      return goal.composite.length > 0 ? `${goal.composite.length} metrics` : null;
+      return goal.composite.length > 0
+        ? `${goal.composite.length} key result${goal.composite.length > 1 ? "s" : ""}`
+        : null;
     default:
       return null;
   }
@@ -458,6 +460,19 @@ export function goalNextAction(goal: Goal, tasks: Task[]): NextAction | null {
   const nextM = ms.find((m) => !m.done);
   if (nextM) return { kind: "milestone", milestoneId: nextM.id, title: nextM.title };
   return null;
+}
+
+/**
+ * The still-open goals blocking this one (dependencies not yet completed).
+ * A goal is "blocked" when this returns a non-empty list.
+ */
+export function goalBlockers(
+  goal: Pick<Goal, "dependsOn">,
+  byId: Map<string, Goal>
+): Goal[] {
+  return goal.dependsOn
+    .map((id) => byId.get(id))
+    .filter((g): g is Goal => !!g && g.status !== "completed");
 }
 
 // ---------------------------------------------------------------------------

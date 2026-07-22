@@ -23,7 +23,9 @@ import {
 } from "@/components/ui/select";
 import { NumberField } from "@/components/ui/number-field";
 import { Slider } from "@/components/ui/slider";
+import { Lock } from "lucide-react";
 import { createGoal, updateGoal, type GoalInput } from "@/lib/firebase/db";
+import { GOAL_TEMPLATES } from "@/lib/goal-templates";
 import {
   GOAL_STATUSES,
   GOAL_STATUS_LABEL,
@@ -43,6 +45,7 @@ import type {
   Goal,
   GoalCompositeComponent,
   GoalMeasurement,
+  GoalMilestone,
   GoalStatus,
   Priority,
 } from "@/lib/types";
@@ -52,13 +55,22 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   userId: string;
   goal?: Goal | null;
+  /** Other goals — powers the "Blocked by" dependency picker. */
+  allGoals?: Goal[];
   onSaved: () => void;
 }
 
 const clampPct = (cur: number, tar: number) =>
   tar > 0 ? Math.max(0, Math.min(100, Math.round((cur / tar) * 100))) : 0;
 
-export function GoalFormDialog({ open, onOpenChange, userId, goal, onSaved }: Props) {
+export function GoalFormDialog({
+  open,
+  onOpenChange,
+  userId,
+  goal,
+  allGoals = [],
+  onSaved,
+}: Props) {
   const isEdit = Boolean(goal);
 
   const [title, setTitle] = useState("");
@@ -79,6 +91,9 @@ export function GoalFormDialog({ open, onOpenChange, userId, goal, onSaved }: Pr
   const [targetValue, setTargetValue] = useState<number | null>(null);
   const [unit, setUnit] = useState("");
   const [composite, setComposite] = useState<GoalCompositeComponent[]>([]);
+  const [dependsOn, setDependsOn] = useState<string[]>([]);
+  // Milestones from an applied template — saved with a brand-new goal.
+  const [templateMilestones, setTemplateMilestones] = useState<GoalMilestone[]>([]);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,8 +117,35 @@ export function GoalFormDialog({ open, onOpenChange, userId, goal, onSaved }: Pr
     setTargetValue(goal?.targetValue ?? null);
     setUnit(goal?.unit ?? "");
     setComposite(goal?.composite ?? []);
+    setDependsOn(goal?.dependsOn ?? []);
+    setTemplateMilestones([]);
     setError(null);
   }, [open, goal]);
+
+  function applyTemplate(id: string) {
+    const t = GOAL_TEMPLATES.find((x) => x.id === id);
+    if (!t) return;
+    const f = t.apply();
+    setTitle(f.title);
+    setDescription(f.description ?? "");
+    setCategory(f.category);
+    setIcon(f.icon);
+    setColor(f.color);
+    setMeasurement(f.measurement);
+    setTargetValue(f.targetValue);
+    setCurrentValue(f.measurement === "count" ? 0 : null);
+    setUnit(f.unit ?? "");
+    setTemplateMilestones(f.milestones);
+  }
+
+  const otherGoals = allGoals.filter(
+    (g) => g.id !== goal?.id && g.status !== "archived"
+  );
+  function toggleDependency(id: string) {
+    setDependsOn((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
 
   const compositePct = compositeProgress(composite);
 
@@ -143,8 +185,10 @@ export function GoalFormDialog({ open, onOpenChange, userId, goal, onSaved }: Pr
             ? "h"
             : null,
       composite: measurement === "composite" ? composite : [],
-      // Milestones are edited in the goal's detail view — preserve them here.
-      milestones: goal?.milestones ?? [],
+      // Milestones are edited in the goal's detail view — preserve them (or seed
+      // from an applied template on a brand-new goal).
+      milestones: goal?.milestones ?? templateMilestones,
+      dependsOn,
     };
     if (measurement === "percentage") payload.progress = Math.round(manualProgress);
     else if (measurement === "count")
@@ -176,6 +220,29 @@ export function GoalFormDialog({ open, onOpenChange, userId, goal, onSaved }: Pr
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {!isEdit && (
+            <div className="space-y-1.5 rounded-lg border border-dashed p-3">
+              <Label>
+                Start from a template{" "}
+                <span className="font-normal text-muted-foreground">(optional)</span>
+              </Label>
+              <div className="flex flex-wrap gap-1.5">
+                {GOAL_TEMPLATES.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => applyTemplate(t.id)}
+                    title={t.blurb}
+                    className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors hover:border-primary hover:bg-accent"
+                  >
+                    <span aria-hidden>{t.icon}</span>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="g-title">Title</Label>
             <Input
@@ -474,7 +541,7 @@ export function GoalFormDialog({ open, onOpenChange, userId, goal, onSaved }: Pr
                             )
                           )
                         }
-                        placeholder={`Metric ${i + 1} (e.g. Study hours)`}
+                        placeholder={`Key result ${i + 1} (e.g. Pass the exam)`}
                         className="h-8"
                       />
                       <button
@@ -545,7 +612,7 @@ export function GoalFormDialog({ open, onOpenChange, userId, goal, onSaved }: Pr
                     size="sm"
                     onClick={() => setComposite((prev) => [...prev, makeCompositeComponent()])}
                   >
-                    <Plus className="h-4 w-4" /> Add sub-metric
+                    <Plus className="h-4 w-4" /> Add key result
                   </Button>
                   {composite.length > 0 && (
                     <span className="text-xs text-muted-foreground">
@@ -556,6 +623,39 @@ export function GoalFormDialog({ open, onOpenChange, userId, goal, onSaved }: Pr
               </div>
             )}
           </div>
+
+          {otherGoals.length > 0 && (
+            <div className="space-y-1.5">
+              <Label className="flex items-center gap-1.5">
+                <Lock className="h-3.5 w-3.5" /> Blocked by{" "}
+                <span className="font-normal text-muted-foreground">(optional)</span>
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Goals that must finish first — this goal shows as blocked until they&apos;re done.
+              </p>
+              <div className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto">
+                {otherGoals.map((g) => {
+                  const on = dependsOn.includes(g.id);
+                  return (
+                    <button
+                      key={g.id}
+                      type="button"
+                      onClick={() => toggleDependency(g.id)}
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors",
+                        on
+                          ? "border-primary bg-primary/10 text-foreground"
+                          : "text-muted-foreground hover:bg-accent"
+                      )}
+                    >
+                      {g.icon && <span aria-hidden>{g.icon}</span>}
+                      <span className="max-w-[160px] truncate">{g.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {error && <p className="text-sm text-destructive">{error}</p>}
 
