@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
+import { FloatingCalculator } from "@/components/calculator/floating-calculator";
 
 export default function AppLayout({
   children,
@@ -34,6 +35,7 @@ export default function AppLayout({
         <Topbar email={user.email} />
         <main className="flex-1 overflow-y-auto p-4 md:p-8">{children}</main>
       </div>
+      <FloatingCalculator />
     </div>
   );
 }

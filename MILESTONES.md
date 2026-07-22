@@ -2677,3 +2677,30 @@ rest of the app instead of leaving them on an island.
 - **Weekly Review integration** — a "Goals this week" section lists each active
   goal with its progress bar and pace status right inside the review flow, so
   reflecting on goals happens as part of the routine that already exists.
+
+---
+
+## 🧮 Finance — floating calculator + sticky transactions header
+
+**Floating calculator (app-wide).** A small draggable calculator opens from a
+persistent bottom-right button on every page.
+- Basic arithmetic only — add, subtract, multiply, divide, **percentage**,
+  clear, backspace, decimal (no scientific/history, by design).
+- **Draggable anywhere** (stays put while the page scrolls underneath) and
+  **remembers its last position** + open state in local storage.
+- **Minimizes** back to the small floating icon without losing the current
+  value, and reopens where you left it.
+- **Insert result** drops the current value straight into the **last numeric
+  field you focused** (transaction Amount, quick-add Income/Expense, or any
+  numeric input across the app) — the real time-saver. It tracks the last
+  focused numeric input and writes via the native setter so React/controlled
+  fields pick up the change.
+- Matches the app theme (card, rounded-2xl, shadow, violet accents) and keeps a
+  safe margin from screen edges.
+
+**Sticky Transactions header.** The Transactions table (Date · Day · Type ·
+Category · Description · Income · Expense · Balance) now scrolls inside its own
+bounded area with the **header row pinned to the top**, so the columns are never
+ambiguous no matter how far you scroll. The sticky header is opaque with a
+hairline bottom border (an inset shadow so it survives `border-collapse`), and
+numeric columns stay right-aligned while text columns stay left-aligned.

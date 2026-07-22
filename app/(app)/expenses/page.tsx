@@ -1243,7 +1243,7 @@ export default function FinancePage() {
                     </div>
                   )}
                   {viewMode === "table" ? (
-                    <div className="overflow-x-auto min-w-full">
+                    <div className="max-h-[70vh] overflow-auto rounded-lg border">
                       <table className="w-full min-w-[1020px] table-fixed border-collapse text-sm">
                         <colgroup>
                           <col className="w-[40px]" />
@@ -1252,7 +1252,7 @@ export default function FinancePage() {
                           <col className="w-[116px]" /><col className="w-[128px]" /><col className="w-[92px]" />
                         </colgroup>
                         <thead>
-                          <tr className="border-b bg-muted/40 text-left text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          <tr className="text-left text-[12px] font-semibold uppercase tracking-wide text-muted-foreground [&>th]:sticky [&>th]:top-0 [&>th]:z-20 [&>th]:bg-muted [&>th]:shadow-[inset_0_-1px_0_hsl(var(--border))]">
                             <th className="px-2 py-3">
                               <input type="checkbox" aria-label="Select all" checked={allSelected} onChange={toggleAll} className="h-4 w-4 rounded border-input align-middle" />
                             </th>
