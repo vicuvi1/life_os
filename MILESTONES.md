@@ -3007,6 +3007,23 @@ greet you on the dashboard every morning, alongside your logging nudges.
 
 ---
 
+## ⚡ Quality pass (d) — app-wide instant navigation
+
+**What it is.** A reusable caching hook so pages stop re-fetching (and flashing a
+skeleton) on every visit — the fix rolled out beyond the few pages that had
+bespoke caches.
+
+**How it works.**
+- **`useCachedResource(key, fetcher)`** — a tiny stale-while-revalidate hook over
+  a shared module cache. It paints the last snapshot for a key instantly, then
+  revalidates in the background; `refresh()` re-fetches without flashing the
+  skeleton. `invalidateCache()` clears it (e.g. on sign-out).
+- **Adopted on Projects, Time Audit, Dependencies, and Calendar** so far — each
+  now opens instantly on repeat visits. More pages to follow; the pattern is a
+  drop-in for any read-and-display page.
+
+---
+
 ## 💬 Top-bar motivational quote ticker
 
 **What it is.** A rotating motivational quote lives in the center of the top bar,

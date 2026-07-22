@@ -2,41 +2,29 @@
 
 import { SkeletonCard } from "@/components/ui/skeleton";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
-import { FolderKanban, Loader2, ArrowRight } from "lucide-react";
+import { FolderKanban, ArrowRight } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { getProjects, getGoals } from "@/lib/firebase/db";
+import { useCachedResource } from "@/lib/use-cached-resource";
 import { PROJECT_STATUS_LABEL, PROJECT_STATUS_VARIANT } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { Goal, Project } from "@/lib/types";
+import type { Project } from "@/lib/types";
 
 export default function ProjectsPage() {
   const { user } = useAuth();
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      const [p, g] = await Promise.all([
-        getProjects(user.uid),
-        getGoals(user.uid),
-      ]);
-      setProjects(p);
-      setGoals(g);
-    } finally {
-      setLoading(false);
+  const { data, loading } = useCachedResource(
+    user ? `projects:${user.uid}` : null,
+    async () => {
+      const [p, g] = await Promise.all([getProjects(user!.uid), getGoals(user!.uid)]);
+      return { projects: p, goals: g };
     }
-  }, [user]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  );
+  const projects = useMemo(() => data?.projects ?? [], [data]);
+  const goals = useMemo(() => data?.goals ?? [], [data]);
 
   // Group projects under their goal, preserving goal ordering.
   const grouped = useMemo(() => {

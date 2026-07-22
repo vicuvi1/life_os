@@ -2,8 +2,8 @@
 
 import { SkeletonCard } from "@/components/ui/skeleton";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import {
   getSessions,
@@ -13,6 +13,7 @@ import {
   getSleepLogs,
   getGoals,
 } from "@/lib/firebase/db";
+import { useCachedResource } from "@/lib/use-cached-resource";
 import { toDateKey } from "@/lib/greeting";
 import { addDays } from "@/lib/habits";
 import {
@@ -54,13 +55,26 @@ export default function CalendarPage() {
   const [selected, setSelected] = useState(today);
   const [toggles, setToggles] = useState<CalToggles>(DEFAULT_TOGGLES);
 
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [dailyHabits, setDailyHabits] = useState<Habit[]>([]);
-  const [habitLogs, setHabitLogs] = useState<HabitLog[]>([]);
-  const [sleep, setSleep] = useState<SleepLog[]>([]);
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: calData, loading } = useCachedResource(
+    user ? `calendar:${user.uid}` : null,
+    async () => {
+      const [se, t, h, hl, sl, g] = await Promise.all([
+        getSessions(user!.uid),
+        getTasks(user!.uid),
+        getDailyHabits(user!.uid),
+        getHabitLogs(user!.uid),
+        getSleepLogs(user!.uid),
+        getGoals(user!.uid),
+      ]);
+      return { sessions: se, tasks: t, dailyHabits: h, habitLogs: hl, sleep: sl, goals: g };
+    }
+  );
+  const sessions = useMemo(() => calData?.sessions ?? [], [calData]);
+  const tasks = useMemo(() => calData?.tasks ?? [], [calData]);
+  const dailyHabits = useMemo(() => calData?.dailyHabits ?? [], [calData]);
+  const habitLogs = useMemo(() => calData?.habitLogs ?? [], [calData]);
+  const sleep = useMemo(() => calData?.sleep ?? [], [calData]);
+  const goals = useMemo(() => calData?.goals ?? [], [calData]);
 
   // Restore toggle preferences.
   useEffect(() => {
@@ -83,33 +97,6 @@ export default function CalendarPage() {
       return next;
     });
   }
-
-  const load = useCallback(async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      const [se, t, h, hl, sl, g] = await Promise.all([
-        getSessions(user.uid),
-        getTasks(user.uid),
-        getDailyHabits(user.uid),
-        getHabitLogs(user.uid),
-        getSleepLogs(user.uid),
-        getGoals(user.uid),
-      ]);
-      setSessions(se);
-      setTasks(t);
-      setDailyHabits(h);
-      setHabitLogs(hl);
-      setSleep(sl);
-      setGoals(g);
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   const data = useMemo(
     () =>

@@ -2,10 +2,9 @@
 
 import { SkeletonCard } from "@/components/ui/skeleton";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Timer,
-  Loader2,
   TrendingUp,
   TrendingDown,
   Sparkles,
@@ -13,6 +12,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { getSessions } from "@/lib/firebase/db";
+import { useCachedResource } from "@/lib/use-cached-resource";
 import { toDateKey } from "@/lib/greeting";
 import { addDays } from "@/lib/habits";
 import {
@@ -49,23 +49,11 @@ export default function TimeAuditPage() {
   const { user } = useAuth();
   const today = toDateKey(new Date());
 
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [loading, setLoading] = useState(true);
   const [range, setRange] = useState(30);
-
-  const load = useCallback(async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      setSessions(await getSessions(user.uid));
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { data: sessions = [], loading } = useCachedResource<Session[]>(
+    user ? `sessions:${user.uid}` : null,
+    async () => getSessions(user!.uid)
+  );
 
   const fromDate = addDays(today, -(range - 1));
 

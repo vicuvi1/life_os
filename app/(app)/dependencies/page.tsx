@@ -2,10 +2,11 @@
 
 import { SkeletonCard } from "@/components/ui/skeleton";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, Loader2, TrendingUp, TrendingDown, Lightbulb } from "lucide-react";
+import { useMemo } from "react";
+import { Activity, TrendingUp, TrendingDown, Lightbulb } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { getSleepLogs, getNutritionLogs, getSessions } from "@/lib/firebase/db";
+import { useCachedResource } from "@/lib/use-cached-resource";
 import { toDateKey } from "@/lib/greeting";
 import { lastNDays } from "@/lib/habits";
 import { formatLongDate } from "@/lib/dates";
@@ -89,31 +90,20 @@ export default function DependenciesPage() {
   const { user } = useAuth();
   const today = toDateKey(new Date());
 
-  const [sleep, setSleep] = useState<SleepLog[]>([]);
-  const [nutrition, setNutrition] = useState<NutritionLog[]>([]);
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
+  const { data, loading } = useCachedResource(
+    user ? `deps:${user.uid}` : null,
+    async () => {
       const [sl, nu, se] = await Promise.all([
-        getSleepLogs(user.uid),
-        getNutritionLogs(user.uid),
-        getSessions(user.uid),
+        getSleepLogs(user!.uid),
+        getNutritionLogs(user!.uid),
+        getSessions(user!.uid),
       ]);
-      setSleep(sl);
-      setNutrition(nu);
-      setSessions(se);
-    } finally {
-      setLoading(false);
+      return { sleep: sl, nutrition: nu, sessions: se };
     }
-  }, [user]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  );
+  const sleep = useMemo(() => data?.sleep ?? [], [data]);
+  const nutrition = useMemo(() => data?.nutrition ?? [], [data]);
+  const sessions = useMemo(() => data?.sessions ?? [], [data]);
 
   const { factors, insight, recentDays, outcomeCount } = useMemo(() => {
     const dates = lastNDays(today, 60); // ascending
