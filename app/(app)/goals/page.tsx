@@ -15,18 +15,10 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { getGoals, deleteGoal } from "@/lib/firebase/db";
-import {
-  GOAL_STATUS_LABEL,
-  GOAL_STATUS_VARIANT,
-  PRIORITY_LABEL,
-  PRIORITY_VARIANT,
-  CATEGORY_LABEL,
-  deadlineLabel,
-} from "@/lib/labels";
+import { goalProgressDetail } from "@/lib/goals";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { GoalFormDialog } from "@/components/goals/goal-form-dialog";
+import { GoalBadges } from "@/components/goals/goal-badges";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { Goal } from "@/lib/types";
 
@@ -107,15 +100,23 @@ export default function GoalsPage() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {goals.map((goal) => {
-            const dl = deadlineLabel(goal.deadline);
             return (
-              <Card key={goal.id} className="flex flex-col">
+              <Card
+                key={goal.id}
+                className="flex flex-col overflow-hidden"
+                style={
+                  goal.color
+                    ? { borderLeft: `3px solid ${goal.color}` }
+                    : undefined
+                }
+              >
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-2">
                     <Link
                       href={`/goals/${goal.id}`}
-                      className="font-semibold hover:underline"
+                      className="flex items-center gap-2 font-semibold hover:underline"
                     >
+                      {goal.icon && <span aria-hidden>{goal.icon}</span>}
                       {goal.title}
                     </Link>
                     <DropdownMenu>
@@ -142,19 +143,8 @@ export default function GoalsPage() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    <Badge variant={GOAL_STATUS_VARIANT[goal.status]}>
-                      {GOAL_STATUS_LABEL[goal.status]}
-                    </Badge>
-                    <Badge variant={PRIORITY_VARIANT[goal.priority]}>
-                      {PRIORITY_LABEL[goal.priority]}
-                    </Badge>
-                    {goal.category && (
-                      <Badge variant="outline">
-                        {CATEGORY_LABEL[goal.category]}
-                      </Badge>
-                    )}
-                    {dl && <Badge variant="secondary">{dl}</Badge>}
+                  <div className="pt-1">
+                    <GoalBadges goal={goal} />
                   </div>
                 </CardHeader>
                 <CardContent className="mt-auto space-y-3">
@@ -165,7 +155,7 @@ export default function GoalsPage() {
                   )}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-sm text-muted-foreground">
-                      <span>Progress</span>
+                      <span>{goalProgressDetail(goal) ?? "Progress"}</span>
                       <span className="font-medium text-foreground">
                         {goal.progress}%
                       </span>

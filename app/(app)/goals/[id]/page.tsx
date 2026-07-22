@@ -20,20 +20,17 @@ import {
   getGoal,
   getProjectsForGoal,
   getTasksForGoal,
+  getSessions,
   deleteGoal,
   deleteProject,
   deleteTask,
 } from "@/lib/firebase/db";
 import {
-  GOAL_STATUS_LABEL,
-  GOAL_STATUS_VARIANT,
-  PRIORITY_LABEL,
-  PRIORITY_VARIANT,
-  CATEGORY_LABEL,
   PROJECT_STATUS_LABEL,
   PROJECT_STATUS_VARIANT,
-  deadlineLabel,
 } from "@/lib/labels";
+import { computeGoalProgress, goalProgressDetail } from "@/lib/goals";
+import { GoalBadges } from "@/components/goals/goal-badges";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -49,7 +46,7 @@ import { ProjectFormDialog } from "@/components/projects/project-form-dialog";
 import { TaskFormDialog } from "@/components/tasks/task-form-dialog";
 import { TaskRow } from "@/components/tasks/task-row";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import type { Goal, Project, Task } from "@/lib/types";
+import type { Goal, Project, Session, Task } from "@/lib/types";
 
 export default function GoalDetailPage() {
   const { user } = useAuth();
@@ -60,6 +57,7 @@ export default function GoalDetailPage() {
   const [goal, setGoal] = useState<Goal | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [goalFormOpen, setGoalFormOpen] = useState(false);
@@ -82,14 +80,16 @@ export default function GoalDetailPage() {
     if (!user || !goalId) return;
     setLoading(true);
     try {
-      const [g, p, t] = await Promise.all([
+      const [g, p, t, se] = await Promise.all([
         getGoal(goalId),
         getProjectsForGoal(goalId),
         getTasksForGoal(goalId),
+        getSessions(user.uid),
       ]);
       setGoal(g);
       setProjects(p);
       setTasks(t);
+      setSessions(se);
     } finally {
       setLoading(false);
     }
@@ -134,8 +134,17 @@ export default function GoalDetailPage() {
     );
   }
 
-  const dl = deadlineLabel(goal.deadline);
   const doneCount = tasks.filter((t) => t.status === "done").length;
+  const linkedMinutes = sessions
+    .filter((s) => s.goalId === goal.id)
+    .reduce((sum, s) => sum + Math.max(0, s.endMin - s.startMin), 0);
+  const progressCtx = {
+    taskDone: doneCount,
+    taskTotal: tasks.length,
+    linkedMinutes,
+  };
+  const livePct = computeGoalProgress(goal, progressCtx);
+  const progressDetail = goalProgressDetail(goal, progressCtx);
 
   function openAddTask(projectId: string | null) {
     setTaskForm({ open: true, projectId, task: null });
@@ -156,7 +165,10 @@ export default function GoalDetailPage() {
       <Card>
         <CardHeader>
           <div className="flex items-start justify-between gap-2">
-            <h1 className="text-xl font-bold md:text-2xl">{goal.title}</h1>
+            <h1 className="flex items-center gap-2 text-xl font-bold md:text-2xl">
+              {goal.icon && <span aria-hidden>{goal.icon}</span>}
+              {goal.title}
+            </h1>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" aria-label="Goal actions">
@@ -176,18 +188,9 @@ export default function GoalDetailPage() {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-          <div className="flex flex-wrap gap-1.5 pt-1">
-            <Badge variant={GOAL_STATUS_VARIANT[goal.status]}>
-              {GOAL_STATUS_LABEL[goal.status]}
-            </Badge>
-            <Badge variant={PRIORITY_VARIANT[goal.priority]}>
-              {PRIORITY_LABEL[goal.priority]}
-            </Badge>
-            {goal.category && (
-              <Badge variant="outline">{CATEGORY_LABEL[goal.category]}</Badge>
-            )}
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            <GoalBadges goal={goal} />
             {goal.quarter && <Badge variant="secondary">{goal.quarter}</Badge>}
-            {dl && <Badge variant="secondary">{dl}</Badge>}
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -196,14 +199,10 @@ export default function GoalDetailPage() {
           )}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-sm text-muted-foreground">
-              <span>
-                Progress · {doneCount}/{tasks.length} tasks done
-              </span>
-              <span className="font-medium text-foreground">
-                {goal.progress}%
-              </span>
+              <span>{progressDetail ?? "Progress"}</span>
+              <span className="font-medium text-foreground">{livePct}%</span>
             </div>
-            <Progress value={goal.progress} />
+            <Progress value={livePct} />
           </div>
         </CardContent>
       </Card>

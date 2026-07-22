@@ -2558,3 +2558,43 @@ manipulation and calm motion — the Google Calendar / Linear / Arc feel. Focus 
 reference shot (Upcoming / Overview / Focus Time) were intentionally skipped —
 the brief was to reduce cards and sharpen interaction, not add UI. Easy to add
 later if wanted.
+
+---
+
+## 🎯 Goals — Milestone 1: flexible measurement engine + fixes
+
+**Purpose.** Stop forcing every goal into a 0-100% bar. Measurement type is now
+a first-class, per-goal choice, because "learn C1 English", "apply to 300 jobs"
+and "save 2000 MDL" are measured completely differently.
+
+**Measurement types (chosen per goal, editable later).**
+- **Percentage** — a manual 0-100 slider/number you set directly.
+- **Count toward target** — current / target with a user-defined unit
+  ("47 / 300 applications", "1200 / 2000 MDL"), using the app's directly-typeable
+  number fields.
+- **Milestone checklist** — progress is the weighted completion of the goal's
+  milestones (built in Milestone 2).
+- **From tasks (auto)** — the legacy behavior, kept: progress from completed
+  linked tasks/projects, so existing goals keep working unchanged.
+- **Linked time** — derived from hours logged in **Sessions** tagged to this
+  goal (read-only), e.g. "12.5 / 40 h".
+- **Composite** — a weighted blend of several sub-metrics (e.g. 40% study hours +
+  40% practice tests + 20% mock exam). Powerful but never forced.
+
+The engine lives in `lib/goals.ts` (`computeGoalProgress`) and the data layer
+recomputes and persists a goal's `progress` for every derived type via
+`recomputeGoalProgress` (called on task/goal changes), while **Percentage stays
+manual and is never clobbered**.
+
+**Bug fixes.**
+- **"NaNd left" is gone.** Day math never runs against a missing/invalid date —
+  goals with no target date now show a clear **"No deadline set"** badge instead.
+- **Badge row redesigned.** Status, priority, category and deadline each get a
+  distinct-but-harmonious pill (solid status, flag-coloured priority, muted
+  category tag, tone-coloured deadline) so they're scannable at a glance.
+
+**Also.** Optional **start date** and **target date** (both optional); a
+**user-extensible category** (free text with common suggestions, no locked
+list); a per-goal **icon + colour** for visual distinction on the list; and
+every numeric field remains directly typeable. All new fields are optional on
+disk and defaulted in `mapGoal`, so existing goals migrate with no work.

@@ -72,6 +72,71 @@ export type AccountKey = "wallet" | "safe";
 
 export type MealSlot = "breakfast" | "lunch" | "dinner";
 
+/**
+ * How a goal's progress is measured — a first-class, per-goal choice.
+ * - percentage: a manual 0-100 value the user sets directly
+ * - count:      current toward a target with a unit (47 / 300 applications)
+ * - milestones: weighted completion of the goal's embedded milestones
+ * - tasks:      auto from completed linked tasks/projects (legacy "percent")
+ * - linked:     derived from logged Session time tagged to this goal
+ * - composite:  weighted blend of several sub-metrics
+ */
+export type GoalMeasurement =
+  | "percentage"
+  | "count"
+  | "milestones"
+  | "tasks"
+  | "linked"
+  | "composite";
+
+/** One weighted sub-metric of a composite goal (each measured count-style). */
+export interface GoalCompositeComponent {
+  id: string;
+  label: string;
+  weight: number; // relative weight (normalized at compute time)
+  current: number;
+  target: number; // > 0
+  unit: string | null;
+}
+
+/** A nested step inside a milestone (one level deep, opt-in). */
+export interface GoalMilestoneStep {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
+/** How a single milestone measures its own completion. */
+export type MilestoneMeasurement = "check" | "count" | "steps";
+
+/**
+ * A micro-goal belonging to a parent Goal. Embedded on the goal document
+ * (like RecurringRule on Budget) so no extra collection/security rule is needed.
+ */
+export interface GoalMilestone {
+  id: string;
+  title: string;
+  measurement: MilestoneMeasurement;
+  /** For "count" milestones. */
+  currentValue: number | null;
+  targetValue: number | null;
+  unit: string | null;
+  /** Contribution to the parent goal's progress (default 1 = equal weight). */
+  weight: number;
+  /** Manual sort order (drag to reorder). */
+  order: number;
+  dueDate: string | null; // YYYY-MM-DD, independent of the goal
+  completedDate: string | null; // set when marked done
+  done: boolean;
+  /** References to existing Tasks/Projects that can auto-advance this milestone. */
+  linkedTaskIds: string[];
+  linkedProjectIds: string[];
+  /** Auto-mark done when every linked task is complete. */
+  autoComplete: boolean;
+  /** Nested checklist (one level deep) for "steps" milestones. */
+  steps: GoalMilestoneStep[];
+}
+
 export interface Goal {
   id: string;
   userId: string;
@@ -79,17 +144,28 @@ export interface Goal {
   description: string | null;
   status: GoalStatus;
   priority: Priority;
-  progress: number; // 0-100 (auto for "percent", user-set for "manual")
-  /** How progress is measured. Defaults to "percent" (auto from tasks). */
+  progress: number; // 0-100 (derived for most types; user-set for "percentage")
+  /** How progress is measured (first-class, per-goal). */
+  measurement: GoalMeasurement;
+  /** @deprecated legacy field kept for older docs; superseded by `measurement`. */
   progressType: GoalProgressType;
   /** For "count" goals: the target to reach and the current value. */
   targetValue: number | null;
   currentValue: number | null;
-  /** Optional unit label for count goals, e.g. "$", "pages". */
+  /** Optional unit label, e.g. "$", "pages", "applications", "h". */
   unit: string | null;
-  deadline: string | null; // YYYY-MM-DD
+  /** Sub-metrics for "composite" goals. */
+  composite: GoalCompositeComponent[];
+  /** Embedded micro-goals (Milestone 2). */
+  milestones: GoalMilestone[];
+  startDate: string | null; // YYYY-MM-DD
+  deadline: string | null; // YYYY-MM-DD — the target date (optional)
   quarter: string | null;
-  category: GoalCategory | null;
+  /** User-extensible category tag (e.g. "Education", "Fitness"). */
+  category: string | null;
+  /** Optional emoji + hex accent for visual distinction. */
+  icon: string | null;
+  color: string | null;
   createdAt: number;
 }
 

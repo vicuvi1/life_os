@@ -1,0 +1,231 @@
+// Goal measurement engine — flexible, per-goal progress computation.
+// Kept UI-free so the form, list, detail and dashboard all agree on the numbers.
+
+import { CATEGORY_LABEL } from "@/lib/labels";
+import type {
+  Goal,
+  GoalCompositeComponent,
+  GoalMeasurement,
+  GoalMilestone,
+  GoalMilestoneStep,
+  MilestoneMeasurement,
+} from "@/lib/types";
+
+// ---------------------------------------------------------------------------
+// Measurement type metadata (drives the picker).
+// ---------------------------------------------------------------------------
+export const MEASUREMENTS: { key: GoalMeasurement; label: string; hint: string }[] = [
+  { key: "percentage", label: "Percentage", hint: "You set the % directly (0–100)." },
+  { key: "count", label: "Count toward target", hint: "e.g. 47 / 300 applications, 1200 / 2000 saved." },
+  { key: "milestones", label: "Milestone checklist", hint: "Weighted completion of this goal's milestones." },
+  { key: "tasks", label: "From tasks (auto)", hint: "Auto from completed linked tasks & projects." },
+  { key: "linked", label: "Linked time", hint: "Hours logged in Sessions tagged to this goal." },
+  { key: "composite", label: "Composite", hint: "Weighted blend of several sub-metrics." },
+];
+
+export const MEASUREMENT_LABEL = MEASUREMENTS.reduce(
+  (acc, m) => ({ ...acc, [m.key]: m.label }),
+  {} as Record<GoalMeasurement, string>
+);
+
+/** Common starting points for the category tag (free text is still allowed). */
+export const CATEGORY_SUGGESTIONS = [
+  "Education",
+  "Career",
+  "Certification",
+  "Health",
+  "Fitness",
+  "Finance",
+  "Personal",
+];
+
+/** Accent palette + a small icon set for visual distinction on the list. */
+export const GOAL_COLORS = [
+  "#8b5cf6",
+  "#3b82f6",
+  "#10b981",
+  "#f59e0b",
+  "#ef4444",
+  "#ec4899",
+  "#14b8a6",
+  "#64748b",
+];
+export const GOAL_ICONS = ["🎯", "📚", "💼", "💪", "💰", "🏆", "🧠", "🌍", "🚀", "❤️", "🎓", "🧗"];
+
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(v, hi));
+const pct = (cur: number, tar: number) =>
+  tar > 0 ? clamp(Math.round((cur / tar) * 100), 0, 100) : 0;
+function fmt(n: number): string {
+  if (!Number.isFinite(n)) return "0";
+  return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
+}
+
+// ---------------------------------------------------------------------------
+// Milestone + composite math.
+// ---------------------------------------------------------------------------
+/** A single milestone's completion as a 0..1 fraction. */
+export function milestoneFraction(m: GoalMilestone): number {
+  if (m.done) return 1;
+  if (m.measurement === "count" && m.targetValue && m.targetValue > 0)
+    return clamp((m.currentValue ?? 0) / m.targetValue, 0, 1);
+  if (m.measurement === "steps" && m.steps.length > 0)
+    return m.steps.filter((s) => s.done).length / m.steps.length;
+  return 0;
+}
+
+/** Weighted milestone completion as a 0-100 percentage. */
+export function milestonesProgress(ms: GoalMilestone[]): number {
+  if (ms.length === 0) return 0;
+  const w = (m: GoalMilestone) => (m.weight > 0 ? m.weight : 1);
+  const totalW = ms.reduce((s, m) => s + w(m), 0);
+  if (totalW <= 0) return 0;
+  const acc = ms.reduce((s, m) => s + w(m) * milestoneFraction(m), 0);
+  return clamp(Math.round((acc / totalW) * 100), 0, 100);
+}
+
+/** Weighted composite progress as a 0-100 percentage. */
+export function compositeProgress(cs: GoalCompositeComponent[]): number {
+  if (cs.length === 0) return 0;
+  const w = (c: GoalCompositeComponent) => (c.weight > 0 ? c.weight : 1);
+  const totalW = cs.reduce((s, c) => s + w(c), 0);
+  if (totalW <= 0) return 0;
+  const acc = cs.reduce(
+    (s, c) => s + w(c) * (c.target > 0 ? clamp(c.current / c.target, 0, 1) : 0),
+    0
+  );
+  return clamp(Math.round((acc / totalW) * 100), 0, 100);
+}
+
+// ---------------------------------------------------------------------------
+// Goal progress.
+// ---------------------------------------------------------------------------
+export interface GoalProgressCtx {
+  /** For "tasks" measurement. */
+  taskDone?: number;
+  taskTotal?: number;
+  /** For "linked" measurement — total logged Session minutes for this goal. */
+  linkedMinutes?: number;
+}
+
+/** The authoritative 0-100 progress for a goal given its measurement type. */
+export function computeGoalProgress(goal: Goal, ctx: GoalProgressCtx = {}): number {
+  switch (goal.measurement) {
+    case "percentage":
+      return clamp(Math.round(goal.progress ?? 0), 0, 100);
+    case "count":
+      return pct(goal.currentValue ?? 0, goal.targetValue ?? 0);
+    case "milestones":
+      return milestonesProgress(goal.milestones);
+    case "composite":
+      return compositeProgress(goal.composite);
+    case "tasks":
+      return ctx.taskTotal && ctx.taskTotal > 0
+        ? clamp(Math.round(((ctx.taskDone ?? 0) / ctx.taskTotal) * 100), 0, 100)
+        : goal.progress ?? 0;
+    case "linked":
+      return pct((ctx.linkedMinutes ?? 0) / 60, goal.targetValue ?? 0);
+    default:
+      return goal.progress ?? 0;
+  }
+}
+
+/** A short human detail under the bar, e.g. "47 / 300 applications". */
+export function goalProgressDetail(goal: Goal, ctx: GoalProgressCtx = {}): string | null {
+  switch (goal.measurement) {
+    case "count": {
+      const u = goal.unit ? ` ${goal.unit}` : "";
+      return `${fmt(goal.currentValue ?? 0)} / ${fmt(goal.targetValue ?? 0)}${u}`;
+    }
+    case "milestones": {
+      const done = goal.milestones.filter((m) => m.done).length;
+      return `${done} / ${goal.milestones.length} milestones`;
+    }
+    case "linked": {
+      const curH = (ctx.linkedMinutes ?? 0) / 60;
+      return `${fmt(Math.round(curH * 10) / 10)} / ${fmt(goal.targetValue ?? 0)} h`;
+    }
+    case "tasks":
+      return ctx.taskTotal != null ? `${ctx.taskDone ?? 0} / ${ctx.taskTotal} tasks` : null;
+    case "composite":
+      return goal.composite.length > 0 ? `${goal.composite.length} metrics` : null;
+    default:
+      return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Deadline (fixes the "NaNd left" bug — never computes against a missing date).
+// ---------------------------------------------------------------------------
+export type DeadlineTone = "none" | "overdue" | "soon" | "far";
+export interface DeadlineInfo {
+  label: string;
+  tone: DeadlineTone;
+}
+
+export function goalDeadline(goal: Pick<Goal, "deadline">): DeadlineInfo {
+  const target = goal.deadline;
+  if (!target) return { label: "No deadline set", tone: "none" };
+  const d = new Date(target + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return { label: "No deadline set", tone: "none" };
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const days = Math.round((d.getTime() - now.getTime()) / 86_400_000);
+  if (days < 0) return { label: `${Math.abs(days)}d overdue`, tone: "overdue" };
+  if (days === 0) return { label: "Due today", tone: "soon" };
+  if (days === 1) return { label: "Due tomorrow", tone: "soon" };
+  return { label: `${days}d left`, tone: days <= 14 ? "soon" : "far" };
+}
+
+// ---------------------------------------------------------------------------
+// Category label (built-in labels win; otherwise the raw tag, capitalized).
+// ---------------------------------------------------------------------------
+export function categoryLabel(cat: string | null | undefined): string | null {
+  if (!cat) return null;
+  return (
+    (CATEGORY_LABEL as Record<string, string>)[cat] ??
+    cat.charAt(0).toUpperCase() + cat.slice(1)
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Factories (used by the forms).
+// ---------------------------------------------------------------------------
+function uid(prefix: string): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${prefix}_${Date.now()}_${Math.round(Math.random() * 1e6)}`;
+}
+
+export function makeCompositeComponent(): GoalCompositeComponent {
+  return { id: uid("c"), label: "", weight: 1, current: 0, target: 100, unit: null };
+}
+
+export function makeMilestone(order: number): GoalMilestone {
+  return {
+    id: uid("m"),
+    title: "",
+    measurement: "check",
+    currentValue: null,
+    targetValue: null,
+    unit: null,
+    weight: 1,
+    order,
+    dueDate: null,
+    completedDate: null,
+    done: false,
+    linkedTaskIds: [],
+    linkedProjectIds: [],
+    autoComplete: false,
+    steps: [],
+  };
+}
+
+export function makeMilestoneStep(title: string): GoalMilestoneStep {
+  return { id: uid("s"), title, done: false };
+}
+
+export const MILESTONE_MEASUREMENTS: { key: MilestoneMeasurement; label: string }[] = [
+  { key: "check", label: "Checkbox" },
+  { key: "count", label: "Count toward target" },
+  { key: "steps", label: "Sub-steps checklist" },
+];

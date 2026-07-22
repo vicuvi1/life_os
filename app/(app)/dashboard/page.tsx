@@ -1008,7 +1008,7 @@ export default function DashboardPage() {
   // Today's Focus: open tasks + tasks completed today, grouped by the
   // category of their linked goal (or "Other").
   const categoryById = useMemo(() => {
-    const m = new Map<string, GoalCategory | null>();
+    const m = new Map<string, string | null>();
     for (const g of allGoals) m.set(g.id, g.category);
     return m;
   }, [allGoals]);
@@ -1043,7 +1043,10 @@ export default function DashboardPage() {
     for (const key of FOCUS_GROUP_ORDER) groups.set(key, []);
     for (const t of [...openTasksSorted, ...todayCompletedTasks]) {
       const cat = t.goalId ? categoryById.get(t.goalId) ?? null : null;
-      const key: FocusGroupKey = cat ?? "other";
+      const key: FocusGroupKey =
+        cat && (FOCUS_GROUP_ORDER as string[]).includes(cat)
+          ? (cat as FocusGroupKey)
+          : "other";
       groups.get(key)!.push(t);
     }
     return FOCUS_GROUP_ORDER.map((key) => ({
@@ -1297,7 +1300,12 @@ export default function DashboardPage() {
             ) : (
               <div className="space-y-2">
                 {goals.map((g) => {
-                  const Icon = g.category ? GOAL_CATEGORY_ICON[g.category] : Target;
+                  const Icon =
+                    (g.category &&
+                      GOAL_CATEGORY_ICON[
+                        g.category as keyof typeof GOAL_CATEGORY_ICON
+                      ]) ||
+                    Target;
                   return (
                     <div key={g.id} className="flex items-center gap-2">
                       <Icon className="h-3.5 w-3.5 shrink-0 text-primary" />
@@ -1505,9 +1513,12 @@ export default function DashboardPage() {
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
                 {goals.map((goal) => {
-                  const Icon = goal.category
-                    ? GOAL_CATEGORY_ICON[goal.category]
-                    : Target;
+                  const Icon =
+                    (goal.category &&
+                      GOAL_CATEGORY_ICON[
+                        goal.category as keyof typeof GOAL_CATEGORY_ICON
+                      ]) ||
+                    Target;
                   return (
                     <Link
                       key={goal.id}

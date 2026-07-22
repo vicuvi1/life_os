@@ -18,6 +18,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { normalizeRecurringRule } from "@/lib/recurring";
+import { compositeProgress, milestonesProgress } from "@/lib/goals";
 import { entryGrams } from "@/lib/food";
 import {
   estimateDocBytes,
@@ -98,13 +99,25 @@ function mapGoal(snap: QueryDocumentSnapshot<DocumentData>): Goal {
     status: d.status ?? "active",
     priority: d.priority ?? "medium",
     progress: d.progress ?? 0,
+    measurement:
+      d.measurement ??
+      (d.progressType === "count"
+        ? "count"
+        : d.progressType === "manual"
+          ? "percentage"
+          : "tasks"),
     progressType: d.progressType ?? "percent",
     targetValue: d.targetValue ?? null,
     currentValue: d.currentValue ?? null,
     unit: d.unit ?? null,
+    composite: Array.isArray(d.composite) ? d.composite : [],
+    milestones: Array.isArray(d.milestones) ? d.milestones : [],
+    startDate: d.startDate ?? null,
     deadline: d.deadline ?? null,
     quarter: d.quarter ?? null,
     category: d.category ?? null,
+    icon: d.icon ?? null,
+    color: d.color ?? null,
     createdAt: toMillis(d.createdAt),
   };
 }
@@ -225,14 +238,24 @@ export type GoalInput = Pick<
   | "description"
   | "status"
   | "priority"
+  | "measurement"
+  | "startDate"
   | "deadline"
   | "quarter"
   | "category"
-  | "progressType"
   | "targetValue"
   | "currentValue"
   | "unit"
+  | "composite"
+  | "milestones"
+  | "icon"
+  | "color"
 > & { progress?: number };
+
+/** Legacy mirror so any un-migrated reader (older dashboard code) still works. */
+function legacyProgressType(m: string): "count" | "manual" | "percent" {
+  return m === "count" ? "count" : m === "percentage" ? "manual" : "percent";
+}
 
 export async function createGoal(
   userId: string,
@@ -240,10 +263,24 @@ export async function createGoal(
 ): Promise<string> {
   const ref = await addDoc(collection(db, COLLECTIONS.goals), {
     userId,
-    progress: 0, // default; count/manual goals may pass their own via input
     ...input,
+    progress: input.progress ?? 0,
+    measurement: input.measurement ?? "tasks",
+    progressType: legacyProgressType(input.measurement ?? "tasks"),
+    targetValue: input.targetValue ?? null,
+    currentValue: input.currentValue ?? null,
+    unit: input.unit ?? null,
+    composite: input.composite ?? [],
+    milestones: input.milestones ?? [],
+    startDate: input.startDate ?? null,
+    deadline: input.deadline ?? null,
+    quarter: input.quarter ?? null,
+    category: input.category ?? null,
+    icon: input.icon ?? null,
+    color: input.color ?? null,
     createdAt: serverTimestamp(),
   });
+  await recomputeGoalProgress(ref.id);
   return ref.id;
 }
 
@@ -251,7 +288,10 @@ export async function updateGoal(
   id: string,
   input: Partial<GoalInput>
 ): Promise<void> {
-  await updateDoc(doc(db, COLLECTIONS.goals, id), { ...input });
+  const patch: Record<string, unknown> = { ...input };
+  if (input.measurement) patch.progressType = legacyProgressType(input.measurement);
+  await updateDoc(doc(db, COLLECTIONS.goals, id), patch);
+  await recomputeGoalProgress(id);
 }
 
 export async function deleteGoal(id: string): Promise<void> {
@@ -485,23 +525,60 @@ export async function deleteTask(
  * goals whose progressType is "percent" — count and manual goals own their
  * progress and must never be clobbered by task changes.
  */
-export async function recalcGoalProgress(goalId: string): Promise<number> {
+export async function recomputeGoalProgress(goalId: string): Promise<number> {
   const goalRef = doc(db, COLLECTIONS.goals, goalId);
   const goalSnap = await getDoc(goalRef);
   if (!goalSnap.exists()) return 0;
-  const progressType = goalSnap.data().progressType ?? "percent";
-  if (progressType !== "percent") return goalSnap.data().progress ?? 0;
+  const g = mapGoal(goalSnap as QueryDocumentSnapshot<DocumentData>);
+  const clampPct = (r: number) => Math.max(0, Math.min(100, Math.round(r * 100)));
 
-  const snap = await getDocs(
-    query(collection(db, COLLECTIONS.tasks), where("goalId", "==", goalId))
-  );
-  const tasks = snap.docs.map((t) => t.data());
-  const total = tasks.length;
-  const done = tasks.filter((t) => t.status === "done").length;
-  const progress = total === 0 ? 0 : Math.round((done / total) * 100);
+  let progress = g.progress;
+  switch (g.measurement) {
+    case "percentage":
+      return g.progress; // manual — never clobbered by other changes
+    case "count":
+      progress =
+        g.targetValue && g.targetValue > 0
+          ? clampPct((g.currentValue ?? 0) / g.targetValue)
+          : 0;
+      break;
+    case "milestones":
+      progress = milestonesProgress(g.milestones);
+      break;
+    case "composite":
+      progress = compositeProgress(g.composite);
+      break;
+    case "tasks": {
+      const snap = await getDocs(
+        query(collection(db, COLLECTIONS.tasks), where("goalId", "==", goalId))
+      );
+      const total = snap.size;
+      const done = snap.docs.filter((t) => t.data().status === "done").length;
+      progress = total === 0 ? 0 : Math.round((done / total) * 100);
+      break;
+    }
+    case "linked": {
+      const snap = await getDocs(
+        query(collection(db, COLLECTIONS.sessions), where("goalId", "==", goalId))
+      );
+      let mins = 0;
+      snap.forEach((s) => {
+        const d = s.data();
+        mins += Math.max(0, (d.endMin ?? 0) - (d.startMin ?? 0));
+      });
+      progress =
+        g.targetValue && g.targetValue > 0
+          ? clampPct(mins / 60 / g.targetValue)
+          : 0;
+      break;
+    }
+  }
   await updateDoc(goalRef, { progress });
   return progress;
 }
+
+/** @deprecated use {@link recomputeGoalProgress}. */
+export const recalcGoalProgress = recomputeGoalProgress;
 
 /** Update a count-type goal's current value and derive its progress %. */
 export async function setGoalCurrentValue(
