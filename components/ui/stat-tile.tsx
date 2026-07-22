@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
 
 export type StatTone = "default" | "amber" | "emerald" | "rose" | "violet";
 
@@ -21,7 +22,7 @@ export function StatTile({
 }: {
   icon: LucideIcon;
   label: string;
-  value: string;
+  value: ReactNode;
   tone?: StatTone;
   className?: string;
 }) {

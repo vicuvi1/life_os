@@ -89,6 +89,7 @@ import {
   type NextAction,
 } from "@/lib/goals";
 import { completeGoalNextAction } from "@/lib/goal-actions";
+import { celebrate } from "@/lib/confetti";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -845,6 +846,7 @@ export default function DashboardPage() {
   }
 
   async function handleCompleteGoalAction(goal: Goal, action: NextAction) {
+    if (action.kind === "milestone") celebrate();
     setCompletingGoal(goal.id);
     try {
       await completeGoalNextAction(goal, action);

@@ -21,6 +21,7 @@ import { NumberField } from "@/components/ui/number-field";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { MilestoneFormDialog } from "@/components/goals/milestone-form-dialog";
 import { updateGoalMilestones } from "@/lib/firebase/db";
+import { celebrate } from "@/lib/confetti";
 import { toDateKey } from "@/lib/greeting";
 import {
   autoAdvanceMilestones,
@@ -81,6 +82,7 @@ export function MilestonesSection({ goal, tasks, onSaved }: Props) {
     persist(next);
   }
   function toggleDone(m: GoalMilestone) {
+    if (!m.done) celebrate();
     persist(
       goal.milestones.map((x) =>
         x.id === m.id

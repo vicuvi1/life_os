@@ -3048,6 +3048,22 @@ bespoke caches.
 
 ---
 
+## 🎉 Delight & motion
+
+**What it is.** Small moments that make the app feel alive instead of static.
+
+**How it works.**
+- **Confetti on completion.** Finishing a **milestone** — checking it off, or
+  completing it from Today's Momentum (on the Goals page or the dashboard) — sets
+  off a dependency-free confetti burst. Reduced-motion is respected.
+- **Count-up numbers.** The Goals stat row (Active / At risk / Wins / Blocked)
+  animates its numbers up instead of snapping, via the shared `StatTile` (now
+  accepts any content) + `AnimatedNumber`.
+
+**How to use it.** Just finish a milestone — enjoy the moment.
+
+---
+
 ## 💬 Top-bar motivational quote ticker
 
 **What it is.** A rotating motivational quote lives in the center of the top bar,

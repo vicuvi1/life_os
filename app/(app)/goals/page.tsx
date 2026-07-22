@@ -32,6 +32,7 @@ import {
   updateGoalSubtasks,
 } from "@/lib/firebase/db";
 import { completeGoalNextAction } from "@/lib/goal-actions";
+import { celebrate } from "@/lib/confetti";
 import {
   goalStale,
   goalNextAction,
@@ -50,6 +51,7 @@ import { GoalFormDialog } from "@/components/goals/goal-form-dialog";
 import { GoalCard } from "@/components/goals/goal-card";
 import { GoalsTable } from "@/components/goals/goals-table";
 import { StatTile } from "@/components/ui/stat-tile";
+import { AnimatedNumber } from "@/components/ui/animated-number";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -231,6 +233,7 @@ export default function GoalsPage() {
 
   // Complete a goal's next action from the momentum strip.
   async function completeAction(goal: Goal, action: NextAction) {
+    if (action.kind === "milestone") celebrate();
     setCompleting(actionKey(goal.id, action));
     try {
       await completeGoalNextAction(goal, action);
@@ -328,11 +331,11 @@ export default function GoalsPage() {
               stats.blocked > 0 ? "md:grid-cols-5" : "md:grid-cols-4"
             )}
           >
-            <StatTile icon={Activity} label="Active" value={String(stats.active)} />
+            <StatTile icon={Activity} label="Active" value={<AnimatedNumber value={stats.active} />} />
             <StatTile
               icon={AlertTriangle}
               label="At risk"
-              value={String(stats.atRisk)}
+              value={<AnimatedNumber value={stats.atRisk} />}
               tone={stats.atRisk > 0 ? "amber" : "default"}
             />
             <StatTile
@@ -347,11 +350,16 @@ export default function GoalsPage() {
             <StatTile
               icon={Trophy}
               label="Wins (7d)"
-              value={String(stats.winsThisWeek)}
+              value={<AnimatedNumber value={stats.winsThisWeek} />}
               tone={stats.winsThisWeek > 0 ? "emerald" : "default"}
             />
             {stats.blocked > 0 && (
-              <StatTile icon={Lock} label="Blocked" value={String(stats.blocked)} tone="amber" />
+              <StatTile
+                icon={Lock}
+                label="Blocked"
+                value={<AnimatedNumber value={stats.blocked} />}
+                tone="amber"
+              />
             )}
           </div>
 
