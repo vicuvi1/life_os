@@ -3142,6 +3142,24 @@ the dashboard banner for whatever's slipping.
 
 ---
 
+## 🧱 Finance — begin breaking up the monolith
+
+**What it is.** The first, safe step of splitting the 2245-line Finance page.
+
+**How it works.**
+- Extracted nine self-contained presentational + inline-edit widgets (Panel,
+  Delta, StatCard, Sparkline, QuickAdd, IncomeExpenseBars, AmountInput, NoteInput,
+  CategorySelect) into `components/expenses/finance-widgets.tsx`. They're pure,
+  prop-driven leaf components, so the move is behaviour-neutral and the page
+  imports them back.
+- The Finance page shrinks by ~200 lines and gains a reusable widget library;
+  Donut/Heatmap stay for now (they lean on page-local icon/label helpers).
+
+> **Next.** Continue the split (transactions table, accounts grid, charts
+> section) and the same treatment for the habits/dashboard monoliths.
+
+---
+
 ## 💬 Top-bar motivational quote ticker
 
 **What it is.** A rotating motivational quote lives in the center of the top bar,
