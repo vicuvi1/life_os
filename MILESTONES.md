@@ -2330,3 +2330,102 @@ like Linear / Arc / Raycast, keeping the dark Life OS theme.
   hovering the rail smoothly expands it as an overlay (content doesn't reflow).
 - **Unified top bar** — matching soft border + glass treatment so the shell
   feels like one system.
+
+---
+
+## 🍽️ Nutrition — 10-improvement pass (logging, guidance, planning)
+
+Three shipped phases turning the workspace into an assistant, not a form.
+
+**Phase 1 — faster logging.**
+- **Timeline grouped by meal type**: Breakfast / Lunch / Snacks / Dinner / Late
+  night sections with per-section calorie + protein subtotals. Sections are
+  *derived* from each meal's own name (custom names still win) or its time —
+  nothing hardcoded; time/custom sorting remain.
+- **AI photo logging**: "Scan a photo" in the meal dialog sends a compressed
+  image to *your own* configured AI provider (Anthropic or Gemini — the same
+  browser-side keys as the Agent Hub) which identifies the meal and estimates
+  calories/protein/carbs/fat into the editable manual fields. No key → clear
+  hint, no external food API needed.
+- **Recipe meal-type shelves** (breakfast/lunch/dinner/snack) with browse chips,
+  and manual entry auto-opens when the food library is empty.
+
+**Phase 2 — visual feedback & guidance.**
+- **Macro split bar** in Today's Progress: where calories came from (protein /
+  carbs / fat) with grams and %.
+- **Tappable water glasses**: one segment per glass (or 0.25L) — tap to fill.
+- **"Fits your remaining ~X kcal"**: after logging, recommendations re-rank to
+  recipes that fit what's left of the calorie goal, with a **Perfect fit** badge.
+
+**Phase 3 — planning & trends.**
+- **Meal-prep plan** (Recipes): queue recipes, check them off as cooked, total
+  prep time, and one-tap *Add ingredients to shopping* (aggregated grams,
+  already-listed foods skipped).
+- **Use them up** (Pantry): recipes that use your expiring food, one tap to log.
+- **Shopping by store aisle**: Produce / Meat & Protein / Dairy / Grains &
+  Pantry / Snacks & Drinks / Prepared with per-aisle cost subtotals.
+- **This week** (Insights): calories, protein, water and spending vs pro-rated
+  targets with ✓/⚠️, plus the week's **best day** and **needs-work day**.
+
+**Deferred (honest constraints).** Water push reminders every 2 hours need a
+server that can run hourly — the Vercel Hobby cron is limited to once daily, so
+reminders can be built in the Notification Builder but only fire on the daily
+run (or live while the app is open). Barcode scanning still needs an external
+food database by definition.
+
+---
+
+## 🗓️ Tasks — Notion-style calendar planner (Phase 1)
+
+**Purpose.** Turn Tasks from a flat, easily-empty checklist into a visual
+planner you actually *plan* in — see the whole week at a glance, block time,
+colour by priority, and drag things around like Notion / Google Calendar.
+
+**How it works.**
+- **One model, extended in place.** The `tasks` collection gained optional
+  scheduling fields — `startMin` / `endMin` (minutes since midnight, the exact
+  convention Sessions already use), plus `energy`, `location`, `tags[]`, and an
+  inline `subtasks[]` checklist. Everything is optional on disk: `mapTask`
+  defaults old documents, so **no migration and no new Firestore rule** — every
+  task you already had still reads and works.
+- **Four views, one page.** A `[Today] [Week] [Month] [List]` switcher on
+  `/tasks` (Week is the default). Week and Month reuse the calendar's own date
+  math (`startOfWeekKey`, `monthGrid`, `addDays`); Sessions' `rangeLabel` /
+  `minToLabel` render the time blocks — so the planner feels native, not bolted
+  on. All the domain logic lives in `lib/tasks.ts`.
+- **Time-of-day lanes.** Each day column is split into **All day · Morning
+  (6–12) · Afternoon (12–5) · Evening (5–11)**. A task falls into a lane from
+  its start time; untimed tasks sit in "All day".
+- **Drag to reschedule.** Native HTML5 drag-and-drop (no new dependency) — drop
+  a task on any day/lane and it re-dates + re-times optimistically (keeping its
+  duration), with an Undo-style confirmation toast; it reverts if the write
+  fails. Dropping on "All day" clears the time.
+- **Colour by priority** 🔴 High · 🟡 Medium · 🟢 Low — a left bar and dot on
+  every card.
+- **Click for details.** A slide-in sheet shows the full task (status, date,
+  time + duration, goal, project, energy, location, tags, description, and a
+  tickable subtask checklist) with Complete / Edit / Delete actions.
+- **Today "at a glance."** Open tasks, hours blocked, high-priority count, and
+  an estimated finish time, above the day's schedule by block.
+
+**Features.**
+- Week (default), Today, Month, and List views with a shared toolbar + quick-add.
+- Drag-and-drop rescheduling between days and time blocks.
+- Rich task form: date, start time + duration → **auto-calculated end time**,
+  priority, goal + (goal-scoped) project, energy (1–10), location, tags, and
+  subtasks with optional minute estimates.
+- Priority colour-coding, per-card time/duration, subtask progress, tags, and
+  location.
+- Click-through detail sheet with subtask ticking; reversible delete with Undo.
+- Month grid with per-day priority dots + overflow count; List view with
+  Open / Today / Overdue / High priority / Done / All filters.
+
+**How to use.** Open **Tasks**. Quick-add drops a task on the focused day, or
+hit **New task** for the full form. Drag cards between days and Morning/Afternoon/
+Evening to reschedule. Click a card to see everything and tick subtasks. Switch
+to Month for the big picture or List to filter.
+
+**Deferred (Phase 2).** Recurring tasks that auto-populate (daily/weekly/
+monthly), a drag-from-backlog planning board for unscheduled tasks, "smart
+scheduling" suggestions, and time-based reminders — the same client-only /
+Vercel-cron constraints as the notification sender apply to reminders.

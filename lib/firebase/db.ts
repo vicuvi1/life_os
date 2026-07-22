@@ -135,6 +135,12 @@ function mapTask(snap: QueryDocumentSnapshot<DocumentData>): Task {
     status: d.status ?? "todo",
     priority: d.priority ?? "medium",
     dueDate: d.dueDate ?? null,
+    startMin: d.startMin ?? null,
+    endMin: d.endMin ?? null,
+    energy: d.energy ?? null,
+    location: d.location ?? null,
+    tags: d.tags ?? [],
+    subtasks: d.subtasks ?? [],
     completedAt: d.completedAt ? toMillis(d.completedAt) : null,
     sortOrder: d.sortOrder ?? 0,
     createdAt: toMillis(d.createdAt),
@@ -345,7 +351,15 @@ export async function getTasksForGoal(goalId: string): Promise<Task[]> {
 export type TaskInput = Pick<
   Task,
   "title" | "description" | "priority" | "dueDate" | "projectId" | "goalId"
->;
+> &
+  // Scheduling/rich fields are optional so existing callers (quick-add, the
+  // goal-detail dialog) keep compiling; the planner form supplies them.
+  Partial<
+    Pick<
+      Task,
+      "startMin" | "endMin" | "energy" | "location" | "tags" | "subtasks"
+    >
+  >;
 
 export async function createTask(
   userId: string,
@@ -354,6 +368,14 @@ export async function createTask(
   const ref = await addDoc(collection(db, COLLECTIONS.tasks), {
     userId,
     ...input,
+    // Normalize optional fields so every doc is well-formed and never carries
+    // `undefined` (which Firestore rejects).
+    startMin: input.startMin ?? null,
+    endMin: input.endMin ?? null,
+    energy: input.energy ?? null,
+    location: input.location ?? null,
+    tags: input.tags ?? [],
+    subtasks: input.subtasks ?? [],
     status: "todo",
     completedAt: null,
     sortOrder: 0,

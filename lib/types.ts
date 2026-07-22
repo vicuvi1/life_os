@@ -104,6 +104,16 @@ export interface Project {
   createdAt: number;
 }
 
+/** A checklist step inside a task. Stored inline on the task doc (no extra
+ * collection/rule needed), mirroring how RecurringRule rides on Budget. */
+export interface Subtask {
+  id: string;
+  title: string;
+  done: boolean;
+  /** Optional time estimate in minutes (display + day-planning math). */
+  durationMin: number | null;
+}
+
 export interface Task {
   id: string;
   projectId: string | null;
@@ -114,6 +124,22 @@ export interface Task {
   status: TaskStatus;
   priority: Priority;
   dueDate: string | null; // YYYY-MM-DD
+  // --- Calendar scheduling (Notion-style planner) ---------------------------
+  // A scheduled task owns a time block on its dueDate, expressed the same way as
+  // a Session: minutes since midnight. `null` means the task is dated but has no
+  // specific time yet (shows in the day's "All day" lane). All fields below are
+  // optional on disk — legacy task docs simply read back as the defaults, so no
+  // migration is required.
+  startMin: number | null; // e.g. 7:00 AM = 420
+  endMin: number | null; // > startMin
+  /** Estimated effort/intensity, 1-10 (schedule during peak energy). */
+  energy: number | null;
+  /** Freeform location, e.g. "Desk", "Gym". */
+  location: string | null;
+  /** Freeform tags for grouping/filtering. */
+  tags: string[];
+  /** Inline checklist that breaks the task into smaller pieces. */
+  subtasks: Subtask[];
   completedAt: number | null;
   sortOrder: number;
   createdAt: number;
