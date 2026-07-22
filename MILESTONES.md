@@ -3189,6 +3189,10 @@ single click, each with a confirmation toast. Selected rows are highlighted.
 **How to use it.** Switch Goals to **Table**, tick the goals you want, and hit an
 action — a big time-saver when tidying up.
 
+**Keyboard-first.** The table is fully keyboard-drivable: **↑/↓ (or j/k)** move a
+highlight, **x** selects, **e** edits, **↵/o** opens the goal. Shortcuts are
+ignored while you're typing in an inline field. A hint sits in the toolbar.
+
 ---
 
 ## 🍎 Nutrition — macro rings

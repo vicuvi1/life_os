@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Star, MoreVertical, Pencil, Trash2, Archive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NumberField } from "@/components/ui/number-field";
@@ -60,10 +61,12 @@ export function GoalsTable({
   onChanged,
 }: GoalsTableProps) {
   const { toast } = useToast();
+  const router = useRouter();
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const [filterBy, setFilterBy] = useState<FilterBy>("all");
   const [sortBy, setSortBy] = useState<SortBy>("title");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [focused, setFocused] = useState(0);
 
   const toggleSel = (id: string) =>
     setSelected((prev) => {
@@ -158,6 +161,45 @@ export function GoalsTable({
     toast({ message: `${n} goal${n > 1 ? "s" : ""} ${verb}`, tone: "success" });
   }
 
+  // Keep the keyboard focus in range as the visible rows change.
+  useEffect(() => {
+    setFocused((f) => Math.min(f, Math.max(0, rows.length - 1)));
+  }, [rows.length]);
+
+  // Keyboard-first navigation over the visible rows (ignored while typing).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)
+      )
+        return;
+      if (rows.length === 0) return;
+      const g = rows[Math.min(focused, rows.length - 1)];
+      if (e.key === "j" || e.key === "ArrowDown") {
+        e.preventDefault();
+        setFocused((f) => Math.min(f + 1, rows.length - 1));
+      } else if (e.key === "k" || e.key === "ArrowUp") {
+        e.preventDefault();
+        setFocused((f) => Math.max(f - 1, 0));
+      } else if (e.key === "x") {
+        e.preventDefault();
+        if (g) toggleSel(g.id);
+      } else if (e.key === "e") {
+        e.preventDefault();
+        if (g) onEdit(g);
+      } else if (e.key === "o" || e.key === "Enter") {
+        e.preventDefault();
+        if (g) router.push(`/goals/${g.id}`);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, focused, onEdit, router]);
+
   const selectCls =
     "rounded-md border bg-card px-2 py-1 text-xs focus:border-primary focus:outline-none";
 
@@ -205,7 +247,13 @@ export function GoalsTable({
             <option value="deadline">Deadline</option>
           </select>
         </label>
-        <span className="ml-auto">{rows.length} shown</span>
+        <span className="ml-auto hidden items-center gap-1 md:flex">
+          <kbd className="rounded border bg-muted px-1 text-[10px]">↑↓</kbd> move
+          <kbd className="rounded border bg-muted px-1 text-[10px]">x</kbd> select
+          <kbd className="rounded border bg-muted px-1 text-[10px]">e</kbd> edit
+          <kbd className="rounded border bg-muted px-1 text-[10px]">↵</kbd> open
+        </span>
+        <span className="ml-auto md:ml-0">{rows.length} shown</span>
       </div>
 
       {/* Bulk action bar */}
@@ -285,6 +333,7 @@ export function GoalsTable({
                       today={today}
                       blockers={goalBlockers(g, goalsById)}
                       selected={selected.has(g.id)}
+                      isFocused={rows[focused]?.id === g.id}
                       onToggleSelect={() => toggleSel(g.id)}
                       onEdit={onEdit}
                       onDelete={onDelete}
@@ -339,6 +388,7 @@ function GoalRow({
   today,
   blockers,
   selected,
+  isFocused,
   onToggleSelect,
   onEdit,
   onDelete,
@@ -349,6 +399,7 @@ function GoalRow({
   today: string;
   blockers: Goal[];
   selected: boolean;
+  isFocused: boolean;
   onToggleSelect: () => void;
   onEdit: (goal: Goal) => void;
   onDelete: (goal: Goal) => void;
@@ -379,7 +430,13 @@ function GoalRow({
   };
 
   return (
-    <tr className={cn("border-b last:border-0 hover:bg-accent/40", selected && "bg-primary/[0.06]")}>
+    <tr
+      className={cn(
+        "border-b last:border-0 hover:bg-accent/40",
+        selected && "bg-primary/[0.06]",
+        isFocused && "ring-1 ring-inset ring-primary/60"
+      )}
+    >
       <td className="px-2 py-1.5 align-middle">
         <input
           type="checkbox"
