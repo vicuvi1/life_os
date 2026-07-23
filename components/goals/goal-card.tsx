@@ -7,6 +7,7 @@ import {
   MoreVertical,
   Pencil,
   Copy,
+  Eye,
   Trash2,
   ArrowRight,
   AlertTriangle,
@@ -73,6 +74,7 @@ export interface GoalCardProps {
   onEdit: (goal: Goal) => void;
   onDelete: (goal: Goal) => void;
   onDuplicate: (goal: Goal) => void;
+  onPeek: (goal: Goal) => void;
   onQuickPercent: (goal: Goal, v: number) => void;
   onQuickCount: (goal: Goal, v: number) => void;
   onSubtasksChange: (goal: Goal, subtasks: GoalSubtask[]) => void;
@@ -88,6 +90,7 @@ export function GoalCard({
   onEdit,
   onDelete,
   onDuplicate,
+  onPeek,
   onQuickPercent,
   onQuickCount,
   onSubtasksChange,
@@ -170,6 +173,9 @@ export function GoalCard({
               <DropdownMenuItem onClick={() => onToggleFocus(goal)}>
                 <Star className={cn("h-4 w-4", goal.focus && "fill-current text-amber-400")} />
                 {goal.focus ? "Unfocus" : "Focus"}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onPeek(goal)}>
+                <Eye className="h-4 w-4" /> Quick look
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onEdit(goal)}>
                 <Pencil className="h-4 w-4" /> Edit

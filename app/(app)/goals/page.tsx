@@ -58,6 +58,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { GoalFormDialog } from "@/components/goals/goal-form-dialog";
 import { GoalCard } from "@/components/goals/goal-card";
 import { GoalsTable } from "@/components/goals/goals-table";
+import { GoalPeekDrawer } from "@/components/goals/goal-peek-drawer";
 import { StatTile } from "@/components/ui/stat-tile";
 import { AnimatedNumber } from "@/components/ui/animated-number";
 import { PageHeader } from "@/components/ui/page-header";
@@ -89,6 +90,7 @@ export default function GoalsPage() {
   const [completing, setCompleting] = useState<string | null>(null);
   const [groupByArea, setGroupByArea] = useState(false);
   const [view, setView] = useState<"cards" | "table">("cards");
+  const [peeking, setPeeking] = useState<Goal | null>(null);
 
   const load = useCallback(
     async (silent = false) => {
@@ -313,6 +315,7 @@ export default function GoalsPage() {
     onEdit: openEdit,
     onDelete: requestDelete,
     onDuplicate: handleDuplicate,
+    onPeek: setPeeking,
     onQuickPercent: quickPercent,
     onQuickCount: quickCount,
     onSubtasksChange: handleSubtasksChange,
@@ -506,6 +509,7 @@ export default function GoalsPage() {
               onEdit={openEdit}
               onDelete={requestDelete}
               onDuplicate={handleDuplicate}
+              onPeek={setPeeking}
               onToggleFocus={toggleFocus}
               onChanged={() => load(true)}
             />
@@ -679,6 +683,8 @@ export default function GoalsPage() {
           onSaved={() => load(true)}
         />
       )}
+
+      <GoalPeekDrawer goal={peeking} onClose={() => setPeeking(null)} onEdit={openEdit} />
     </div>
   );
 }

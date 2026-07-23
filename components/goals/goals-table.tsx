@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Star, MoreVertical, Pencil, Copy, Trash2, Archive } from "lucide-react";
+import { Star, MoreVertical, Pencil, Copy, Eye, Trash2, Archive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NumberField } from "@/components/ui/number-field";
 import {
@@ -48,6 +48,7 @@ interface GoalsTableProps {
   onEdit: (goal: Goal) => void;
   onDelete: (goal: Goal) => void;
   onDuplicate: (goal: Goal) => void;
+  onPeek: (goal: Goal) => void;
   onToggleFocus: (goal: Goal) => void;
   onChanged: () => void;
 }
@@ -59,6 +60,7 @@ export function GoalsTable({
   onEdit,
   onDelete,
   onDuplicate,
+  onPeek,
   onToggleFocus,
   onChanged,
 }: GoalsTableProps) {
@@ -340,6 +342,7 @@ export function GoalsTable({
                       onEdit={onEdit}
                       onDelete={onDelete}
                       onDuplicate={onDuplicate}
+                      onPeek={onPeek}
                       onToggleFocus={onToggleFocus}
                       onChanged={onChanged}
                     />
@@ -396,6 +399,7 @@ function GoalRow({
   onEdit,
   onDelete,
   onDuplicate,
+  onPeek,
   onToggleFocus,
   onChanged,
 }: {
@@ -408,6 +412,7 @@ function GoalRow({
   onEdit: (goal: Goal) => void;
   onDelete: (goal: Goal) => void;
   onDuplicate: (goal: Goal) => void;
+  onPeek: (goal: Goal) => void;
   onToggleFocus: (goal: Goal) => void;
   onChanged: () => void;
 }) {
@@ -580,6 +585,9 @@ function GoalRow({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => onPeek(goal)}>
+              <Eye className="h-4 w-4" /> Quick look
+            </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link href={`/goals/${goal.id}`}>Open goal</Link>
             </DropdownMenuItem>

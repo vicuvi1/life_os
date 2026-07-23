@@ -3198,6 +3198,10 @@ ignored while you're typing in an inline field. A hint sits in the toolbar.
 subtasks) as a fresh copy with all progress reset. Perfect for recurring or
 quarterly goals.
 
+**Quick look (peek drawer).** A **Quick look** menu item slides in a right-hand
+panel with the goal's badges, progress, momentum, milestones, and subtasks —
+plus **Open goal** / **Edit** — so you can check a goal without leaving the list.
+
 ---
 
 ## 🍎 Nutrition — macro rings
