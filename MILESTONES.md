@@ -3193,6 +3193,11 @@ action — a big time-saver when tidying up.
 highlight, **x** selects, **e** edits, **↵/o** opens the goal. Shortcuts are
 ignored while you're typing in an inline field. A hint sits in the toolbar.
 
+**Duplicate (repeat).** Every goal's ⋯ menu (card and table) now has
+**Duplicate** — it clones the goal's structure (milestones, sub-metrics,
+subtasks) as a fresh copy with all progress reset. Perfect for recurring or
+quarterly goals.
+
 ---
 
 ## 🍎 Nutrition — macro rings

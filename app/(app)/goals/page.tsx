@@ -28,6 +28,7 @@ import {
   getGoals,
   getTasks,
   deleteGoal,
+  duplicateGoal,
   setGoalCurrentValue,
   setGoalManualProgress,
   setGoalFocus,
@@ -261,6 +262,13 @@ export default function GoalsPage() {
     }
   }
 
+  async function handleDuplicate(goal: Goal) {
+    if (!user) return;
+    await duplicateGoal(user.uid, goal);
+    await load(true);
+    toast({ message: `Duplicated “${goal.title}”`, tone: "success" });
+  }
+
   async function scheduleAction(goal: Goal, action: NextAction) {
     await scheduleGoalAction(goal, action, today);
     toast({
@@ -304,6 +312,7 @@ export default function GoalsPage() {
     onToggleFocus: toggleFocus,
     onEdit: openEdit,
     onDelete: requestDelete,
+    onDuplicate: handleDuplicate,
     onQuickPercent: quickPercent,
     onQuickCount: quickCount,
     onSubtasksChange: handleSubtasksChange,
@@ -496,6 +505,7 @@ export default function GoalsPage() {
               today={today}
               onEdit={openEdit}
               onDelete={requestDelete}
+              onDuplicate={handleDuplicate}
               onToggleFocus={toggleFocus}
               onChanged={() => load(true)}
             />

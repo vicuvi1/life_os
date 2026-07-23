@@ -307,6 +307,43 @@ export async function setGoalFocus(goalId: string, focus: boolean): Promise<void
   await updateDoc(doc(db, COLLECTIONS.goals, goalId), { focus });
 }
 
+/** Duplicate a goal as a fresh copy — structure kept, all progress reset. */
+export async function duplicateGoal(userId: string, goal: Goal): Promise<string> {
+  const newId = () =>
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `x_${Date.now()}_${Math.round(Math.random() * 1e6)}`;
+  return createGoal(userId, {
+    title: `${goal.title} (copy)`,
+    description: goal.description,
+    status: "active",
+    priority: goal.priority,
+    measurement: goal.measurement,
+    startDate: null,
+    deadline: goal.deadline,
+    quarter: goal.quarter,
+    category: goal.category,
+    targetValue: goal.targetValue,
+    currentValue: goal.measurement === "count" ? 0 : goal.currentValue,
+    unit: goal.unit,
+    composite: goal.composite.map((c) => ({ ...c, current: 0 })),
+    milestones: goal.milestones.map((m) => ({
+      ...m,
+      id: newId(),
+      done: false,
+      completedDate: null,
+      currentValue: m.measurement === "count" ? 0 : null,
+      steps: m.steps.map((s) => ({ ...s, id: newId(), done: false })),
+    })),
+    icon: goal.icon,
+    color: goal.color,
+    staleDays: goal.staleDays,
+    dependsOn: [],
+    image: goal.image,
+    subtasks: goal.subtasks.map((s) => ({ ...s, id: newId(), done: false })),
+  });
+}
+
 /** Persist a goal's quick-checklist subtasks and recompute its progress. */
 export async function updateGoalSubtasks(
   goalId: string,
