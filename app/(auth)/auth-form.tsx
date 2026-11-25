@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { Logo } from "@/components/logo";
 import { authErrorMessage } from "@/lib/firebase/errors";
-import { OWNER_EMAIL } from "@/lib/owner";
+import { OWNER_EMAIL, pinToPassword } from "@/lib/owner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,8 +25,8 @@ function errorCode(err: unknown): string {
 }
 
 /**
- * Password-only lock screen. "login" unlocks the app; "setup" is the one-time
- * step that sets the password the first time the app is opened.
+ * PIN-only lock screen. "login" unlocks the app; "setup" is the one-time
+ * step that sets the PIN the first time the app is opened.
  */
 export function AuthForm({ mode }: { mode: "login" | "setup" }) {
   const router = useRouter();
@@ -43,12 +43,12 @@ export function AuthForm({ mode }: { mode: "login" | "setup" }) {
     setError(null);
 
     if (!isLogin) {
-      if (password.length < 6) {
-        setError("Password must be at least 6 characters.");
+      if (!/^\d{4,}$/.test(password)) {
+        setError("Your PIN must be at least 4 digits.");
         return;
       }
       if (password !== confirmPassword) {
-        setError("Passwords do not match.");
+        setError("The two PINs don't match.");
         return;
       }
     }
@@ -56,22 +56,22 @@ export function AuthForm({ mode }: { mode: "login" | "setup" }) {
     setPending(true);
     try {
       if (isLogin) {
-        await signIn(OWNER_EMAIL, password);
+        await signIn(OWNER_EMAIL, pinToPassword(password));
       } else {
-        await signUp(OWNER_EMAIL, password);
+        await signUp(OWNER_EMAIL, pinToPassword(password));
       }
       router.replace("/dashboard");
     } catch (err) {
       const code = errorCode(err);
       if (!isLogin && code === "auth/email-already-in-use") {
-        setError("A password is already set for this app. Go back and unlock with it.");
+        setError("A PIN is already set for this app. Go back and unlock with it.");
       } else if (
         isLogin &&
         (code === "auth/invalid-credential" ||
           code === "auth/wrong-password" ||
           code === "auth/user-not-found")
       ) {
-        setError("Wrong password. If this is your first time here, set a password below.");
+        setError("Wrong PIN. If this is your first time here, set a PIN below.");
       } else {
         setError(authErrorMessage(err));
       }
@@ -84,12 +84,12 @@ export function AuthForm({ mode }: { mode: "login" | "setup" }) {
       <CardHeader className="space-y-2 text-center">
         <Logo size={48} className="mx-auto" />
         <CardTitle className="text-2xl">
-          {isLogin ? "Welcome back" : "Set your password"}
+          {isLogin ? "Welcome back" : "Set your PIN"}
         </CardTitle>
         <CardDescription>
           {isLogin
-            ? "Enter your password to open Life OS."
-            : "Choose the password you'll use to open Life OS. You only do this once."}
+            ? "Enter your PIN to open Life OS."
+            : "Choose the PIN you'll use to open Life OS. You only do this once."}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -104,13 +104,15 @@ export function AuthForm({ mode }: { mode: "login" | "setup" }) {
             hidden
           />
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password">PIN</Label>
             <Input
               id="password"
               name="password"
               type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
               autoComplete={isLogin ? "current-password" : "new-password"}
-              placeholder="••••••••"
+              placeholder="••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoFocus
@@ -120,13 +122,15 @@ export function AuthForm({ mode }: { mode: "login" | "setup" }) {
 
           {!isLogin && (
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm password</Label>
+              <Label htmlFor="confirmPassword">Confirm PIN</Label>
               <Input
                 id="confirmPassword"
                 name="confirmPassword"
                 type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
                 autoComplete="new-password"
-                placeholder="••••••••"
+                placeholder="••••"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
@@ -141,17 +145,17 @@ export function AuthForm({ mode }: { mode: "login" | "setup" }) {
           )}
 
           <Button type="submit" className="w-full" disabled={pending}>
-            {pending ? "Please wait…" : isLogin ? "Unlock" : "Set password"}
+            {pending ? "Please wait…" : isLogin ? "Unlock" : "Set PIN"}
           </Button>
         </form>
 
         <p className="mt-6 text-center text-sm text-muted-foreground">
-          {isLogin ? "First time here? " : "Already set a password? "}
+          {isLogin ? "First time here? " : "Already set a PIN? "}
           <Link
             href={isLogin ? "/signup" : "/login"}
             className="font-medium text-primary hover:underline"
           >
-            {isLogin ? "Set your password" : "Unlock"}
+            {isLogin ? "Set your PIN" : "Unlock"}
           </Link>
         </p>
       </CardContent>
