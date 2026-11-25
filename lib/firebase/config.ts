@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
-import { getAuth, type Auth } from "firebase/auth";
+import { connectAuthEmulator, getAuth, type Auth } from "firebase/auth";
 import {
+  connectFirestoreEmulator,
   initializeFirestore,
   getFirestore,
   persistentLocalCache,
@@ -41,4 +42,17 @@ function initDb(): Firestore {
 }
 
 export const db: Firestore = initDb();
+
+// Optional local development against the Firebase Emulator Suite (never set in
+// production): `NEXT_PUBLIC_FIREBASE_EMULATOR=1` points Auth + Firestore at the
+// emulators so the app and `firestore.rules` can be tested without touching
+// real data. See README → "Local emulators".
+if (process.env.NEXT_PUBLIC_FIREBASE_EMULATOR === "1" && typeof window !== "undefined") {
+  const flagged = globalThis as typeof globalThis & { __lifeosEmulators?: boolean };
+  if (!flagged.__lifeosEmulators) {
+    flagged.__lifeosEmulators = true;
+    connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
+    connectFirestoreEmulator(db, "127.0.0.1", 8080);
+  }
+}
 export default app;

@@ -13,7 +13,6 @@ import {
   Trash2,
   Loader2,
   FolderKanban,
-  ListTodo,
   TrendingUp,
   TrendingDown,
   Lock,
@@ -48,6 +47,10 @@ import { toDateKey } from "@/lib/greeting";
 import { cn } from "@/lib/utils";
 import { GoalBadges } from "@/components/goals/goal-badges";
 import { MilestonesSection } from "@/components/goals/milestones-section";
+import { GoalPlanSection } from "@/components/planner/goal-plan-section";
+import { HealthBadge } from "@/components/planner/health-badge";
+import { LoadError } from "@/components/planner/load-error";
+import { goalHealth } from "@/lib/planner";
 import { TrendChart } from "@/components/sleep/trend-chart";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -93,6 +96,7 @@ export default function GoalDetailPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   const [goalFormOpen, setGoalFormOpen] = useState(false);
   const [deletingGoal, setDeletingGoal] = useState(false);
@@ -111,9 +115,9 @@ export default function GoalDetailPage() {
   const [deletingTask, setDeletingTask] = useState<Task | null>(null);
   const [journalDraft, setJournalDraft] = useState("");
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!user || !goalId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       // Progress is recomputed on every real mutation (task/subtask/milestone/
       // count edits), so we no longer write a snapshot just for opening the page
@@ -130,8 +134,14 @@ export default function GoalDetailPage() {
       setProjects(p);
       setTasks(t);
       setSessions(se);
+      setLoadError(false);
+    } catch (err) {
+      console.error("Goal detail failed to load:", err);
+      // A failed background refresh keeps what's on screen; only a first load
+      // with nothing to show becomes the error state.
+      if (!silent) setLoadError(true);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [user, goalId]);
 
@@ -150,13 +160,28 @@ export default function GoalDetailPage() {
     return map;
   }, [tasks]);
 
-  const looseTasks = tasksByProject.get("__none__") ?? [];
+  const refresh = useCallback(() => {
+    void load(true);
+  }, [load]);
 
   if (loading) {
     return (
       <div className="mx-auto max-w-3xl space-y-4">
         <SkeletonCard lines={4} />
         <SkeletonCard lines={4} />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-4">
+        <Button asChild variant="ghost" size="sm" className="-ml-2">
+          <Link href="/goals">
+            <ArrowLeft className="h-4 w-4" /> Goals
+          </Link>
+        </Button>
+        <LoadError title="Couldn't load this goal" onRetry={() => void load()} />
       </div>
     );
   }
@@ -192,6 +217,7 @@ export default function GoalDetailPage() {
     .filter((s) => s.goalId === goal.id)
     .sort((a, b) => (a.date < b.date ? 1 : -1));
   const blockers = goalBlockers(goal, new Map(allGoals.map((g) => [g.id, g])));
+  const health = goalHealth(goal, tasks, today);
 
   async function addJournal() {
     if (!goal || !journalDraft.trim()) return;
@@ -261,6 +287,7 @@ export default function GoalDetailPage() {
           </div>
           <div className="flex flex-wrap items-center gap-1.5 pt-1">
             <GoalBadges goal={goal} />
+            {goal.status === "active" && <HealthBadge health={health} showReason />}
             {goal.quarter && <Badge variant="secondary">{goal.quarter}</Badge>}
           </div>
         </CardHeader>
@@ -404,7 +431,7 @@ export default function GoalDetailPage() {
       </Card>
 
       {/* Milestones (micro-goals) */}
-      <MilestonesSection goal={goal} tasks={tasks} onSaved={load} />
+      <MilestonesSection goal={goal} tasks={tasks} onSaved={refresh} />
 
       {/* Actions */}
       <div className="flex flex-wrap gap-2">
@@ -418,26 +445,18 @@ export default function GoalDetailPage() {
         </Button>
       </div>
 
-      {/* Loose tasks (not under a project) */}
-      {looseTasks.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-            <ListTodo className="h-4 w-4" /> Tasks
-          </h2>
-          <Card>
-            <CardContent className="divide-y p-0">
-              {looseTasks.map((t) => (
-                <TaskRow
-                  key={t.id}
-                  task={t}
-                  onChanged={load}
-                  onEdit={openEditTask}
-                  onDelete={setDeletingTask}
-                />
-              ))}
-            </CardContent>
-          </Card>
-        </section>
+      {/* Plan: tasks under milestones, quick-add, unscheduled backlog */}
+      {user && (
+        <GoalPlanSection
+          goal={goal}
+          tasks={tasks}
+          userId={user.uid}
+          today={today}
+          onMutate={setTasks}
+          onRefresh={refresh}
+          onEditTask={openEditTask}
+          onDeleteTask={setDeletingTask}
+        />
       )}
 
       {/* Projects */}
@@ -517,7 +536,7 @@ export default function GoalDetailPage() {
                           <TaskRow
                             key={t.id}
                             task={t}
-                            onChanged={load}
+                            onChanged={refresh}
                             onEdit={openEditTask}
                             onDelete={setDeletingTask}
                           />
@@ -623,7 +642,7 @@ export default function GoalDetailPage() {
             userId={user.uid}
             goal={goal}
             allGoals={allGoals}
-            onSaved={load}
+            onSaved={refresh}
           />
           <ProjectFormDialog
             open={projectForm.open}
@@ -633,7 +652,7 @@ export default function GoalDetailPage() {
             userId={user.uid}
             goalId={goal.id}
             project={projectForm.project}
-            onSaved={load}
+            onSaved={refresh}
           />
           <TaskFormDialog
             open={taskForm.open}
@@ -642,7 +661,7 @@ export default function GoalDetailPage() {
             goalId={goal.id}
             projectId={taskForm.projectId}
             task={taskForm.task}
-            onSaved={load}
+            onSaved={refresh}
           />
         </>
       )}

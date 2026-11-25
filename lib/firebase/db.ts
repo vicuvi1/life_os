@@ -16,7 +16,7 @@ import {
   type DocumentData,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
-import { db } from "@/lib/firebase/config";
+import { auth, db } from "@/lib/firebase/config";
 import { normalizeRecurringRule } from "@/lib/recurring";
 import { compositeProgress, milestonesProgress, upsertGoalLog } from "@/lib/goals";
 import { entryGrams } from "@/lib/food";
@@ -78,8 +78,22 @@ import {
 } from "@/lib/types";
 import { habitCurrentStreak, habitLongestStreak, isLogDone } from "@/lib/habits";
 import { toDateKey } from "@/lib/greeting";
+import { DEFAULT_DAILY_LIMIT_MIN } from "@/lib/planner";
 
 /** Convert a Firestore Timestamp (or null during pending writes) to epoch ms. */
+/**
+ * Query a collection by one field, scoped to the signed-in user. The security
+ * rules only allow reading your own documents, and a list query must prove that
+ * with a `userId` filter — an unscoped `where(field == value)` is rejected.
+ */
+function ownedWhere(collectionName: string, field: string, value: string) {
+  const uid = auth.currentUser?.uid;
+  const base = collection(db, collectionName);
+  return uid
+    ? query(base, where("userId", "==", uid), where(field, "==", value))
+    : query(base, where(field, "==", value));
+}
+
 function toMillis(value: unknown): number {
   if (value instanceof Timestamp) return value.toMillis();
   if (typeof value === "number") return value;
@@ -156,7 +170,9 @@ function mapTask(snap: QueryDocumentSnapshot<DocumentData>): Task {
     description: d.description ?? null,
     status: d.status ?? "todo",
     priority: d.priority ?? "medium",
-    dueDate: d.dueDate ?? null,
+    dueDate: d.dueDate || null,
+    milestoneId: d.milestoneId ?? null,
+    estimatedMinutes: typeof d.estimatedMinutes === "number" ? d.estimatedMinutes : null,
     startMin: d.startMin ?? null,
     endMin: d.endMin ?? null,
     energy: d.energy ?? null,
@@ -377,12 +393,12 @@ export async function deleteGoal(id: string): Promise<void> {
   const batch = writeBatch(db);
 
   const projSnap = await getDocs(
-    query(collection(db, COLLECTIONS.projects), where("goalId", "==", id))
+    ownedWhere(COLLECTIONS.projects, "goalId", id)
   );
   projSnap.forEach((p) => batch.delete(p.ref));
 
   const taskSnap = await getDocs(
-    query(collection(db, COLLECTIONS.tasks), where("goalId", "==", id))
+    ownedWhere(COLLECTIONS.tasks, "goalId", id)
   );
   taskSnap.forEach((t) => batch.delete(t.ref));
 
@@ -403,10 +419,7 @@ export async function getProjects(userId: string): Promise<Project[]> {
 }
 
 export async function getProjectsForGoal(goalId: string): Promise<Project[]> {
-  const q = query(
-    collection(db, COLLECTIONS.projects),
-    where("goalId", "==", goalId)
-  );
+  const q = ownedWhere(COLLECTIONS.projects, "goalId", goalId);
   const snap = await getDocs(q);
   return snap.docs.map(mapProject).sort((a, b) => a.createdAt - b.createdAt);
 }
@@ -441,7 +454,7 @@ export async function updateProject(
 export async function deleteProject(id: string): Promise<void> {
   const batch = writeBatch(db);
   const taskSnap = await getDocs(
-    query(collection(db, COLLECTIONS.tasks), where("projectId", "==", id))
+    ownedWhere(COLLECTIONS.tasks, "projectId", id)
   );
   taskSnap.forEach((t) => batch.delete(t.ref));
   batch.delete(doc(db, COLLECTIONS.projects, id));
@@ -461,10 +474,7 @@ export async function getTasks(userId: string): Promise<Task[]> {
 }
 
 export async function getTasksForGoal(goalId: string): Promise<Task[]> {
-  const q = query(
-    collection(db, COLLECTIONS.tasks),
-    where("goalId", "==", goalId)
-  );
+  const q = ownedWhere(COLLECTIONS.tasks, "goalId", goalId);
   const snap = await getDocs(q);
   return snap.docs.map(mapTask).sort((a, b) => a.createdAt - b.createdAt);
 }
@@ -478,6 +488,8 @@ export type TaskInput = Pick<
   Partial<
     Pick<
       Task,
+      | "milestoneId"
+      | "estimatedMinutes"
       | "startMin"
       | "endMin"
       | "energy"
@@ -499,6 +511,9 @@ export async function createTask(
     ...input,
     // Normalize optional fields so every doc is well-formed and never carries
     // `undefined` (which Firestore rejects).
+    dueDate: input.dueDate || null,
+    milestoneId: input.milestoneId ?? null,
+    estimatedMinutes: input.estimatedMinutes ?? null,
     startMin: input.startMin ?? null,
     endMin: input.endMin ?? null,
     energy: input.energy ?? null,
@@ -544,6 +559,8 @@ export async function generateRecurringOccurrences(
       dueDate,
       projectId: head.projectId,
       goalId: head.goalId,
+      milestoneId: head.milestoneId,
+      estimatedMinutes: head.estimatedMinutes,
       startMin: head.startMin,
       endMin: head.endMin,
       energy: head.energy,
@@ -629,7 +646,7 @@ export async function recomputeGoalProgress(goalId: string): Promise<number> {
       break;
     case "tasks": {
       const snap = await getDocs(
-        query(collection(db, COLLECTIONS.tasks), where("goalId", "==", goalId))
+        ownedWhere(COLLECTIONS.tasks, "goalId", goalId)
       );
       // Auto progress folds in both linked task docs and the goal's own
       // quick-checklist subtasks, so a lightweight goal broken only into
@@ -643,7 +660,7 @@ export async function recomputeGoalProgress(goalId: string): Promise<number> {
     }
     case "linked": {
       const snap = await getDocs(
-        query(collection(db, COLLECTIONS.sessions), where("goalId", "==", goalId))
+        ownedWhere(COLLECTIONS.sessions, "goalId", goalId)
       );
       let mins = 0;
       snap.forEach((s) => {
@@ -2829,6 +2846,10 @@ export async function getPrefs(userId: string): Promise<UserPrefs> {
     aiProviders: d.aiProviders && typeof d.aiProviders === "object" ? (d.aiProviders as AIProviders) : null,
     reviewScale: d.reviewScale === 10 ? 10 : 100,
     storage: d.storage && typeof d.storage === "object" ? (d.storage as StorageConfig) : null,
+    dailyLimitMin:
+      typeof d.dailyLimitMin === "number" && d.dailyLimitMin > 0
+        ? d.dailyLimitMin
+        : DEFAULT_DAILY_LIMIT_MIN,
   };
 }
 
@@ -2893,7 +2914,7 @@ export async function deleteDocsByIds(collectionName: string, ids: string[]): Pr
 export async function upsertPrefs(
   userId: string,
   input: Partial<
-    Pick<UserPrefs, "waterUnit" | "hiddenTrackers" | "sleepTarget" | "proteinTarget" | "calorieTarget" | "foodBudgetWeekly" | "bedtimeTarget" | "wakeTarget" | "sleepRoutine" | "telegram" | "aiProviders" | "reviewScale">
+    Pick<UserPrefs, "waterUnit" | "hiddenTrackers" | "sleepTarget" | "proteinTarget" | "calorieTarget" | "foodBudgetWeekly" | "bedtimeTarget" | "wakeTarget" | "sleepRoutine" | "telegram" | "aiProviders" | "reviewScale" | "dailyLimitMin">
   >
 ): Promise<void> {
   const ref = doc(db, COLLECTIONS.prefs, userId);

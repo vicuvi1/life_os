@@ -45,12 +45,13 @@ import {
   goalStale,
   goalNextAction,
   goalMomentum,
-  goalPace,
   goalBlockers,
   categoryLabel,
   shortDate,
   type NextAction,
 } from "@/lib/goals";
+import { goalHealth, goalTaskStats } from "@/lib/planner";
+import { LoadError } from "@/components/planner/load-error";
 import { toDateKey } from "@/lib/greeting";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -84,6 +85,7 @@ export default function GoalsPage() {
   const [goals, setGoals] = useState<Goal[]>(goalsCache?.goals ?? []);
   const [tasks, setTasks] = useState<Task[]>(goalsCache?.tasks ?? []);
   const [loading, setLoading] = useState(!goalsCache);
+  const [loadError, setLoadError] = useState(false);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Goal | null>(null);
@@ -101,6 +103,11 @@ export default function GoalsPage() {
         setGoals(g);
         setTasks(t);
         goalsCache = { goals: g, tasks: t };
+        setLoadError(false);
+      } catch (err) {
+        console.error("Goals failed to load:", err);
+        // Keep showing cached goals if a background refresh fails.
+        if (!goalsCache) setLoadError(true);
       } finally {
         if (!silent) setLoading(false);
       }
@@ -140,11 +147,6 @@ export default function GoalsPage() {
       d.setDate(d.getDate() - 7);
       return toDateKey(d);
     })();
-    const atRisk = active.filter((g) => {
-      if (goalStale(g, today)) return true;
-      const p = goalPace(g, today);
-      return p ? p.tone === "bad" || p.tone === "warn" : false;
-    }).length;
     const vels = active
       .filter((g) => g.progressLog.length >= 2)
       .map((g) => goalMomentum(g, today).velocityPerWeek);
@@ -156,7 +158,7 @@ export default function GoalsPage() {
       .filter((m) => m.done && m.completedDate && m.completedDate >= weekAgo).length;
     const byId = new Map(goals.map((g) => [g.id, g]));
     const blocked = active.filter((g) => goalBlockers(g, byId).length > 0).length;
-    return { active: active.length, atRisk, avgVelocity, winsThisWeek, blocked };
+    return { active: active.length, avgVelocity, winsThisWeek, blocked };
   }, [goals, today]);
 
   // Goals that have gone quiet — the stall radar.
@@ -304,6 +306,19 @@ export default function GoalsPage() {
     }, 5200);
   }
 
+  // "On track" / "Behind" per goal, by the planner rule (overdue tasks or a
+  // milestone date passed with open tasks).
+  const healthById = useMemo(
+    () => new Map(goals.map((g) => [g.id, goalHealth(g, tasks, today)])),
+    [goals, tasks, today]
+  );
+  const behindCount = useMemo(
+    () =>
+      goals.filter((g) => g.status === "active" && healthById.get(g.id)?.status === "behind")
+        .length,
+    [goals, healthById]
+  );
+
   const showFocusPrompt = !loading && focusGoals.length === 0 && goals.length > 0;
 
   const cardProps = (goal: Goal) => ({
@@ -311,6 +326,8 @@ export default function GoalsPage() {
     today,
     blockers: goalBlockers(goal, goalsById),
     nextAction: nextActions.get(goal.id) ?? null,
+    taskStats: goalTaskStats(goal.id, tasks),
+    health: healthById.get(goal.id) ?? goalHealth(goal, tasks, today),
     onToggleFocus: toggleFocus,
     onEdit: openEdit,
     onDelete: requestDelete,
@@ -374,11 +391,13 @@ export default function GoalsPage() {
           <SkeletonCard lines={3} />
           <SkeletonCard lines={3} />
         </div>
+      ) : loadError ? (
+        <LoadError title="Couldn't load your goals" onRetry={() => void load()} />
       ) : goals.length === 0 ? (
         <EmptyState
           icon={Target}
           title="No goals yet"
-          description="Add your first goal, then break it into projects and daily tasks."
+          description="Add your first goal, give it a deadline, then break it into tasks you can put on specific days."
           action={
             <Button onClick={openCreate}>
               <Plus className="h-4 w-4" /> Add a goal
@@ -397,9 +416,9 @@ export default function GoalsPage() {
             <StatTile icon={Activity} label="Active" value={<AnimatedNumber value={stats.active} />} />
             <StatTile
               icon={AlertTriangle}
-              label="At risk"
-              value={<AnimatedNumber value={stats.atRisk} />}
-              tone={stats.atRisk > 0 ? "amber" : "default"}
+              label="Behind"
+              value={<AnimatedNumber value={behindCount} />}
+              tone={behindCount > 0 ? "amber" : "default"}
             />
             <StatTile
               icon={TrendingUp}

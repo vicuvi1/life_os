@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { AlertTriangle, Plus, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -39,6 +39,7 @@ import {
   REMINDER_OPTIONS,
   WEEKDAY_CHIPS,
 } from "@/lib/tasks";
+import { isAfterDeadline, milestonesByDate } from "@/lib/planner";
 import { cn } from "@/lib/utils";
 import type {
   Goal,
@@ -67,6 +68,7 @@ interface Props {
     dueDate?: string | null;
     startMin?: number | null;
     endMin?: number | null;
+    milestoneId?: string | null;
   };
 }
 
@@ -95,6 +97,8 @@ export function TaskFormDialog({
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
   const [subDraft, setSubDraft] = useState("");
   const [subMinsDraft, setSubMinsDraft] = useState("");
+  const [estimate, setEstimate] = useState(""); // minutes, "" = none
+  const [milestoneSel, setMilestoneSel] = useState<string>(NONE);
   const [goalSel, setGoalSel] = useState<string>(NONE);
   const [projectSel, setProjectSel] = useState<string>(NONE);
   const [repeat, setRepeat] = useState<RepeatMode>("none");
@@ -132,6 +136,8 @@ export function TaskFormDialog({
     setDescription(task?.description ?? "");
     setPriority(task?.priority ?? "medium");
     setDueDate(task?.dueDate ?? defaults?.dueDate ?? "");
+    setEstimate(task?.estimatedMinutes != null ? String(task.estimatedMinutes) : "");
+    setMilestoneSel(task?.milestoneId ?? defaults?.milestoneId ?? NONE);
     const sMin = task?.startMin ?? defaults?.startMin ?? null;
     const eMin = task?.endMin ?? defaults?.endMin ?? null;
     setStartTime(sMin != null ? minToTime(sMin) : "");
@@ -156,6 +162,9 @@ export function TaskFormDialog({
     setError(null);
   }, [open, task, goalId, projectId, defaults]);
 
+  const selectedGoal = goals.find((g) => g.id === goalSel) ?? null;
+  const goalMilestones = milestonesByDate(selectedGoal?.milestones ?? []);
+  const lateForGoal = isAfterDeadline(dueDate, selectedGoal);
   const goalProjects = projects.filter(
     (p) => goalSel !== NONE && p.goalId === goalSel
   );
@@ -205,6 +214,17 @@ export function TaskFormDialog({
         ? null
         : projectSel;
 
+    const estimateNum = Math.round(Number(estimate));
+    const estimatedMinutes =
+      estimate.trim() !== "" && Number.isFinite(estimateNum) && estimateNum > 0
+        ? estimateNum
+        : null;
+    // A milestone only makes sense under its own goal.
+    const milestoneIdOut =
+      milestoneSel !== NONE && goalMilestones.some((m) => m.id === milestoneSel)
+        ? milestoneSel
+        : null;
+
     let recurrence: TaskRecurrence | null = null;
     if (repeat !== "none") {
       recurrence = {
@@ -222,6 +242,8 @@ export function TaskFormDialog({
       dueDate: dueDate || null,
       goalId: goalIdOut,
       projectId: projectIdOut,
+      milestoneId: milestoneIdOut,
+      estimatedMinutes,
       startMin,
       endMin,
       energy: energy === 0 ? null : energy,
@@ -283,6 +305,12 @@ export function TaskFormDialog({
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
               />
+              {lateForGoal && (
+                <p className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="h-3 w-3 shrink-0" />
+                  After this goal&apos;s deadline ({selectedGoal?.deadline})
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Priority</Label>
@@ -458,6 +486,7 @@ export function TaskFormDialog({
                 onValueChange={(v) => {
                   setGoalSel(v);
                   setProjectSel(NONE);
+                  setMilestoneSel(NONE);
                 }}
               >
                 <SelectTrigger>
@@ -492,6 +521,43 @@ export function TaskFormDialog({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+
+          {/* Milestone + estimate (goals planner) */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Milestone</Label>
+              <Select
+                value={milestoneSel}
+                onValueChange={setMilestoneSel}
+                disabled={goalMilestones.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="No milestone" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>No milestone</SelectItem>
+                  {goalMilestones.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="t-estimate">Estimate (minutes)</Label>
+              <Input
+                id="t-estimate"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                step={5}
+                placeholder="e.g. 45"
+                value={estimate}
+                onChange={(e) => setEstimate(e.target.value)}
+              />
             </div>
           </div>
 

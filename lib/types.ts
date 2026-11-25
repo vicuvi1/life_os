@@ -252,7 +252,16 @@ export interface Task {
   description: string | null;
   status: TaskStatus;
   priority: Priority;
-  dueDate: string | null; // YYYY-MM-DD
+  /**
+   * The local calendar day this task is scheduled on (YYYY-MM-DD). `null` =
+   * unscheduled (sits in the goal's backlog). Stored as a plain string, never a
+   * timestamp, so a task can't drift to another day across timezones.
+   */
+  dueDate: string | null;
+  /** Milestone (embedded on the task's goal) this task belongs to, if any. */
+  milestoneId: string | null;
+  /** Estimated effort in minutes — feeds the per-day load on the planner. */
+  estimatedMinutes: number | null;
   // --- Calendar scheduling (Notion-style planner) ---------------------------
   // A scheduled task owns a time block on its dueDate, expressed the same way as
   // a Session: minutes since midnight. `null` means the task is dated but has no
@@ -1104,6 +1113,8 @@ export interface UserPrefs {
   reviewScale: 10 | 100;
   /** Storage monitoring & data-retention config. */
   storage?: StorageConfig | null;
+  /** Planner: estimated minutes per day above which a day is flagged as overloaded. */
+  dailyLimitMin: number;
 }
 
 /** Firestore collection names, centralized to avoid typos. */

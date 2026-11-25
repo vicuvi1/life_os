@@ -37,6 +37,8 @@ import {
   type MomentumInfo,
   type NextAction,
 } from "@/lib/goals";
+import { HealthBadge } from "@/components/planner/health-badge";
+import type { GoalHealth, GoalTaskStats } from "@/lib/planner";
 import { cn } from "@/lib/utils";
 import type { Goal, GoalSubtask } from "@/lib/types";
 
@@ -70,6 +72,10 @@ export interface GoalCardProps {
   today: string;
   blockers: Goal[];
   nextAction: NextAction | null;
+  /** Done / total linked tasks (goals planner). */
+  taskStats: GoalTaskStats;
+  /** "On track" / "Behind" by the planner rule. */
+  health: GoalHealth;
   onToggleFocus: (goal: Goal) => void;
   onEdit: (goal: Goal) => void;
   onDelete: (goal: Goal) => void;
@@ -86,6 +92,8 @@ export function GoalCard({
   today,
   blockers,
   nextAction,
+  taskStats,
+  health,
   onToggleFocus,
   onEdit,
   onDelete,
@@ -222,6 +230,14 @@ export function GoalCard({
             <span className="font-medium text-foreground">{goal.progress}%</span>
           </div>
           <Progress value={goal.progress} />
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+            <span className="text-xs text-muted-foreground">
+              {taskStats.total > 0
+                ? `${taskStats.done}/${taskStats.total} tasks done`
+                : "No tasks yet"}
+            </span>
+            {goal.status === "active" && <HealthBadge health={health} />}
+          </div>
         </div>
 
         <MomentumChip m={momentum} />

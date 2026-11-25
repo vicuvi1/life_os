@@ -31,10 +31,25 @@ service cloud.firestore {
       allow update: if ownsExisting() && ownsIncoming();
     }
 
+    // Planner fields on a task. Calendar days are local "YYYY-MM-DD" strings
+    // (never timestamps) so a task can't drift to another day across timezones.
+    function isDateKeyOrNull(v) {
+      return v == null || (v is string && v.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'));
+    }
+
+    function validTaskPlan() {
+      let d = request.resource.data;
+      let est = d.get('estimatedMinutes', null);
+      let ms = d.get('milestoneId', null);
+      return isDateKeyOrNull(d.get('dueDate', null))
+        && (est == null || (est is number && est >= 0 && est <= 1440))
+        && (ms == null || ms is string);
+    }
+
     match /tasks/{id} {
       allow read, delete: if ownsExisting();
-      allow create: if ownsIncoming();
-      allow update: if ownsExisting() && ownsIncoming();
+      allow create: if ownsIncoming() && validTaskPlan();
+      allow update: if ownsExisting() && ownsIncoming() && validTaskPlan();
     }
 
     match /habits/{id} {
