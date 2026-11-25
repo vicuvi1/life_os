@@ -22,7 +22,19 @@ export function authErrorMessage(err: unknown): string {
       return "Too many attempts. Please try again in a moment.";
     case "auth/network-request-failed":
       return "Network error. Check your connection and try again.";
+    case "auth/unauthorized-domain":
+      return "This web address isn't authorized for sign-in yet. Add it in Firebase Console → Authentication → Settings → Authorized domains.";
+    case "auth/operation-not-allowed":
+      return "Email/password sign-in is turned off for this Firebase project. Enable it in Firebase Console → Authentication → Sign-in method.";
+    case "auth/invalid-api-key":
+    case "auth/api-key-not-valid.-please-pass-a-valid-api-key.":
+      return "The Firebase API key for this deployment is missing or invalid. Check the NEXT_PUBLIC_FIREBASE_* environment variables.";
     default:
-      return "Something went wrong. Please try again.";
+      if (code.includes("requests-from-referer"))
+        return "The Firebase API key doesn't allow this web address. Add it under the key's website restrictions in Google Cloud Console → Credentials.";
+      // Show the code so an unexpected failure can be diagnosed instead of guessed at.
+      return code
+        ? `Something went wrong (${code}). Please try again.`
+        : "Something went wrong. Please try again.";
   }
 }
