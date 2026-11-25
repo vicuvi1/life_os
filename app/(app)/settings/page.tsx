@@ -13,6 +13,7 @@ import { CurrencyCard } from "@/components/settings/currency-card";
 import { AccentCard } from "@/components/settings/accent-card";
 import { ProfileNameField } from "@/components/settings/profile-name";
 import { useAuth } from "@/components/auth-provider";
+import { OWNER_EMAIL } from "@/lib/owner";
 
 export default function SettingsPage() {
   const { user, signOut } = useAuth();
@@ -38,8 +39,12 @@ export default function SettingsPage() {
           <ProfileNameField />
           <div className="flex items-center justify-between border-t pt-4">
             <div>
-              <p className="text-sm font-medium">Signed in as</p>
-              <p className="text-sm text-muted-foreground">{user?.email}</p>
+              <p className="text-sm font-medium">
+                {user?.email === OWNER_EMAIL ? "Unlocked" : "Signed in as"}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {user?.email === OWNER_EMAIL ? "Lock the app on this device." : user?.email}
+              </p>
             </div>
             <Button variant="outline" onClick={handleLogout}>
               Log out

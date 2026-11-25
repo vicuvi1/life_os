@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { ChevronsLeft, ChevronsRight, CheckSquare, Flame } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_SECTIONS, NAV_FOOTER, SUBNAV, type SubNavItem } from "@/lib/nav";
+import { OWNER_EMAIL } from "@/lib/owner";
 import { useAuth } from "@/components/auth-provider";
 import { greetingFor, resolveFirstName, toDateKey } from "@/lib/greeting";
 import { formatLongDate } from "@/lib/dates";
@@ -213,7 +214,9 @@ export function Sidebar() {
               </div>
               <div className={cn("min-w-0 leading-tight transition-opacity duration-150", expanded ? "opacity-100" : "pointer-events-none opacity-0")}>
                 <p className="truncate text-sm font-medium">{name}</p>
-                <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+                {user.email !== OWNER_EMAIL && (
+                  <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+                )}
               </div>
             </div>
           )}

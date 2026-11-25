@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
+import { OWNER_EMAIL } from "@/lib/owner";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { FloatingCalculator } from "@/components/calculator/floating-calculator";
@@ -37,7 +38,7 @@ export default function AppLayout({
         <div className="flex h-screen overflow-hidden">
         <Sidebar />
         <div className="flex flex-1 flex-col overflow-hidden">
-          <Topbar email={user.email} />
+          <Topbar email={user.email === OWNER_EMAIL ? null : user.email} />
           <main className="flex-1 overflow-y-auto p-4 md:p-8">{children}</main>
         </div>
           <FloatingCalculator />
