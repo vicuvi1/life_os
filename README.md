@@ -25,6 +25,35 @@ built out in Milestones 2–4 (see `LIFE_OS_SPECIFICATION.md`).
 
 ---
 
+## Goals planner
+
+Goals turn into days: write a goal with a start date and a deadline, break it
+into milestones and tasks, and give each task a day and an estimate.
+
+- **Today** (`/today`, the landing page): overdue on top, today's tasks grouped
+  by goal, timers, and the day's load against your daily limit.
+- **Calendar** (`/calendar`): month and week, tasks colored by goal, drag to
+  reschedule, an Unscheduled tray, deadline and milestone markers.
+- **Year** (`/year`): every goal as a bar from start to deadline, quarter focus,
+  a month plan (planned vs logged hours) and a time-spent heatmap.
+- **Goal detail**: plan by milestone, backlog, time spent, estimate vs actual and
+  a projected finish date.
+
+The rules live in `lib/planner.ts` (unit tested in `lib/__tests__/planner.test.ts`).
+Calendar days are stored as local `YYYY-MM-DD` strings, never timestamps.
+
+The lock screen asks only for a PIN; the app signs in to one built-in owner
+account (see `lib/owner.ts`). Open tabs reload themselves when a newer version is
+deployed (`components/version-watcher.tsx`).
+
+### Local emulators
+
+```bash
+firebase emulators:start --only auth,firestore
+```
+
+Set `NEXT_PUBLIC_FIREBASE_EMULATOR=1` in `.env.local` to point the app at them.
+
 ## Getting started
 
 ### 1. Install

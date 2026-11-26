@@ -23,6 +23,10 @@ import {
   sumRange,
   taskSpentMin,
   timerElapsedMin,
+  goalOverlaps,
+  quarterOf,
+  weekReview,
+  yearBar,
 } from "@/lib/planner";
 import { makeMilestone } from "@/lib/goals";
 import type { GoalMilestone, Task } from "@/lib/types";
@@ -379,5 +383,74 @@ describe("autoPlan", () => {
       task({ id: "w", estimatedMinutes: 60 }),
     ];
     expect(autoPlan(tasks, { from: TODAY, limitMin: 180, horizonDays: 1 })).toEqual([]);
+  });
+});
+
+describe("year roadmap", () => {
+  it("places a span on the year and clips it to the year", () => {
+    const full = yearBar("2026-01-01", "2026-12-31", 2026);
+    expect(full?.left).toBe(0);
+    expect(full?.width).toBeCloseTo(100, 5);
+    const half = yearBar("2026-07-02", "2027-03-01", 2026);
+    expect(half?.left).toBeCloseTo((182 / 365) * 100, 5);
+    expect(half?.clippedEnd).toBe(true);
+    expect(half && half.left + half.width).toBeCloseTo(100, 5);
+    expect(yearBar("2025-06-01", "2026-01-10", 2026)?.clippedStart).toBe(true);
+    expect(yearBar("2025-01-01", "2025-12-31", 2026)).toBeNull();
+    expect(yearBar("2026-05-01", "2026-04-01", 2026)).toBeNull();
+  });
+
+  it("keeps a one-day span visible", () => {
+    expect(yearBar("2026-03-10", "2026-03-10", 2026)?.width).toBeGreaterThanOrEqual(0.27);
+  });
+
+  it("finds the quarter of a date", () => {
+    expect(quarterOf("2026-11-25")).toEqual({
+      year: 2026,
+      q: 4,
+      label: "Q4 2026",
+      start: "2026-10-01",
+      end: "2026-12-31",
+    });
+    expect(quarterOf("2028-02-29").end).toBe("2028-03-31");
+    expect(quarterOf("2026-06-30").q).toBe(2);
+  });
+
+  it("detects goals overlapping a range", () => {
+    const g = { startDate: "2026-09-01", createdAt: 0, deadline: "2026-10-15" };
+    expect(goalOverlaps(g, "2026-10-01", "2026-12-31", TODAY)).toBe(true);
+    expect(goalOverlaps(g, "2026-11-01", "2026-12-31", TODAY)).toBe(false);
+    expect(goalOverlaps({ ...g, deadline: null }, "2027-01-01", "2027-03-31", TODAY)).toBe(true);
+  });
+});
+
+describe("weekReview", () => {
+  const WEEK = "2026-11-23"; // Monday; TODAY is Wednesday the 25th
+  it("sorts the week into done, slipped and remaining", () => {
+    const doneAt = new Date(2026, 10, 24, 10).getTime();
+    const tasks = [
+      task({ id: "done", status: "done", completedAt: doneAt, timeLog: [{ date: "2026-11-24", minutes: 40 }] }),
+      task({ id: "old-done", status: "done", completedAt: new Date(2026, 10, 10).getTime() }),
+      task({ id: "slipped", dueDate: "2026-11-23" }),
+      task({ id: "older", dueDate: "2026-11-10" }),
+      task({ id: "today", dueDate: TODAY }),
+      task({ id: "sunday", dueDate: "2026-11-29" }),
+      task({ id: "next", dueDate: "2026-11-30" }),
+      task({ id: "backlog" }),
+    ];
+    const sessions = [
+      { goalId: "g1", date: "2026-11-25", startMin: 0, endMin: 30, status: "done" as const },
+    ];
+    const r = weekReview(tasks, sessions, WEEK, TODAY);
+    expect(r.done.map((t) => t.id)).toEqual(["done"]);
+    expect(r.slipped.map((t) => t.id)).toEqual(["older", "slipped"]);
+    expect(r.remaining.map((t) => t.id)).toEqual(["today", "sunday"]);
+    expect(r.spentMin).toBe(70);
+  });
+
+  it("treats everything unfinished as slipped once the week is over", () => {
+    const r = weekReview([task({ id: "a", dueDate: "2026-11-22" })], [], "2026-11-16", TODAY);
+    expect(r.slipped.map((t) => t.id)).toEqual(["a"]);
+    expect(r.remaining).toEqual([]);
   });
 });

@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toDateKey } from "@/lib/greeting";
+import { WeekPlanReview } from "@/components/planner/week-plan-review";
 import { addDays } from "@/lib/habits";
 import { startOfWeekKey, formatWeekRange } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
@@ -247,6 +248,9 @@ export default function ReviewPage() {
           </Button>
         </div>
       </div>
+
+      {/* Planner: done, slipped and time spent this week */}
+      <WeekPlanReview weekStart={weekStart} today={toDateKey(new Date())} goals={goals} />
 
       {loading ? (
         <div className="space-y-3">

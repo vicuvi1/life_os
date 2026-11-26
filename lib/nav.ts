@@ -24,6 +24,7 @@ import {
   SlidersHorizontal,
   Settings,
   Sun,
+  CalendarRange,
   type LucideIcon,
 } from "lucide-react";
 
@@ -61,6 +62,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: "/projects", label: "Projects", icon: FolderKanban },
       { href: "/tasks", label: "Tasks", icon: CheckSquare },
       { href: "/calendar", label: "Calendar", icon: CalendarDays },
+      { href: "/year", label: "Year", icon: CalendarRange },
     ],
   },
   {

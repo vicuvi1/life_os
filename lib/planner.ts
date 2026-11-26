@@ -455,3 +455,131 @@ export function autoPlan(
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// Long-range views: year roadmap, quarters, weekly review.
+// ---------------------------------------------------------------------------
+function isLeap(year: number): boolean {
+  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+}
+
+/** Position of a day within its year as a 0-100 percentage (start of that day). */
+export function yearPercent(date: string, year: number): number {
+  const days = isLeap(year) ? 366 : 365;
+  return (diffDays(`${year}-01-01`, date) / days) * 100;
+}
+
+/**
+ * Where a start→end span sits on a one-year timeline, as left / width
+ * percentages, clipped to the year. Null when it doesn't touch the year.
+ */
+export function yearBar(
+  start: string,
+  end: string,
+  year: number
+): { left: number; width: number; clippedStart: boolean; clippedEnd: boolean } | null {
+  const first = `${year}-01-01`;
+  const last = `${year}-12-31`;
+  if (end < start || end < first || start > last) return null;
+  const from = start < first ? first : start;
+  const to = end > last ? last : end;
+  const left = yearPercent(from, year);
+  // +1 day so a span ending on a date covers that whole day.
+  const right = yearPercent(addDays(to, 1), year);
+  return {
+    left,
+    width: Math.max(0.6, Math.min(100, right) - left),
+    clippedStart: start < first,
+    clippedEnd: end > last,
+  };
+}
+
+export interface Quarter {
+  year: number;
+  q: 1 | 2 | 3 | 4;
+  label: string; // "Q4 2026"
+  start: string;
+  end: string;
+}
+
+export function quarterOf(date: string): Quarter {
+  const year = Number(date.slice(0, 4));
+  const month = Number(date.slice(5, 7));
+  const q = (Math.floor((month - 1) / 3) + 1) as 1 | 2 | 3 | 4;
+  const startMonth = (q - 1) * 3 + 1;
+  const endMonth = startMonth + 2;
+  const lastDay = new Date(year, endMonth, 0).getDate();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return {
+    year,
+    q,
+    label: `Q${q} ${year}`,
+    start: `${year}-${pad(startMonth)}-01`,
+    end: `${year}-${pad(endMonth)}-${pad(lastDay)}`,
+  };
+}
+
+/** Whether a goal's start→deadline window overlaps a date range. */
+export function goalOverlaps(
+  goal: Pick<Goal, "startDate" | "createdAt" | "deadline">,
+  from: string,
+  to: string,
+  today: string
+): boolean {
+  const start = goalStartDate(goal, today);
+  const end = isDateKey(goal.deadline) ? goal.deadline : "9999-12-31";
+  return start <= to && end >= from;
+}
+
+function msToKey(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate()
+  ).padStart(2, "0")}`;
+}
+
+export interface WeekReview {
+  /** Tasks finished during the week. */
+  done: Task[];
+  /** Open tasks whose day has passed by the end of the week (or by yesterday). */
+  slipped: Task[];
+  /** Open tasks still scheduled later in the week (today onward). */
+  remaining: Task[];
+  spentMin: number;
+}
+
+/** What happened in the week starting `weekStart` (a Monday key). */
+export function weekReview(
+  tasks: Task[],
+  sessions: TimedSession[],
+  weekStart: string,
+  today: string
+): WeekReview {
+  const weekEnd = addDays(weekStart, 6);
+  const cutoff = weekEnd < today ? weekEnd : addDays(today, -1);
+  const done: Task[] = [];
+  const slipped: Task[] = [];
+  const remaining: Task[] = [];
+  for (const t of tasks) {
+    if (isTaskDone(t)) {
+      // Fall back to the scheduled day for tasks finished before timestamps existed.
+      const when = t.completedAt ? msToKey(t.completedAt) : t.dueDate;
+      if (when && when >= weekStart && when <= weekEnd) done.push(t);
+    } else if (t.dueDate) {
+      if (t.dueDate <= cutoff) slipped.push(t);
+      else if (t.dueDate <= weekEnd) remaining.push(t);
+    }
+  }
+  const byDate = new Map<string, number>();
+  spentByDate(tasks).forEach((v, k) => byDate.set(k, v));
+  for (const s of sessions) {
+    const m = sessionMinutes(s);
+    if (m > 0 && s.goalId) byDate.set(s.date, (byDate.get(s.date) ?? 0) + m);
+  }
+  return {
+    done,
+    slipped: sortPlanTasks(slipped),
+    remaining: sortPlanTasks(remaining),
+    spentMin: sumRange(byDate, weekStart, weekEnd),
+  };
+}
