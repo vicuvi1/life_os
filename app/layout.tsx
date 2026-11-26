@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/components/auth-provider";
 import { ToastProvider } from "@/components/ui/toast-provider";
+import { VersionWatcher } from "@/components/version-watcher";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
@@ -32,6 +33,7 @@ export default function RootLayout({
         >
           <AuthProvider>
             <ToastProvider>{children}</ToastProvider>
+            <VersionWatcher />
           </AuthProvider>
         </ThemeProvider>
       </body>
