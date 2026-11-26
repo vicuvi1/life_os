@@ -23,6 +23,7 @@ import {
   Wallet,
   SlidersHorizontal,
   Settings,
+  Sun,
   type LucideIcon,
 } from "lucide-react";
 
@@ -54,6 +55,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Plan",
     accent: "#3b82f6",
     items: [
+      { href: "/today", label: "Today", icon: Sun },
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/goals", label: "Goals", icon: Target },
       { href: "/projects", label: "Projects", icon: FolderKanban },

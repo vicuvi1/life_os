@@ -34,11 +34,12 @@ import {
   goalProgressDetail,
   goalStale,
   makeSubtask,
+  shortDate,
   type MomentumInfo,
   type NextAction,
 } from "@/lib/goals";
 import { HealthBadge } from "@/components/planner/health-badge";
-import type { GoalHealth, GoalTaskStats } from "@/lib/planner";
+import { goalTimeline, minutesLabel, type GoalHealth, type GoalTaskStats } from "@/lib/planner";
 import { cn } from "@/lib/utils";
 import type { Goal, GoalSubtask } from "@/lib/types";
 
@@ -76,6 +77,8 @@ export interface GoalCardProps {
   taskStats: GoalTaskStats;
   /** "On track" / "Behind" by the planner rule. */
   health: GoalHealth;
+  /** Minutes logged on this goal's tasks. */
+  spentMin: number;
   onToggleFocus: (goal: Goal) => void;
   onEdit: (goal: Goal) => void;
   onDelete: (goal: Goal) => void;
@@ -94,6 +97,7 @@ export function GoalCard({
   nextAction,
   taskStats,
   health,
+  spentMin,
   onToggleFocus,
   onEdit,
   onDelete,
@@ -105,6 +109,7 @@ export function GoalCard({
 }: GoalCardProps) {
   const [draft, setDraft] = useState("");
   const momentum = goalMomentum(goal, today);
+  const timeline = goalTimeline(goal, today);
   const doneSub = goal.subtasks.filter((s) => s.done).length;
 
   const toggleSub = (id: string) =>
@@ -238,6 +243,14 @@ export function GoalCard({
             </span>
             {goal.status === "active" && <HealthBadge health={health} />}
           </div>
+          <p className="text-xs text-muted-foreground">
+            {timeline.dayNumber === 0 ? "Starts" : "Started"} {shortDate(timeline.start)}
+            {timeline.dayNumber > 0 &&
+              (timeline.totalDays != null
+                ? ` · day ${Math.min(timeline.dayNumber, timeline.totalDays)} of ${timeline.totalDays}`
+                : ` · day ${timeline.dayNumber}`)}
+            {spentMin > 0 && ` · ${minutesLabel(spentMin)} spent`}
+          </p>
         </div>
 
         <MomentumChip m={momentum} />

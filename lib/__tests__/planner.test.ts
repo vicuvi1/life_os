@@ -13,6 +13,16 @@ import {
   minutesLabel,
   relativeDayLabel,
   taskEstimateMin,
+  addTimeEntry,
+  autoPlan,
+  estimateAccuracy,
+  goalProjection,
+  goalSpentMin,
+  goalTimeline,
+  spentByDate,
+  sumRange,
+  taskSpentMin,
+  timerElapsedMin,
 } from "@/lib/planner";
 import { makeMilestone } from "@/lib/goals";
 import type { GoalMilestone, Task } from "@/lib/types";
@@ -32,6 +42,8 @@ function task(p: Partial<Task> = {}): Task {
     dueDate: null,
     milestoneId: null,
     estimatedMinutes: null,
+    timeLog: [],
+    timerStartedAt: null,
     startMin: null,
     endMin: null,
     energy: null,
@@ -231,5 +243,141 @@ describe("labels", () => {
     expect(relativeDayLabel("2026-11-26", TODAY)).toBe("Tomorrow");
     expect(relativeDayLabel("2026-11-24", TODAY)).toBe("Yesterday");
     expect(relativeDayLabel("2026-11-30", "2026-12-01")).toBe("Yesterday");
+  });
+});
+
+describe("time spent", () => {
+  it("merges entries per day and sums them", () => {
+    let log = addTimeEntry([], "2026-11-25", 20);
+    log = addTimeEntry(log, "2026-11-24", 10);
+    log = addTimeEntry(log, "2026-11-25", 15);
+    expect(log).toEqual([
+      { date: "2026-11-24", minutes: 10 },
+      { date: "2026-11-25", minutes: 35 },
+    ]);
+    expect(addTimeEntry(log, "2026-11-26", 0)).toBe(log);
+    expect(taskSpentMin(task({ timeLog: log }))).toBe(45);
+  });
+
+  it("rounds a running timer to whole minutes, minimum 1", () => {
+    expect(timerElapsedMin(0, 10_000)).toBe(1);
+    expect(timerElapsedMin(0, 25 * 60_000 + 20_000)).toBe(25);
+  });
+
+  it("adds task time and completed linked sessions per goal and per day", () => {
+    const tasks = [
+      task({ id: "a", timeLog: [{ date: "2026-11-24", minutes: 30 }] }),
+      task({ id: "b", goalId: "g2", timeLog: [{ date: "2026-11-24", minutes: 99 }] }),
+    ];
+    const sessions = [
+      { goalId: "g1", date: "2026-11-25", startMin: 540, endMin: 600, status: "done" as const },
+      { goalId: "g1", date: "2026-11-25", startMin: 600, endMin: 660, status: "planned" as const },
+      { goalId: null, date: "2026-11-25", startMin: 0, endMin: 60, status: "done" as const },
+    ];
+    expect(goalSpentMin("g1", tasks, sessions)).toBe(90);
+    const g1 = spentByDate(tasks, sessions, "g1");
+    expect(g1.get("2026-11-24")).toBe(30);
+    expect(g1.get("2026-11-25")).toBe(60);
+    const all = spentByDate(tasks, sessions);
+    expect(sumRange(all, "2026-11-24", "2026-11-25")).toBe(189);
+    expect(sumRange(all, "2026-11-25", "2026-11-25")).toBe(60);
+  });
+
+  it("compares estimates with reality over finished tasks only", () => {
+    const tasks = [
+      task({ id: "a", status: "done", estimatedMinutes: 40, timeLog: [{ date: TODAY, minutes: 60 }] }),
+      task({ id: "b", status: "done", estimatedMinutes: 20, timeLog: [{ date: TODAY, minutes: 30 }] }),
+      task({ id: "c", estimatedMinutes: 20, timeLog: [{ date: TODAY, minutes: 500 }] }),
+      task({ id: "d", status: "done", estimatedMinutes: 20 }),
+    ];
+    expect(estimateAccuracy(tasks)).toEqual({ sample: 2, estimatedMin: 60, spentMin: 90, ratio: 1.5 });
+    expect(estimateAccuracy([task()])).toBeNull();
+  });
+});
+
+describe("goal timeline", () => {
+  it("counts the start day as day 1 and measures time used", () => {
+    const tl = goalTimeline({ startDate: "2026-11-16", createdAt: 0, deadline: "2026-12-05" }, TODAY);
+    expect(tl.dayNumber).toBe(10);
+    expect(tl.totalDays).toBe(20);
+    expect(tl.timePercent).toBe(50);
+    expect(tl.daysLeft).toBe(10);
+  });
+
+  it("falls back to the creation day and copes with no deadline", () => {
+    const created = new Date(2026, 10, 24, 15).getTime();
+    const tl = goalTimeline({ startDate: null, createdAt: created, deadline: null }, TODAY);
+    expect(tl.start).toBe("2026-11-24");
+    expect(tl.dayNumber).toBe(2);
+    expect(tl.totalDays).toBeNull();
+    expect(tl.timePercent).toBeNull();
+  });
+
+  it("reports day 0 for a goal that starts in the future", () => {
+    expect(
+      goalTimeline({ startDate: "2026-12-01", createdAt: 0, deadline: "2026-12-31" }, TODAY).dayNumber
+    ).toBe(0);
+  });
+
+  it("projects the finish from the pace so far", () => {
+    const g = { id: "g1", startDate: "2026-11-16", createdAt: 0, deadline: "2026-11-30" };
+    const tasks = [
+      task({ id: "a", status: "done" }),
+      task({ id: "b", status: "done" }),
+      task({ id: "c" }),
+      task({ id: "d" }),
+    ];
+    // 2 done in 10 days -> 5 days per task -> 2 left = 10 more days.
+    const p = goalProjection(g, tasks, TODAY);
+    expect(p?.date).toBe("2026-12-05");
+    expect(p?.daysVsDeadline).toBe(5);
+    expect(p?.tasksPerWeek).toBe(1.4);
+    expect(goalProjection(g, [task({ id: "a", status: "done" }), task({ id: "b" })], TODAY)).toBeNull();
+    expect(goalProjection(g, tasks.slice(0, 2), TODAY)).toBeNull();
+  });
+});
+
+describe("autoPlan", () => {
+  it("fills days up to the limit, earliest deadline first", () => {
+    const tasks = [
+      task({ id: "busy", dueDate: TODAY, estimatedMinutes: 150 }),
+      task({ id: "late", goalId: "gLate", estimatedMinutes: 60, createdAt: 1 }),
+      task({ id: "soon", goalId: "gSoon", estimatedMinutes: 60, createdAt: 2 }),
+      task({ id: "tiny", goalId: "gLate", estimatedMinutes: 30, createdAt: 3 }),
+      task({ id: "done", status: "done" }),
+    ];
+    const plan = autoPlan(tasks, {
+      from: TODAY,
+      limitMin: 180,
+      deadlines: new Map([
+        ["gSoon", "2026-12-01"],
+        ["gLate", "2027-01-01"],
+      ]),
+    });
+    expect(plan).toEqual([
+      { taskId: "soon", date: "2026-11-26" },
+      { taskId: "late", date: "2026-11-26" },
+      { taskId: "tiny", date: TODAY },
+    ]);
+  });
+
+  it("puts an oversized task on the first free day and assumes 30m with no estimate", () => {
+    const tasks = [
+      task({ id: "x", dueDate: TODAY, estimatedMinutes: 10 }),
+      task({ id: "huge", estimatedMinutes: 400, createdAt: 1 }),
+      task({ id: "plain", createdAt: 2 }),
+    ];
+    expect(autoPlan(tasks, { from: TODAY, limitMin: 180 })).toEqual([
+      { taskId: "huge", date: "2026-11-26" },
+      { taskId: "plain", date: TODAY },
+    ]);
+  });
+
+  it("leaves tasks unscheduled when nothing fits in the horizon", () => {
+    const tasks = [
+      task({ id: "full", dueDate: TODAY, estimatedMinutes: 180 }),
+      task({ id: "w", estimatedMinutes: 60 }),
+    ];
+    expect(autoPlan(tasks, { from: TODAY, limitMin: 180, horizonDays: 1 })).toEqual([]);
   });
 });

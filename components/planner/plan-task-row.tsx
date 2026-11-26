@@ -1,12 +1,15 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   CalendarDays,
   CalendarOff,
   Clock,
   MoreVertical,
+  Play,
+  Square,
+  Timer,
   Pencil,
   Sun,
   Sunrise,
@@ -28,6 +31,8 @@ import {
   minutesLabel,
   relativeDayLabel,
   taskEstimateMin,
+  taskSpentMin,
+  timerElapsedMin,
 } from "@/lib/planner";
 import { cn } from "@/lib/utils";
 import type { Goal, Task } from "@/lib/types";
@@ -42,6 +47,10 @@ interface Props {
   onReschedule: (task: Task, date: string | null) => void;
   onEdit?: (task: Task) => void;
   onDelete?: (task: Task) => void;
+  /** Start / stop the task's stopwatch. Omit to hide time tracking. */
+  onToggleTimer?: (task: Task) => void;
+  /** Log minutes by hand (for when the timer wasn't running). */
+  onAddTime?: (task: Task, minutes: number) => void;
   /** Optional trailing context (e.g. the milestone or goal title). */
   context?: string | null;
   showGoalDot?: boolean;
@@ -59,6 +68,8 @@ export function PlanTaskRow({
   onReschedule,
   onEdit,
   onDelete,
+  onToggleTimer,
+  onAddTime,
   context,
   showGoalDot = false,
 }: Props) {
@@ -68,6 +79,21 @@ export function PlanTaskRow({
   const late = !done && isAfterDeadline(task.dueDate, goal);
   const estimate = minutesLabel(taskEstimateMin(task));
   const tomorrow = addDays(today, 1);
+  const running = task.timerStartedAt != null;
+  // Re-render while the timer runs so the elapsed time stays current.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!running) return;
+    setNow(Date.now());
+    const id = window.setInterval(() => setNow(Date.now()), 15_000);
+    return () => window.clearInterval(id);
+  }, [running]);
+  const spentMin =
+    taskSpentMin(task) +
+    (task.timerStartedAt != null ? timerElapsedMin(task.timerStartedAt, now) : 0);
+  const spent = minutesLabel(spentMin);
+  const overEstimate =
+    task.estimatedMinutes != null && task.estimatedMinutes > 0 && spentMin > task.estimatedMinutes;
 
   function openPicker() {
     const el = dateRef.current;
@@ -139,6 +165,19 @@ export function PlanTaskRow({
               {estimate}
             </span>
           )}
+          {spent && (
+            <span
+              className={cn(
+                "inline-flex items-center gap-1",
+                running && "font-medium text-primary",
+                !running && overEstimate && "text-amber-600 dark:text-amber-400"
+              )}
+              title={overEstimate ? "Took longer than estimated" : undefined}
+            >
+              <Timer className="h-3 w-3" />
+              {spent} {running ? "· running" : "spent"}
+            </span>
+          )}
           {late && (
             <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400">
               <AlertTriangle className="h-3 w-3" />
@@ -148,6 +187,19 @@ export function PlanTaskRow({
           {context && <span className="truncate">· {context}</span>}
         </div>
       </div>
+
+      {onToggleTimer && !done && (
+        <Button
+          variant={running ? "default" : "ghost"}
+          size="icon"
+          className={cn("h-8 w-8 shrink-0", !running && "text-muted-foreground")}
+          onClick={() => onToggleTimer(task)}
+          aria-label={running ? `Stop timer for “${task.title}”` : `Start timer for “${task.title}”`}
+          aria-pressed={running}
+        >
+          {running ? <Square className="h-3.5 w-3.5" /> : <Play className="h-4 w-4" />}
+        </Button>
+      )}
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -178,6 +230,16 @@ export function PlanTaskRow({
             <DropdownMenuItem onClick={() => onReschedule(task, null)}>
               <CalendarOff className="h-4 w-4" /> Unschedule
             </DropdownMenuItem>
+          )}
+          {onAddTime && (
+            <>
+              <DropdownMenuItem onClick={() => onAddTime(task, 15)}>
+                <Timer className="h-4 w-4" /> Log 15 min
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onAddTime(task, 30)}>
+                <Timer className="h-4 w-4" /> Log 30 min
+              </DropdownMenuItem>
+            </>
           )}
           {onEdit && (
             <DropdownMenuItem onClick={() => onEdit(task)}>

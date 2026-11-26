@@ -173,6 +173,8 @@ function mapTask(snap: QueryDocumentSnapshot<DocumentData>): Task {
     dueDate: d.dueDate || null,
     milestoneId: d.milestoneId ?? null,
     estimatedMinutes: typeof d.estimatedMinutes === "number" ? d.estimatedMinutes : null,
+    timeLog: Array.isArray(d.timeLog) ? d.timeLog : [],
+    timerStartedAt: typeof d.timerStartedAt === "number" ? d.timerStartedAt : null,
     startMin: d.startMin ?? null,
     endMin: d.endMin ?? null,
     energy: d.energy ?? null,
@@ -490,6 +492,8 @@ export type TaskInput = Pick<
       Task,
       | "milestoneId"
       | "estimatedMinutes"
+      | "timeLog"
+      | "timerStartedAt"
       | "startMin"
       | "endMin"
       | "energy"
@@ -514,6 +518,8 @@ export async function createTask(
     dueDate: input.dueDate || null,
     milestoneId: input.milestoneId ?? null,
     estimatedMinutes: input.estimatedMinutes ?? null,
+    timeLog: input.timeLog ?? [],
+    timerStartedAt: null,
     startMin: input.startMin ?? null,
     endMin: input.endMin ?? null,
     energy: input.energy ?? null,
@@ -561,6 +567,8 @@ export async function generateRecurringOccurrences(
       goalId: head.goalId,
       milestoneId: head.milestoneId,
       estimatedMinutes: head.estimatedMinutes,
+      timeLog: [],
+      timerStartedAt: null,
       startMin: head.startMin,
       endMin: head.endMin,
       energy: head.energy,
@@ -593,6 +601,19 @@ export async function updateTask(
   input: Partial<TaskInput>
 ): Promise<void> {
   await updateDoc(doc(db, COLLECTIONS.tasks, id), { ...input });
+}
+
+/** Apply the same kind of patch to many tasks in one atomic write (≤ 450). */
+export async function updateTasksBatch(
+  patches: { id: string; patch: Partial<TaskInput> }[]
+): Promise<void> {
+  for (let i = 0; i < patches.length; i += 450) {
+    const batch = writeBatch(db);
+    for (const { id, patch } of patches.slice(i, i + 450)) {
+      batch.update(doc(db, COLLECTIONS.tasks, id), { ...patch });
+    }
+    await batch.commit();
+  }
 }
 
 /** Toggle a task between done and todo, then recalc its goal's progress. */
@@ -2850,6 +2871,10 @@ export async function getPrefs(userId: string): Promise<UserPrefs> {
       typeof d.dailyLimitMin === "number" && d.dailyLimitMin > 0
         ? d.dailyLimitMin
         : DEFAULT_DAILY_LIMIT_MIN,
+    monthPlans:
+      d.monthPlans && typeof d.monthPlans === "object"
+        ? (d.monthPlans as Record<string, Record<string, number>>)
+        : {},
   };
 }
 
@@ -2914,7 +2939,7 @@ export async function deleteDocsByIds(collectionName: string, ids: string[]): Pr
 export async function upsertPrefs(
   userId: string,
   input: Partial<
-    Pick<UserPrefs, "waterUnit" | "hiddenTrackers" | "sleepTarget" | "proteinTarget" | "calorieTarget" | "foodBudgetWeekly" | "bedtimeTarget" | "wakeTarget" | "sleepRoutine" | "telegram" | "aiProviders" | "reviewScale" | "dailyLimitMin">
+    Pick<UserPrefs, "waterUnit" | "hiddenTrackers" | "sleepTarget" | "proteinTarget" | "calorieTarget" | "foodBudgetWeekly" | "bedtimeTarget" | "wakeTarget" | "sleepRoutine" | "telegram" | "aiProviders" | "reviewScale" | "dailyLimitMin" | "monthPlans">
   >
 ): Promise<void> {
   const ref = doc(db, COLLECTIONS.prefs, userId);

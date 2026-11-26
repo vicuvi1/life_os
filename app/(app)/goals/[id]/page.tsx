@@ -48,6 +48,7 @@ import { cn } from "@/lib/utils";
 import { GoalBadges } from "@/components/goals/goal-badges";
 import { MilestonesSection } from "@/components/goals/milestones-section";
 import { GoalPlanSection } from "@/components/planner/goal-plan-section";
+import { GoalTimelineCard } from "@/components/planner/goal-timeline-card";
 import { HealthBadge } from "@/components/planner/health-badge";
 import { LoadError } from "@/components/planner/load-error";
 import { goalHealth } from "@/lib/planner";
@@ -304,6 +305,9 @@ export default function GoalDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Timeline: start date, time used vs work done, time spent, projection */}
+      <GoalTimelineCard goal={goal} tasks={tasks} sessions={sessions} today={today} />
 
       {/* Blocked-by banner */}
       {blockers.length > 0 && (

@@ -7,7 +7,7 @@
 import { addDays } from "@/lib/habits";
 import { sortMilestones } from "@/lib/goals";
 import { taskDurationMin } from "@/lib/tasks";
-import type { Goal, GoalMilestone, Task } from "@/lib/types";
+import type { Goal, GoalMilestone, Session, Task, TaskTimeEntry } from "@/lib/types";
 
 /** Default "don't overload a day" limit, in estimated minutes. */
 export const DEFAULT_DAILY_LIMIT_MIN = 180;
@@ -222,4 +222,236 @@ export function relativeDayLabel(date: string, today: string): string {
     day: "numeric",
     ...(date.slice(0, 4) !== today.slice(0, 4) ? { year: "numeric" } : {}),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Time actually spent.
+// ---------------------------------------------------------------------------
+type TimedTask = Pick<Task, "timeLog">;
+
+/** Minutes logged on a task across all days. */
+export function taskSpentMin(task: TimedTask): number {
+  return task.timeLog.reduce((sum, e) => sum + (e.minutes > 0 ? e.minutes : 0), 0);
+}
+
+/** Add minutes to a task's log for one day (one entry per day, kept sorted). */
+export function addTimeEntry(log: TaskTimeEntry[], date: string, minutes: number): TaskTimeEntry[] {
+  if (!(minutes > 0)) return log;
+  const existing = log.find((e) => e.date === date);
+  const next = existing
+    ? log.map((e) => (e.date === date ? { ...e, minutes: e.minutes + minutes } : e))
+    : [...log, { date, minutes }];
+  return next.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
+/** Whole minutes a running timer has accumulated (at least 1 once started). */
+export function timerElapsedMin(startedAt: number, now: number): number {
+  return Math.max(1, Math.round((now - startedAt) / 60_000));
+}
+
+type TimedSession = Pick<Session, "goalId" | "date" | "startMin" | "endMin" | "status">;
+
+function sessionMinutes(s: TimedSession): number {
+  return s.status === "done" ? Math.max(0, s.endMin - s.startMin) : 0;
+}
+
+/** Minutes spent on a goal: its tasks' time logs plus completed linked Sessions. */
+export function goalSpentMin(goalId: string, tasks: Task[], sessions: TimedSession[] = []): number {
+  let total = 0;
+  for (const t of tasks) if (t.goalId === goalId) total += taskSpentMin(t);
+  for (const s of sessions) if (s.goalId === goalId) total += sessionMinutes(s);
+  return total;
+}
+
+/**
+ * Minutes spent per local day, optionally for one goal only — feeds the year
+ * heatmap and the week / month totals.
+ */
+export function spentByDate(
+  tasks: Task[],
+  sessions: TimedSession[] = [],
+  goalId?: string
+): Map<string, number> {
+  const map = new Map<string, number>();
+  const add = (date: string, min: number) => {
+    if (min > 0) map.set(date, (map.get(date) ?? 0) + min);
+  };
+  for (const t of tasks) {
+    if (goalId && t.goalId !== goalId) continue;
+    for (const e of t.timeLog) add(e.date, e.minutes);
+  }
+  for (const s of sessions) {
+    if (goalId ? s.goalId !== goalId : !s.goalId) continue;
+    add(s.date, sessionMinutes(s));
+  }
+  return map;
+}
+
+/** Sum a per-day map over an inclusive date range. */
+export function sumRange(byDate: Map<string, number>, from: string, to: string): number {
+  let total = 0;
+  byDate.forEach((min, date) => {
+    if (date >= from && date <= to) total += min;
+  });
+  return total;
+}
+
+export interface EstimateAccuracy {
+  /** Finished tasks that have both an estimate and logged time. */
+  sample: number;
+  estimatedMin: number;
+  spentMin: number;
+  /** spent / estimated — 1.5 means things take 50% longer than you guess. */
+  ratio: number;
+}
+
+/** How your estimates compare with reality, over finished tasks. Null with no data. */
+export function estimateAccuracy(tasks: Task[]): EstimateAccuracy | null {
+  let sample = 0;
+  let estimatedMin = 0;
+  let spentMin = 0;
+  for (const t of tasks) {
+    const spent = taskSpentMin(t);
+    if (!isTaskDone(t) || !t.estimatedMinutes || spent <= 0) continue;
+    sample += 1;
+    estimatedMin += t.estimatedMinutes;
+    spentMin += spent;
+  }
+  if (sample === 0 || estimatedMin <= 0) return null;
+  return { sample, estimatedMin, spentMin, ratio: spentMin / estimatedMin };
+}
+
+// ---------------------------------------------------------------------------
+// Goal timeline: start date, elapsed time, projected finish.
+// ---------------------------------------------------------------------------
+function diffDays(from: string, to: string): number {
+  const a = new Date(from + "T00:00:00").getTime();
+  const b = new Date(to + "T00:00:00").getTime();
+  if (Number.isNaN(a) || Number.isNaN(b)) return 0;
+  return Math.round((b - a) / 86_400_000);
+}
+
+/** The day a goal started: its explicit start date, else the day it was created. */
+export function goalStartDate(goal: Pick<Goal, "startDate" | "createdAt">, today: string): string {
+  if (isDateKey(goal.startDate)) return goal.startDate;
+  if (goal.createdAt > 0) {
+    const d = new Date(goal.createdAt);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+      d.getDate()
+    ).padStart(2, "0")}`;
+    return key;
+  }
+  return today;
+}
+
+export interface GoalTimeline {
+  start: string;
+  /** Day number today, counting the start day as day 1 (0 if not started yet). */
+  dayNumber: number;
+  /** Total days from start to deadline inclusive; null with no deadline. */
+  totalDays: number | null;
+  /** Share of the available time already used, 0-100; null with no deadline. */
+  timePercent: number | null;
+  daysLeft: number | null;
+}
+
+export function goalTimeline(
+  goal: Pick<Goal, "startDate" | "createdAt" | "deadline">,
+  today: string
+): GoalTimeline {
+  const start = goalStartDate(goal, today);
+  const dayNumber = Math.max(0, diffDays(start, today) + 1);
+  if (!isDateKey(goal.deadline) || goal.deadline < start)
+    return { start, dayNumber, totalDays: null, timePercent: null, daysLeft: null };
+  const totalDays = diffDays(start, goal.deadline) + 1;
+  const timePercent = Math.min(100, Math.max(0, Math.round((dayNumber / totalDays) * 100)));
+  return { start, dayNumber, totalDays, timePercent, daysLeft: diffDays(today, goal.deadline) };
+}
+
+export interface GoalProjection {
+  /** The day the last task would be finished at the current pace. */
+  date: string;
+  /** Days after (+) or before (−) the deadline; null with no deadline. */
+  daysVsDeadline: number | null;
+  tasksPerWeek: number;
+}
+
+/**
+ * Projected finish from the pace so far: tasks finished since the start, spread
+ * over the days elapsed, applied to the open tasks. Simple arithmetic — an
+ * estimate, not a forecast. Null until at least 2 tasks are done or when
+ * nothing is left.
+ */
+export function goalProjection(
+  goal: Pick<Goal, "id" | "startDate" | "createdAt" | "deadline">,
+  tasks: Task[],
+  today: string
+): GoalProjection | null {
+  const stats = goalTaskStats(goal.id, tasks);
+  const remaining = stats.total - stats.done;
+  if (stats.done < 2 || remaining <= 0) return null;
+  const elapsed = Math.max(1, diffDays(goalStartDate(goal, today), today) + 1);
+  const perDay = stats.done / elapsed;
+  const date = addDays(today, Math.ceil(remaining / perDay));
+  return {
+    date,
+    daysVsDeadline: isDateKey(goal.deadline) ? diffDays(goal.deadline, date) : null,
+    tasksPerWeek: Math.round(perDay * 7 * 10) / 10,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Auto-plan: spread the backlog over the coming days without overloading any.
+// ---------------------------------------------------------------------------
+/** Assumed size of a task with no estimate when auto-planning. */
+export const DEFAULT_TASK_MIN = 30;
+
+export interface AutoPlanOptions {
+  /** First day that may receive tasks. */
+  from: string;
+  limitMin: number;
+  /** How many days ahead to look (default 60). */
+  horizonDays?: number;
+  /** Deadlines by goal id — earlier deadlines are planned first. */
+  deadlines?: Map<string, string | null>;
+}
+
+/**
+ * Give each unscheduled task the earliest day that still has room under the
+ * daily limit, given what is already scheduled. A task bigger than the limit
+ * goes on the first completely free day. Tasks that don't fit in the horizon
+ * are left unscheduled.
+ */
+export function autoPlan(
+  tasks: Task[],
+  opts: AutoPlanOptions
+): { taskId: string; date: string }[] {
+  const horizon = opts.horizonDays ?? 60;
+  const limit = opts.limitMin > 0 ? opts.limitMin : DEFAULT_DAILY_LIMIT_MIN;
+  const load = new Map<string, number>();
+  for (const t of tasks) {
+    if (isTaskDone(t) || !t.dueDate) continue;
+    load.set(t.dueDate, (load.get(t.dueDate) ?? 0) + taskEstimateMin(t));
+  }
+  const rank = (t: Task) => (t.goalId && opts.deadlines?.get(t.goalId)) || "9999-12-31";
+  const backlog = tasks.filter(isTaskUnscheduled).sort((a, b) => {
+    const ra = rank(a);
+    const rb = rank(b);
+    if (ra !== rb) return ra < rb ? -1 : 1;
+    return a.createdAt - b.createdAt;
+  });
+  const out: { taskId: string; date: string }[] = [];
+  for (const t of backlog) {
+    const size = taskEstimateMin(t) || DEFAULT_TASK_MIN;
+    for (let i = 0; i < horizon; i++) {
+      const day = addDays(opts.from, i);
+      const used = load.get(day) ?? 0;
+      if (used + size <= limit || (used === 0 && size > limit)) {
+        load.set(day, used + size);
+        out.push({ taskId: t.id, date: day });
+        break;
+      }
+    }
+  }
+  return out;
 }

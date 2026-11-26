@@ -1,14 +1,16 @@
 "use client";
 
+import { useCallback } from "react";
 import { CalendarOff, Flag, ListTodo } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/components/toast/toast-provider";
 import { PlanTaskRow } from "@/components/planner/plan-task-row";
 import { TaskQuickAdd, type QuickAddValues } from "@/components/planner/task-quick-add";
-import { createTask, setTaskDone } from "@/lib/firebase/db";
+import { createTask } from "@/lib/firebase/db";
 import { shortDate } from "@/lib/goals";
 import { buildGoalPlan, isTaskDone } from "@/lib/planner";
-import { deadlineWarning, rescheduleTask, reschedulePatch } from "@/lib/planner-actions";
+import { deadlineWarning } from "@/lib/planner-actions";
+import { usePlannerActions } from "@/lib/use-planner-actions";
 import { cn } from "@/lib/utils";
 import type { Goal, Task } from "@/lib/types";
 
@@ -44,32 +46,8 @@ export function GoalPlanSection({
   const plan = buildGoalPlan(goal, tasks);
   const hasMilestones = plan.groups.length > 0;
 
-  function patchTask(id: string, patch: Partial<Task>) {
-    onMutate((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
-  }
-
-  async function toggleDone(task: Task, done: boolean) {
-    patchTask(task.id, { status: done ? "done" : "todo", completedAt: done ? Date.now() : null });
-    try {
-      await setTaskDone({ id: task.id, goalId: task.goalId }, done);
-    } catch {
-      toast({ message: "Couldn't update the task. Try again.", tone: "error" });
-    }
-    onRefresh();
-  }
-
-  async function reschedule(task: Task, date: string | null) {
-    if (date === task.dueDate) return;
-    patchTask(task.id, reschedulePatch(date));
-    try {
-      await rescheduleTask(task, date);
-      const warning = deadlineWarning(date, goal);
-      if (warning) toast({ message: warning, duration: 6000 });
-    } catch {
-      toast({ message: "Couldn't move the task. Try again.", tone: "error" });
-      onRefresh();
-    }
-  }
+  const goalFor = useCallback(() => goal, [goal]);
+  const actions = usePlannerActions({ mutate: onMutate, refresh: onRefresh, goalFor });
 
   async function addTask(values: QuickAddValues, milestoneId: string | null) {
     await createTask(userId, {
@@ -90,8 +68,10 @@ export function GoalPlanSection({
   const rowProps = {
     goal,
     today,
-    onToggleDone: toggleDone,
-    onReschedule: reschedule,
+    onToggleDone: actions.toggleDone,
+    onReschedule: actions.reschedule,
+    onToggleTimer: actions.toggleTimer,
+    onAddTime: actions.addTime,
     onEdit: onEditTask,
     onDelete: onDeleteTask,
   };

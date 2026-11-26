@@ -243,6 +243,12 @@ export interface TaskRecurrence {
   endDate: string | null;
 }
 
+/** Minutes worked on a task on one local calendar day. */
+export interface TaskTimeEntry {
+  date: string; // YYYY-MM-DD
+  minutes: number;
+}
+
 export interface Task {
   id: string;
   projectId: string | null;
@@ -262,6 +268,10 @@ export interface Task {
   milestoneId: string | null;
   /** Estimated effort in minutes — feeds the per-day load on the planner. */
   estimatedMinutes: number | null;
+  /** Time actually spent, one entry per local day (from the task timer or typed in). */
+  timeLog: TaskTimeEntry[];
+  /** Epoch ms when the task's timer was started; null = not running. */
+  timerStartedAt: number | null;
   // --- Calendar scheduling (Notion-style planner) ---------------------------
   // A scheduled task owns a time block on its dueDate, expressed the same way as
   // a Session: minutes since midnight. `null` means the task is dated but has no
@@ -1115,6 +1125,8 @@ export interface UserPrefs {
   storage?: StorageConfig | null;
   /** Planner: estimated minutes per day above which a day is flagged as overloaded. */
   dailyLimitMin: number;
+  /** Planner: planned hours per goal for a month — { "2026-12": { goalId: hours } }. */
+  monthPlans: Record<string, Record<string, number>>;
 }
 
 /** Firestore collection names, centralized to avoid typos. */

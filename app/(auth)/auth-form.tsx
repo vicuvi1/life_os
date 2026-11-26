@@ -60,7 +60,7 @@ export function AuthForm({ mode }: { mode: "login" | "setup" }) {
       } else {
         await signUp(OWNER_EMAIL, pinToPassword(password));
       }
-      router.replace("/dashboard");
+      router.replace("/today");
     } catch (err) {
       const code = errorCode(err);
       if (!isLogin && code === "auth/email-already-in-use") {

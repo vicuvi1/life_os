@@ -50,7 +50,7 @@ import {
   shortDate,
   type NextAction,
 } from "@/lib/goals";
-import { goalHealth, goalTaskStats } from "@/lib/planner";
+import { goalHealth, goalSpentMin, goalTaskStats } from "@/lib/planner";
 import { LoadError } from "@/components/planner/load-error";
 import { toDateKey } from "@/lib/greeting";
 import { cn } from "@/lib/utils";
@@ -328,6 +328,7 @@ export default function GoalsPage() {
     nextAction: nextActions.get(goal.id) ?? null,
     taskStats: goalTaskStats(goal.id, tasks),
     health: healthById.get(goal.id) ?? goalHealth(goal, tasks, today),
+    spentMin: goalSpentMin(goal.id, tasks),
     onToggleFocus: toggleFocus,
     onEdit: openEdit,
     onDelete: requestDelete,
