@@ -143,6 +143,9 @@ service cloud.firestore {
     }
 
     match /prefs/{id} {
+      // One settings doc per user, keyed by their uid. Reading it before it
+      // exists (a new account) must succeed so the app can fall back to defaults.
+      allow get: if isSignedIn() && request.auth.uid == id && resource == null;
       allow read, delete: if ownsExisting();
       allow create: if ownsIncoming();
       allow update: if ownsExisting() && ownsIncoming();
