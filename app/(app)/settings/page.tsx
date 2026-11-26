@@ -10,6 +10,7 @@ import { NotificationsCard } from "@/components/settings/notifications-card";
 import { TelegramCard } from "@/components/settings/telegram-card";
 import { AIProvidersCard } from "@/components/settings/ai-providers-card";
 import { CurrencyCard } from "@/components/settings/currency-card";
+import { BackupCard } from "@/components/settings/backup-card";
 import { DailyLimitCard } from "@/components/settings/daily-limit-card";
 import { AccentCard } from "@/components/settings/accent-card";
 import { ProfileNameField } from "@/components/settings/profile-name";
@@ -55,6 +56,8 @@ export default function SettingsPage() {
       </Card>
 
       <DailyLimitCard />
+
+      <BackupCard />
 
       <Card>
         <CardHeader>

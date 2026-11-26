@@ -79,6 +79,7 @@ import {
 import { habitCurrentStreak, habitLongestStreak, isLogDone } from "@/lib/habits";
 import { toDateKey } from "@/lib/greeting";
 import { DEFAULT_DAILY_LIMIT_MIN } from "@/lib/planner";
+import { buildBackup, decodeValue, type BackupFile } from "@/lib/backup";
 
 /** Convert a Firestore Timestamp (or null during pending writes) to epoch ms. */
 /**
@@ -2956,4 +2957,38 @@ export async function setCurrency(userId: string, code: string): Promise<void> {
     openingBalances: existing?.openingBalances ?? {},
     savingsGoal: existing?.savingsGoal ?? null,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Backup & restore (see lib/backup.ts)
+// ---------------------------------------------------------------------------
+/** Everything the signed-in user owns, as a backup file. */
+export async function exportBackup(userId: string): Promise<BackupFile> {
+  const scan = await scanUsage(userId);
+  return buildBackup(scan.raw, new Date(scan.at));
+}
+
+/**
+ * Write a backup's documents back, by id (existing documents with the same id
+ * are replaced; nothing else is deleted). Every document is stamped with the
+ * current user's id so a backup can be restored into a fresh account.
+ */
+export async function restoreBackup(userId: string, file: BackupFile): Promise<number> {
+  const known = new Set<string>(Object.values(COLLECTIONS));
+  const writes: { ref: ReturnType<typeof doc>; data: Record<string, unknown> }[] = [];
+  for (const [name, docs] of Object.entries(file.collections)) {
+    if (!known.has(name)) continue;
+    for (const d of docs) {
+      const data = decodeValue(d.data, (ms) => Timestamp.fromMillis(ms)) as Record<string, unknown>;
+      // The settings doc is keyed by user id; everything else keeps its own id.
+      const id = name === COLLECTIONS.prefs ? userId : d.id;
+      writes.push({ ref: doc(db, name, id), data: { ...data, userId } });
+    }
+  }
+  for (let i = 0; i < writes.length; i += 400) {
+    const batch = writeBatch(db);
+    for (const w of writes.slice(i, i + 400)) batch.set(w.ref, w.data);
+    await batch.commit();
+  }
+  return writes.length;
 }

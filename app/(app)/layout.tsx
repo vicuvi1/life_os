@@ -9,6 +9,7 @@ import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { FloatingCalculator } from "@/components/calculator/floating-calculator";
 import { CommandProvider } from "@/components/command/command-center";
+import { AutoBackup } from "@/components/auto-backup";
 import { AccentProvider } from "@/components/accent-provider";
 import { ToastProvider } from "@/components/toast/toast-provider";
 
@@ -43,6 +44,7 @@ export default function AppLayout({
         </div>
           <FloatingCalculator />
           <AccentProvider />
+          <AutoBackup />
         </div>
       </CommandProvider>
     </ToastProvider>
